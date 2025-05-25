@@ -1,0 +1,12 @@
+version: "3"
+services:
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - /mnt/m2drive/docker/data_grafana:/var/lib/grafana
+    restart: unless-stopped
