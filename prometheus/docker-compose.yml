@@ -7,4 +7,5 @@ services:
     volumes:
       - /mnt/m2drive/docker/data_prometheus:/prometheus
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml
     restart: unless-stopped

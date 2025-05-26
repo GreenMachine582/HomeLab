@@ -64,6 +64,7 @@ services:
     volumes:
       - /mnt/m2drive/docker/data_prometheus:/prometheus
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml
     restart: unless-stopped
     networks:
       - monitoring_net
@@ -87,6 +88,15 @@ services:
       - ./rust_desk/data:/root
     network_mode: "host"
     restart: unless-stopped
+
+  ssh_exporter:
+    image: schnej7/ssh_exporter:latest
+    container_name: ssh-exporter
+    ports:
+      - "9312:9312"
+    restart: unless-stopped
+    networks:
+      - monitoring_net
 
 networks:
 #  rust_desk_net:

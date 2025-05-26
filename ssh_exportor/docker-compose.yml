@@ -1,0 +1,7 @@
+services:
+  ssh_exporter:
+    image: schnej7/ssh_exporter:latest
+    container_name: ssh-exporter
+    ports:
+      - "9312:9312"
+    restart: unless-stopped
