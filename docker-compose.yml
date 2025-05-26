@@ -1,7 +1,6 @@
 services:
   grafana:
     image: grafana/grafana:latest
-    user: "1000:1000"
     container_name: grafana
     ports:
       - "3000:3000"
@@ -59,7 +58,6 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    user: "1000:1000"
     container_name: prometheus
     ports:
       - "9090:9090"
