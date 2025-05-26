@@ -16,7 +16,8 @@ services:
   node-exporter:
     image: prom/node-exporter:latest
     container_name: node-exporter
-    network_mode: host
+    ports:
+      - "9100:9100"
     pid: host
     volumes:
       - /proc:/host/proc:ro
@@ -74,29 +75,25 @@ services:
     container_name: rustdesk_hbbs
     command: hbbs
     volumes:
-      - ./data:/root
+      - ./rust_desk/data:/root
     network_mode: "host"
     depends_on:
       - rustdesk_hbbr
     restart: unless-stopped
-    networks:
-      - rust_desk_net
-      -
+
   rustdesk_hbbr:
     image: rustdesk/rustdesk-server:latest
     container_name: rustdesk_hbbr
     command: hbbr
     volumes:
-      - ./data:/root
+      - ./rust_desk/data:/root
     network_mode: "host"
     restart: unless-stopped
-    networks:
-      - rust_desk_net
 
 networks:
-  rust_desk_net:
-    name: rustdesk_network
-    driver: bridge
+#  rust_desk_net:
+#    name: rustdesk_network
+#    driver: bridge
   monitoring_net:
     name: monitoring_network
     driver: bridge
