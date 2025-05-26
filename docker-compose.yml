@@ -90,7 +90,7 @@ services:
     restart: unless-stopped
 
   ssh_exporter:
-    image: schnej7/ssh_exporter:latest
+    build: ./ssh_exporter
     container_name: ssh-exporter
     ports:
       - "9312:9312"
