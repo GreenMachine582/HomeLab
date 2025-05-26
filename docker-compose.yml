@@ -1,0 +1,111 @@
+services:
+  grafana:
+    image: grafana/grafana:latest
+    user: "1000:1000"
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - /mnt/m2drive/docker/data_grafana:/var/lib/grafana
+    restart: unless-stopped
+    networks:
+      - monitoring_net
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    network_mode: host
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+    restart: unless-stopped
+    networks:
+      - monitoring_net
+
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    container_name: ntfy
+    command:
+      - serve
+    ports:
+      - "8085:80"
+    volumes:
+      - /mnt/m2drive/docker/data_ntfy:/var/cache/ntfy
+      - ./ntfy/config:/etc/ntfy
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - monitoring_net
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    ports:
+      - "9443:9443"
+    volumes:
+      - /mnt/m2drive/docker/data_portainer:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    user: "1000:1000"
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - /mnt/m2drive/docker/data_prometheus:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+    networks:
+      - monitoring_net
+
+  rustdesk_hbbs:
+    image: rustdesk/rustdesk-server:latest
+    container_name: rustdesk_hbbs
+    command: hbbs
+    volumes:
+      - ./data:/root
+    network_mode: "host"
+    depends_on:
+      - rustdesk_hbbr
+    restart: unless-stopped
+    networks:
+      - rust_desk_net
+      -
+  rustdesk_hbbr:
+    image: rustdesk/rustdesk-server:latest
+    container_name: rustdesk_hbbr
+    command: hbbr
+    volumes:
+      - ./data:/root
+    network_mode: "host"
+    restart: unless-stopped
+    networks:
+      - rust_desk_net
+
+networks:
+  rust_desk_net:
+    name: rustdesk_network
+    driver: bridge
+  monitoring_net:
+    name: monitoring_network
+    driver: bridge
+  greentechhub_net:
+    external: True
+
+
+# Note: run the following commands
+# `sudo chown -R 472:472 /mnt/m2drive/docker/data_grafana`
+# `sudo chmod -R 755 /mnt/m2drive/docker/data_grafana`
+# `sudo chown -R 65534:65534 /mnt/m2drive/docker/data_prometheus`
+# `sudo chmod -R 755 /mnt/m2drive/docker/data_prometheus`
