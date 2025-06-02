@@ -1,4 +1,19 @@
 services:
+  cloudflare-ddns:
+    image: favonia/cloudflare-ddns:latest
+    container_name: cloudflare-ddns
+    networks:
+      - noti_net
+    restart: always
+    user: "1000:1000"
+    read_only: true
+    security_opt: [ no-new-privileges:true ]
+    env_file:
+      - .env
+    environment:
+      - DOMAINS=green-tech-hub.com,www.green-tech-hub.com
+      - PROXIED=true
+
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -45,6 +60,7 @@ services:
     restart: unless-stopped
     networks:
       - monitoring_net
+      - noti_net
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -55,6 +71,8 @@ services:
       - /mnt/m2drive/docker/data_portainer:/data
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
+    networks:
+      - mgmt_net
 
   prometheus:
     image: prom/prometheus:latest
@@ -104,6 +122,12 @@ networks:
 #    driver: bridge
   monitoring_net:
     name: monitoring_network
+    driver: bridge
+  mgmt_net:
+    name: management_network
+    driver: bridge
+  noti_net:
+    name: notification_network
     driver: bridge
   greentechhub_net:
     external: True
