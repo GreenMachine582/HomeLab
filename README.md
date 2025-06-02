@@ -1,4 +1,7 @@
 
+## Cloudflare DDNS
+Uses ports `1000`
+
 ## Grafana
 Uses ports `3000`
 
