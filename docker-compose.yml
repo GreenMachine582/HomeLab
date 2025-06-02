@@ -13,6 +13,7 @@ services:
     environment:
       - DOMAINS=green-tech-hub.com,www.green-tech-hub.com
       - PROXIED=true
+      - IP6_PROVIDER=none
 
   grafana:
     image: grafana/grafana:latest
