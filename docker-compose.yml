@@ -107,14 +107,14 @@ services:
     network_mode: "host"
     restart: unless-stopped
 
-  ssh_exporter:
-    build: ./ssh_exporter
-    container_name: ssh-exporter
-    ports:
-      - "9312:9312"
-    restart: unless-stopped
-    networks:
-      - monitoring_net
+#  ssh_exporter:
+#    build: ./ssh_exporter
+#    container_name: ssh-exporter
+#    ports:
+#      - "9312:9312"
+#    restart: unless-stopped
+#    networks:
+#      - monitoring_net
 
 networks:
 #  rust_desk_net:

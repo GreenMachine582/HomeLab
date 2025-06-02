@@ -1,7 +1,0 @@
-services:
-  ssh_exporter:
-    build: .
-    container_name: ssh-exporter
-    ports:
-      - "9312:9312"
-    restart: unless-stopped
