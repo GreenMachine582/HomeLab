@@ -1,4 +1,18 @@
 services:
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - mgmt_net
+
   cloudflare-ddns:
     image: favonia/cloudflare-ddns:latest
     container_name: cloudflare-ddns
@@ -11,7 +25,7 @@ services:
     env_file:
       - .env
     environment:
-      - DOMAINS=green-tech-hub.com,www.green-tech-hub.com
+      - DOMAINS=green-tech-hub.com,*.green-tech-hub.com
       - PROXIED=true
       - IP6_PROVIDER=none
 
@@ -23,7 +37,7 @@ services:
     env_file:
       - .env
     volumes:
-      - /mnt/m2drive/docker/data_grafana:/var/lib/grafana
+      - grafana_data:/var/lib/grafana
     restart: unless-stopped
     networks:
       - monitoring_net
@@ -52,7 +66,7 @@ services:
     ports:
       - "8085:80"
     volumes:
-      - /mnt/m2drive/docker/data_ntfy:/var/cache/ntfy
+      - ntfy_cache:/var/cache/ntfy
       - ./ntfy/config:/etc/ntfy
     env_file:
       - .env
@@ -62,12 +76,12 @@ services:
       - noti_net
 
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:linux-arm64
     container_name: portainer
     ports:
       - "9443:9443"
     volumes:
-      - /mnt/m2drive/docker/data_portainer:/data
+      - portainer_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     networks:
@@ -79,7 +93,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - /mnt/m2drive/docker/data_prometheus:/prometheus
+      - prometheus_data:/prometheus
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml
     restart: unless-stopped
@@ -91,7 +105,7 @@ services:
     container_name: rustdesk_hbbs
     command: hbbs
     volumes:
-      - ./rust_desk/data:/root
+      - rustdesk_data:/root
     network_mode: "host"
     depends_on:
       - rustdesk_hbbr
@@ -102,7 +116,7 @@ services:
     container_name: rustdesk_hbbr
     command: hbbr
     volumes:
-      - ./rust_desk/data:/root
+      - rustdesk_data:/root
     network_mode: "host"
     restart: unless-stopped
 
@@ -129,7 +143,16 @@ networks:
     name: notification_network
     driver: bridge
   greentechhub_net:
-    external: True
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  grafana_data:
+  ntfy_cache:
+  portainer_data:
+  prometheus_data:
+  rustdesk_data:
 
 
 # Note: run the following commands

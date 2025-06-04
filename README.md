@@ -28,3 +28,19 @@ Uses ports `9090`
 
 ## Rust Desk
 Uses ports `21115`
+
+
+Change Docker's global volume storage location
+```bash
+sudo nano /etc/docker/daemon.json
+```
+Add the following content to the file:
+```json
+{
+  "data-root": "/mnt/m2drive/docker"
+}
+```
+The restart Docker service to apply the changes:
+```bash
+sudo systemctl restart docker
+```
