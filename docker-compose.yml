@@ -63,8 +63,6 @@ services:
     container_name: ntfy
     command:
       - serve
-    ports:
-      - "8085:8085"
     volumes:
       - ntfy_cache:/var/cache/ntfy
       - ./ntfy/config:/etc/ntfy

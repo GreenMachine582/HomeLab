@@ -12,6 +12,9 @@ portainer.local {
 #==========================================
 # PUBLIC ACCESS (auto HTTPS via Let's Encrypt)
 #==========================================
+ntfy.green-tech-hub.com {
+  reverse_proxy ntfy:80
+}
 portainer.green-tech-hub.com {
     reverse_proxy portainer:9000
 }
