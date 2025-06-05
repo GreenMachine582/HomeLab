@@ -44,3 +44,9 @@ The restart Docker service to apply the changes:
 ```bash
 sudo systemctl restart docker
 ```
+
+Disable and stop Apache2 service as Caddy is used instead
+```bash
+sudo systemctl disable apache2
+sudo systemctl stop apache2
+```
