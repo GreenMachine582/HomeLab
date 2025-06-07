@@ -1,0 +1,237 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: node_alerts
+    folder: Node Alerts
+    interval: 1m
+    rules:
+      - uid: instance-down
+        title: InstanceDown
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: up == 0
+              interval: ""
+              format: time_series
+              datasource:
+                type: prometheus
+                uid: prometheus
+              legendFormat: "{{instance}}"
+              refId: A
+          - refId: B
+            type: reduce
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              input: A
+              refId: B
+          - refId: C
+            type: threshold
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              op: gt
+              threshold: 0
+              input: B
+              refId: C
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: "Instance {{ $labels.instance }} down"
+          description: "{{ $labels.instance }} has been down for more than 1 minute."
+        labels:
+          severity: critical
+
+      - uid: high-cpu
+        title: HighCPUUsage
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+              format: time_series
+              refId: A
+          - refId: B
+            type: reduce
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              input: A
+              refId: B
+          - refId: C
+            type: threshold
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              op: gt
+              threshold: 80
+              input: B
+              refId: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 80% for 5 minutes."
+        labels:
+          severity: warning
+
+      - uid: low-disk
+        title: LowDiskSpace
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})
+              format: time_series
+              refId: A
+          - refId: B
+            type: reduce
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              input: A
+              refId: B
+          - refId: C
+            type: threshold
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              op: lt
+              threshold: 0.1
+              input: B
+              refId: C
+        for: 10m
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }} {{ $labels.mountpoint }}"
+          description: "Disk space is below 10% on {{ $labels.instance }} (mount: {{ $labels.mountpoint }})."
+        labels:
+          severity: warning
+
+      - uid: high-mem
+        title: HighMemoryUsage
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes
+              format: time_series
+              refId: A
+          - refId: B
+            type: reduce
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              input: A
+              refId: B
+          - refId: C
+            type: threshold
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              op: gt
+              threshold: 0.9
+              input: B
+              refId: C
+        for: 5m
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 90% on {{ $labels.instance }}."
+        labels:
+          severity: warning
+
+      - uid: always-fire
+        title: AlwaysFiring
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 10
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: vector(1)
+              format: time_series
+              refId: A
+          - refId: B
+            type: reduce
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              input: A
+              refId: B
+          - refId: C
+            type: threshold
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              op: gt
+              threshold: 0
+              input: B
+              refId: C
+        for: 10s
+        annotations:
+          summary: "Test Alert - Always Firing"
+          description: "This is a test alert that always fires for debugging purposes."
+        labels:
+          severity: info
+
+      - uid: flappy-alert
+        title: FlappyAlert
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 30
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: hour() % 2 == 0
+              format: time_series
+              refId: A
+          - refId: B
+            type: reduce
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              input: A
+              refId: B
+          - refId: C
+            type: threshold
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              op: gt
+              threshold: 0
+              input: B
+              refId: C
+        for: 30s
+        annotations:
+          summary: "Flappy test alert (hour-based)"
+          description: "This alert flips on and off every hour to test alert transitions."
+        labels:
+          severity: info

@@ -10,3 +10,11 @@ contactPoints:
           url: http://ntfy/alerts
           httpMethod: POST
           maxRetries: 3
+          body: |
+            {{ range .Alerts }}
+            🚨 Alert: {{ .Labels.alertname }}
+            📍 Instance: {{ .Labels.instance }}
+            ⚠️ Severity: {{ .Labels.severity }}
+            📝 Description: {{ .Annotations.description }}
+            🕒 Starts At: {{ .StartsAt }}
+            {{ end }}
