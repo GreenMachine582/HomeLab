@@ -46,7 +46,7 @@ services:
 #    restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:latest
+    build: ./grafana
     container_name: grafana
     ports:
       - "3000:3000"
@@ -54,10 +54,6 @@ services:
       - .env
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
-      - ./grafana/fetch_dashboards.sh:/etc/grafana/fetch_dashboards.sh
-    entrypoint: [ "/bin/sh", "-c", "/etc/grafana/fetch_dashboards.sh && /run.sh" ]
     restart: unless-stopped
     networks:
       - monitoring_net
