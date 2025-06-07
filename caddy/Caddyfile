@@ -5,9 +5,9 @@
 #==========================================
 # LOCAL ACCESS (with self-signed or internal CA cert)
 #==========================================
-portainer.local {
-    reverse_proxy portainer:9000
-}
+#portainer.local {
+#    reverse_proxy portainer:9000
+#}
 
 #==========================================
 # PUBLIC ACCESS (auto HTTPS via Let's Encrypt)
