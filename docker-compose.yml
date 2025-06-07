@@ -29,6 +29,22 @@ services:
       - PROXIED=true
       - IP6_PROVIDER=none
 
+#  fail2ban:
+#    image: lscr.io/linuxserver/fail2ban:latest
+#    container_name: fail2ban
+#    cap_add:
+#      - NET_ADMIN
+#      - NET_RAW
+#    network_mode: host
+#    environment:
+#      - PUID=1000
+#      - PGID=1000
+#      - TZ=Etc/UTC
+#    volumes:
+#      - ./fail2ban/config:/config
+#      - /var/log:/var/log:ro
+#    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -154,10 +170,3 @@ volumes:
   portainer_data:
   prometheus_data:
   rustdesk_data:
-
-
-# Note: run the following commands
-# `sudo chown -R 472:472 /mnt/m2drive/docker/data_grafana`
-# `sudo chmod -R 755 /mnt/m2drive/docker/data_grafana`
-# `sudo chown -R 65534:65534 /mnt/m2drive/docker/data_prometheus`
-# `sudo chmod -R 755 /mnt/m2drive/docker/data_prometheus`
