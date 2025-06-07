@@ -37,6 +37,24 @@ groups:
           summary: "High memory usage on {{ $labels.instance }}"
           description: "Memory usage is above 90% on {{ $labels.instance }}."
 
+      - alert: AlwaysFiring
+        expr: vector(1)
+        for: 10s
+        labels:
+          severity: info
+        annotations:
+          summary: "Test Alert - Always Firing"
+          description: "This is a test alert that always fires for debugging purposes."
+
+      - alert: FlappyAlert
+        expr: hour() % 2 == 0
+        for: 30s
+        labels:
+          severity: info
+        annotations:
+          summary: "Flappy test alert (hour-based)"
+          description: "This alert flips on and off every hour to test alert transitions."
+
 #      - alert: ActiveSSHConnections
 #        expr: ssh_sessions > 0
 #        for: 1m
