@@ -1,0 +1,10 @@
+contactPoints:
+  - orgId: 1
+    name: ntfy
+    receivers:
+      - uid: ntfy
+        type: webhook
+        settings:
+          url: http://ntfy/alerts
+          httpMethod: POST
+          maxRetries: 3
