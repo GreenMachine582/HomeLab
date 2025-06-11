@@ -25,11 +25,11 @@ services:
     depends_on:
       - ntfy
     env_file:
-      - .env-cloudflare-ddns
+      - ./cloudflare_ddns/.env
     environment:
-      - DOMAINS=green-tech-hub.com,*.green-tech-hub.com
-      - PROXIED=true
-      - IP6_PROVIDER=none
+      SHOUTRRR: |
+        generic+http://ntfy/cf-ddns-updates?title=CF-DDNS&tags=cloudflare,ddns
+        ${SHOUTRRR_DISCORD_ALERTS}
 
 #  fail2ban:
 #    image: lscr.io/linuxserver/fail2ban:latest
