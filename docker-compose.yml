@@ -53,7 +53,7 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - .env
+      - ./grafana/.env
     volumes:
       - grafana_data:/var/lib/grafana
     restart: unless-stopped
