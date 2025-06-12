@@ -16,7 +16,7 @@ route:
       receiver: 'discord'
     - match:
         severity: warning
-      receiver: 'ntfy'
+      receiver: 'discord'
     - match:
         severity: info
       receiver: 'ntfy'
@@ -25,34 +25,10 @@ receivers:
   - name: 'default'
     webhook_configs:
       - url: "${NTFY_URL}"
-        send_resolved: true
-        http_config:
-          headers:
-            Content-Type: text/plain
-        body: |
-          {{ range .Alerts }}
-          🔔 *{{ .Labels.alertname }}* - {{ .Annotations.summary }}
-          📍 Instance: {{ .Labels.instance }}
-          💬 {{ .Annotations.description }}
-          🔖 Severity: {{ .Labels.severity }}
-          ⏱️ Starts at: {{ .StartsAt }}
-          {{ end }}
 
   - name: 'ntfy'
     webhook_configs:
       - url: "${NTFY_URL}"
-        send_resolved: true
-        http_config:
-          headers:
-            Content-Type: text/plain
-        body: |
-          {{ range .Alerts }}
-          🔔 *{{ .Labels.alertname }}* - {{ .Annotations.summary }}
-          📍 Instance: {{ .Labels.instance }}
-          💬 {{ .Annotations.description }}
-          🔖 Severity: {{ .Labels.severity }}
-          ⏱️ Starts at: {{ .StartsAt }}
-          {{ end }}
 
   - name: 'discord'
     discord_configs:
