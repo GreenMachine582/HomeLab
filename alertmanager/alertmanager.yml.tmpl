@@ -22,12 +22,43 @@ receivers:
   - name: 'default'
     webhook_configs:
       - url: "${NTFY_URL}"
+        send_resolved: true
+        http_config:
+          headers:
+            Content-Type: text/plain
+        body: |
+          {{ range .Alerts }}
+          🔔 *{{ .Labels.alertname }}* - {{ .Annotations.summary }}
+          📍 Instance: {{ .Labels.instance }}
+          💬 {{ .Annotations.description }}
+          🔖 Severity: {{ .Labels.severity }}
+          ⏱️ Starts at: {{ .StartsAt }}
+          {{ end }}
 
   - name: 'ntfy'
     webhook_configs:
       - url: "${NTFY_URL}"
+        send_resolved: true
+        http_config:
+          headers:
+            Content-Type: text/plain
+        body: |
+          {{ range .Alerts }}
+          🔔 *{{ .Labels.alertname }}* - {{ .Annotations.summary }}
+          📍 Instance: {{ .Labels.instance }}
+          💬 {{ .Annotations.description }}
+          🔖 Severity: {{ .Labels.severity }}
+          ⏱️ Starts at: {{ .StartsAt }}
+          {{ end }}
 
   - name: 'discord'
     webhook_configs:
       - url: "${DISCORD_WEBHOOK_URL}"
         send_resolved: true
+        http_config:
+          headers:
+            Content-Type: application/json
+        body: |
+          {
+            "content": "{{ range .Alerts }}🔥 **{{ .Labels.alertname }}** on {{ .Labels.instance }}: {{ .Annotations.summary }} - {{ .Annotations.description }} ({{ .Labels.severity }})\n{{ end }}"
+          }
