@@ -1,6 +1,9 @@
 global:
   resolve_timeout: 5m
 
+templates:
+  - /etc/alertmanager/templates/discord.tmpl
+
 route:
   receiver: 'default'
   group_by: ['alertname']
@@ -52,13 +55,7 @@ receivers:
           {{ end }}
 
   - name: 'discord'
-    webhook_configs:
-      - url: "${DISCORD_WEBHOOK_URL}"
-        send_resolved: true
-        http_config:
-          headers:
-            Content-Type: application/json
-        body: |
-          {
-            "content": "{{ range .Alerts }}🔥 **{{ .Labels.alertname }}** on {{ .Labels.instance }}: {{ .Annotations.summary }} - {{ .Annotations.description }} ({{ .Labels.severity }})\n{{ end }}"
-          }
+    discord_configs:
+    - webhook_url: "${DISCORD_WEBHOOK_URL}"
+      message: '{{ template "discord.alert_message" . }}'
+      title: '{{ template "discord.alert_title" . }}'

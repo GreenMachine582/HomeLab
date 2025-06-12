@@ -1,0 +1,14 @@
+{{ define "discord.alert_message" }}
+{{ range .Alerts }}
+⚠️ **Alert Name:** {{ .Labels.alertname }}
+🔖 **Severity:** {{ .Labels.severity }}
+📝 **Description:** {{ .Annotations.description }}
+📅 **Time:** {{ .StartsAt | humanize }}
+{{ if .Annotations.details }}📋 **Details:** {{ .Annotations.details }}{{ end }}
+---
+{{ end }}
+{{ end }}
+
+{{ define "discord.alert_title" }}
+🔥 [{{ index .Alerts 0 }.Labels.alertname }}] Alert
+{{ end }}
