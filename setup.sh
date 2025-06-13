@@ -5,6 +5,9 @@ export $(cat .env | xargs)
 envsubst < ./alertmanager/alertmanager.yml.tmpl > ./alertmanager/alertmanager.yml
 
 # Copy the event notification scripts to the appropriate directories
-rm /lib/systemd/system-shutdown/on-shutdown.sh
-xcopy ./on-shutdown.sh /lib/systemd/system-shutdown/on-shutdown.sh
-chmod +x /lib/systemd/system-shutdown/on-shutdown.sh
+DST_ON_SHUTDOWN="/lib/systemd/system-shutdown/on-shutdown.sh"
+if [ -f "$DST_ON_SHUTDOWN" ]; then
+  rm "$DST"
+fi
+copy ./on-shutdown.sh "$DST"
+chmod +x "$DST"
