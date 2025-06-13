@@ -11,7 +11,7 @@ echo "Loading environment variables from .env..."
 export $(cat .env | xargs)
 
 # Get the directory of the current script
-HOMELAB_DIR=$(dirname "$0")
+HOMELAB_DIR="$(cd "$(dirname "$0")" && pwd)"
 export HOMELAB_DIR
 echo "HOMELAB_DIR set to $HOMELAB_DIR"
 
