@@ -1,13 +1,27 @@
 #!/bin/bash
 
 set -e
-cd "$(dirname "$0")"
 
-# Load env
+# Set HOMELAB_DIR if not already set
+HOMELAB_DIR="${HOMELAB_DIR:-$(dirname "$0")}"
+cd "$HOMELAB_DIR"
+
+# Create log directory and set log file path
+LOG_DIR="$HOMELAB_DIR/log"
+LOG_FILE="$LOG_DIR/on-boot.log"
+mkdir -p "$LOG_DIR"
+
+# Redirect stdout and stderr to log file with tee
+exec > >(awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee -a "$LOG_FILE") 2>&1
+
+echo "----- On Boot Script Started: $(date) -----"
+
+# Load environment variables from .env
 if [ -f ".env" ]; then
+  echo "Loading environment variables from .env..."
   export $(grep -v '^#' .env | xargs)
 else
-  echo "Missing .env file"
+  echo "[ERROR] Missing .env file"
   exit 1
 fi
 
@@ -43,3 +57,5 @@ log_and_notify() {
 # --- Begin boot notification ---
 TIME=$(date "+%Y-%m-%d %H:%M:%S")
 log_and_notify "$(hostname) booted at $TIME" "Boot Event" 5763719
+
+echo "----- On Boot Script Finished: $(date) -----"
