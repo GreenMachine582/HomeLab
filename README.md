@@ -72,6 +72,6 @@ sudo crontab -e
 ```
 Then add to `cron`:
 ```bash
-0 2 1 * * ~/HomeLab/monthly-update.sh >> ~/HomeLab/monthly-update.log 2>&1
+0 2 1 * * /root/HomeLab/monthly-update.sh >> /root/HomeLab/monthly-update.log 2>&1
 ```
 Runs at 2 AM on the 1st of every month.
