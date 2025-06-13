@@ -12,7 +12,7 @@ else
 fi
 
 send_ntfy() {
-  curl -s -X POST "$NTFY_URL" \
+  curl -s -X POST "http://0.0.0.0:8085/alerts" \
     -H "Title: $1" \
     -H "Tags: wrench" \
     -d "$2" > /dev/null
