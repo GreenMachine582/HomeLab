@@ -26,7 +26,7 @@ send_discord() {
   "embeds": [
     {
       "title": "$1",
-      "description": "🔧$2",
+      "description": "🔧 $2",
       "color": $3
     }
   ]

@@ -94,7 +94,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/etc/systemd/system/on-boot.sh
+ExecStart=/root/homelab/on-boot.sh
 
 [Install]
 WantedBy=multi-user.target
