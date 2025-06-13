@@ -34,7 +34,7 @@ send_ntfy() {
 }
 
 send_discord() {
-  curl -s -H "Content-Type: application/json" -X POST "$DISCORD_WEBHOOK_URL" -d @- <<EOF
+  curl -s -H "Content-Type: application/json" -X POST "${DISCORD_WEBHOOK_URL}" -d @- <<EOF
 {
   "username": "${NOTIFY_USERNAME:-HomeLab}",
   "embeds": [

@@ -20,7 +20,7 @@ DST_ON_SHUTDOWN="/lib/systemd/system-shutdown/on-shutdown.sh"
 
 # Generate and move shutdown script
 echo "Generating on-shutdown.sh from template..."
-envsubst < ./on-shutdown.sh.tmpl > ./on-shutdown.sh
+envsubst '${HOMELAB_DIR} ${DISCORD_WEBHOOK_URL} ${NOTIFY_USERNAME}' < ./on-shutdown.sh.tmpl > ./on-shutdown.sh
 echo "Moving on-shutdown.sh to system-shutdown directory..."
 mv ./on-shutdown.sh "$DST_ON_SHUTDOWN"
 chmod +x "$DST_ON_SHUTDOWN"
