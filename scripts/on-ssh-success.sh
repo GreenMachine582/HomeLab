@@ -33,7 +33,7 @@ send_discord() {
   "embeds": [
     {
       "title": "$1",
-      "description": "🔧 $2",
+      "description": "$2",
       "color": $3
     }
   ]
@@ -53,7 +53,7 @@ journalctl -fu ssh | while read -r line; do
     USER=$(echo "$line" | grep -oP 'for \K\S+')
     IP=$(echo "$line" | grep -oP 'from \K\S+')
     TIME=$(date "+%Y-%m-%d %H:%M:%S")
-    MSG="✅ SSH login: $USER from $IP at $TIME"
+    MSG="🪪 SSH login: $USER from $IP at $TIME"
 
     log_and_notify "$MSG" "SSH Login" 16753920
   fi
