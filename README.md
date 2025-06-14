@@ -75,15 +75,16 @@ Runs at 2 AM on the 1st of every month.
 
 
 # Test and check the setup of the systemd services 
+Below are the implemented systemd services for the HomeLab setup. You can test and check their status using the following commands:
+
+- monthly-update.service
+- on-boot.service
+- on-shutdown.service
+- on-ssh-success.service
+
 ```bash
 sudo systemctl start on-boot.service
 ```
 ```bash
 sudo systemctl status on-boot.service
-```
-```bash
-sudo systemctl start on-shutdown.service
-```
-```bash
-sudo systemctl status on-shutdown.service
 ```

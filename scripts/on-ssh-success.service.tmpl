@@ -1,0 +1,14 @@
+[Unit]
+Description=Watch for SSH login events and notify
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=${HOMELAB_DIR}/scripts/on-ssh-success.sh
+Restart=always
+RestartSec=5
+StandardOutput=append:${HOMELAB_DIR}/log/on-ssh-success-systemd.log
+StandardError=append:${HOMELAB_DIR}/log/on-ssh-success-systemd.err.log
+
+[Install]
+WantedBy=multi-user.target

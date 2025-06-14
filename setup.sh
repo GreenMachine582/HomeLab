@@ -20,15 +20,18 @@ echo "Modifying script files..."
 chmod +x "./scripts/on-boot.sh"
 chmod +x "./scripts/on-shutdown.sh"
 chmod +x "./scripts/monthly-update.sh"
+chmod +x "./scripts/on-ssh-success.sh"
 echo "Scripts made executable."
 
 # Setup systemd services
 echo "Generating systemd services from template..."
 envsubst '${HOMELAB_DIR}' < ./scripts/on-boot.service.tmpl > /etc/systemd/system/on-boot.service
 envsubst '${HOMELAB_DIR}' < ./scripts/on-shutdown.service.tmpl > /etc/systemd/system/on-shutdown.service
+envsubst '${HOMELAB_DIR}' < ./scripts/on-ssh-success.service.tmpl > /etc/systemd/system/on-ssh-success.service
 systemctl daemon-reload
 sudo systemctl enable on-boot.service
 sudo systemctl enable on-shutdown.service
+sudo systemctl enable on-ssh-success.service
 echo "Systemd services completed."
 
 # Setup Alertmanager configuration
