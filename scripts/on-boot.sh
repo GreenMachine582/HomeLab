@@ -18,7 +18,7 @@ exec > >(awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee -a
 echo "----- On Boot Script Started: $(date) -----"
 
 # Load environment variables from .env
-if [ -f "$HOMELAB_DIR/.env.env" ]; then
+if [ -f "$HOMELAB_DIR/.env" ]; then
   echo "Loading environment variables from .env..."
   export $(grep -v '^#' $HOMELAB_DIR/.env | xargs)
 else
