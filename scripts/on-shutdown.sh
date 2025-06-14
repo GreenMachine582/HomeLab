@@ -26,14 +26,6 @@ else
   exit 1
 fi
 
-send_ntfy() {
-  curl -s -X POST "http://0.0.0.0:8085/alerts" \
-    -H "Title: $1" \
-    -H "Tags: rotating_light" \
-    -d "$2" \
-    || echo "[ERROR] Failed to send ntfy boot notification"
-}
-
 send_discord() {
   curl -s -H "Content-Type: application/json" -X POST "${DISCORD_WEBHOOK_URL}" -d @- <<EOF
 {
@@ -51,7 +43,6 @@ EOF
 
 log_and_notify() {
   echo "$1"
-  send_ntfy "$2" "$1"
   send_discord "$2" "$1" "$3"
 }
 
