@@ -37,3 +37,5 @@ envsubst < ./alertmanager/alertmanager.yml.tmpl > ./alertmanager/alertmanager.ym
 echo "Alertmanager configuration completed."
 
 echo "Setup script finished."
+
+exit 0

@@ -60,3 +60,5 @@ TIME=$(date "+%Y-%m-%d %H:%M:%S")
 log_and_notify "$(hostname) booted at $TIME" "Boot Event" 5763719
 
 echo "----- On Boot Script Finished: $(date) -----"
+
+exit 0

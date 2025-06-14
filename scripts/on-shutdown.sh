@@ -60,3 +60,5 @@ TIME=$(date "+%Y-%m-%d %H:%M:%S")
 log_and_notify "$(hostname) is shutting down or rebooting at $TIME" "Shutdown Event" 16711680
 
 echo "----- Shutdown Script Finished: $(date) -----"
+
+exit 0
