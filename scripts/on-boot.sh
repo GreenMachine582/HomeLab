@@ -3,7 +3,7 @@
 set -e
 
 # Ensure the script is run from the correct directory
-HOMELAB_DIR="$(dirname "$PWD")"
+HOMELAB_DIR=$(realpath "$(dirname "$0")/..")
 cd "$HOMELAB_DIR"
 echo "HOMELAB_DIR set to $HOMELAB_DIR"
 
@@ -18,9 +18,9 @@ exec > >(awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee -a
 echo "----- On Boot Script Started: $(date) -----"
 
 # Load environment variables from .env
-if [ -f ".env" ]; then
+if [ -f "$HOMELAB_DIR/.env.env" ]; then
   echo "Loading environment variables from .env..."
-  export $(grep -v '^#' .env | xargs)
+  export $(grep -v '^#' $HOMELAB_DIR/.env | xargs)
 else
   echo "[ERROR] Missing .env file"
   exit 1
