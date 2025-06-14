@@ -72,3 +72,18 @@ Then add to `cron`:
 0 2 1 * * ~/homelab/monthly-update.sh
 ```
 Runs at 2 AM on the 1st of every month.
+
+
+# Test and check the setup of the systemd services 
+```bash
+sudo systemctl start on-boot.service
+```
+```bash
+sudo systemctl status on-boot.service
+```
+```bash
+sudo systemctl start on-shutdown.service
+```
+```bash
+sudo systemctl status on-shutdown.service
+```
