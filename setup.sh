@@ -15,16 +15,21 @@ HOMELAB_DIR="$(cd "$(dirname "$0")" && pwd)"
 export HOMELAB_DIR
 echo "HOMELAB_DIR set to $HOMELAB_DIR"
 
-# Set destination for shutdown script
-DST_ON_SHUTDOWN="/lib/systemd/system-shutdown/on-shutdown.sh"
+# Make scripts executable
+echo "Modifying script files..."
+chmod +x "./scripts/on-boot.sh"
+chmod +x "./scripts/on-shutdown.sh"
+chmod +x "./scripts/monthly-update.sh"
+echo "Scripts made executable."
 
-# Generate and move shutdown script
-echo "Generating on-shutdown.sh from template..."
-envsubst '${HOMELAB_DIR} ${DISCORD_WEBHOOK_URL} ${NOTIFY_USERNAME}' < ./on-shutdown.sh.tmpl > ./on-shutdown.sh
-echo "Moving on-shutdown.sh to system-shutdown directory..."
-mv ./on-shutdown.sh "$DST_ON_SHUTDOWN"
-chmod +x "$DST_ON_SHUTDOWN"
-echo "Shutdown script installed and made executable."
+# Setup systemd services
+echo "Generating systemd services from template..."
+envsubst '${HOMELAB_DIR}' < ./scripts/on-boot.service.tmpl > /etc/systemd/system/on-boot.service
+envsubst '${HOMELAB_DIR}' < ./scripts/on-shutdown.service.tmpl > /etc/systemd/system/on-shutdown.service
+systemctl daemon-reload
+sudo systemctl enable on-boot.service
+sudo systemctl enable on-shutdown.service
+echo "Systemd services completed."
 
 # Setup Alertmanager configuration
 echo "Generating Alertmanager configuration from template..."

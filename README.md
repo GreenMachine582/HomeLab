@@ -62,10 +62,6 @@ bash setup.sh
 
 ## Monthly Update Script
 
-Make it executable:
-```bash
-chmod +x monthly-update.sh
-```
 Edit the crontab:
 ```bash
 sudo crontab -e
@@ -76,38 +72,3 @@ Then add to `cron`:
 0 2 1 * * ~/homelab/monthly-update.sh
 ```
 Runs at 2 AM on the 1st of every month.
-
-
-## On Boot Script
-
-Make it executable:
-```bash
-chmod +x on-boot.sh
-```
-
-Save this as `/etc/systemd/system/on-boot.service`:
-```bash
-[Unit]
-Description=Run a script on boot
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/root/homelab/on-boot.sh
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and test the service:
-```bash
-sudo systemctl daemon-reexec
-sudo systemctl daemon-reload
-sudo systemctl enable on-boot.service
-sudo systemctl start on-boot.service
-```
-To test boot behavior without rebooting:
-```bash
-sudo systemctl restart on-boot.service
-```

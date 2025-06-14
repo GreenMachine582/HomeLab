@@ -1,0 +1,13 @@
+[Unit]
+Description=Run shutdown/reboot script
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target poweroff.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=${HOMELAB_DIR}/scripts/on-shutdown.sh
+RemainAfterExit=true
+
+[Install]
+WantedBy=halt.target reboot.target shutdown.target poweroff.target

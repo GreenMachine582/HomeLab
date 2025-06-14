@@ -2,19 +2,20 @@
 
 set -e
 
-# Set HOMELAB_DIR if not already set
-HOMELAB_DIR="${HOMELAB_DIR:-$(dirname "$0")}"
+# Ensure the script is run from the correct directory
+HOMELAB_DIR="$(dirname "$PWD")"
 cd "$HOMELAB_DIR"
+echo "HOMELAB_DIR set to $HOMELAB_DIR"
 
 # Create log directory and set log file path
 LOG_DIR="$HOMELAB_DIR/log"
-LOG_FILE="$LOG_DIR/monthly-update.log"
+LOG_FILE="$LOG_DIR/on-boot.log"
 mkdir -p "$LOG_DIR"
 
 # Redirect stdout and stderr to log file with tee
 exec > >(awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee -a "$LOG_FILE") 2>&1
 
-echo "----- Monthly Update Script Started: $(date) -----"
+echo "----- On Boot Script Started: $(date) -----"
 
 # Load environment variables from .env
 if [ -f ".env" ]; then
@@ -34,7 +35,7 @@ send_ntfy() {
 }
 
 send_discord() {
-  curl -s -H "Content-Type: application/json" -X POST "$DISCORD_WEBHOOK_URL" -d @- > /dev/null <<EOF
+  curl -s -H "Content-Type: application/json" -X POST "$DISCORD_WEBHOOK_URL" -d @- <<EOF
 {
   "username": "${NOTIFY_USERNAME:-HomeLab}",
   "embeds": [
@@ -54,19 +55,8 @@ log_and_notify() {
   send_discord "$2" "$1" "$3"
 }
 
-# --- Begin update ---
-log_and_notify "System update starting on $(hostname)" "Monthly Update Started" 16753920
+# --- Begin boot notification ---
+TIME=$(date "+%Y-%m-%d %H:%M:%S")
+log_and_notify "$(hostname) booted at $TIME" "Boot Event" 5763719
 
-apt update && apt upgrade -y && apt autoremove -y
-
-# Optional: Docker cleanup
-docker system prune -af || echo "Docker not running or not installed."
-
-log_and_notify "System update completed on $(hostname)" "Monthly Update Complete" 8311585
-
-# --- Pre-reboot notification ---
-log_and_notify "Rebooting system in 10 seconds..." "System Rebooting" 16711680
-sleep 10
-
-# Optional: schedule reboot to allow async delivery
-shutdown -r now
+echo "----- On Boot Script Finished: $(date) -----"
