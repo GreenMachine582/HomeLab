@@ -1,38 +1,198 @@
+# Homelab
+![GitHub release](https://img.shields.io/github/v/release/GreenMachine582/HomeLab?include_prereleases)
 
-## Cloudflare DDNS
-Uses ports `1000`
+## Table of Contents
+1. [Putty SSH Access](#1-putty-ssh-access)
+2. [Install the project](#2-install-the-project)
+   1. [Setup the SSH key for GitHub](#1-setup-the-ssh-key-for-github)
+   2. [Clone the repository](#2-clone-the-repository)
+3. [Harden the System](#3-harden-the-system)
+4. [Install Docker](#4-install-docker)
+5. [Setup the Project](#5-setup-the-project)
+   1. [Mount the M.2 drive](#1-mount-the-m2-drive)
+   2. [Update the Docker configuration](#2-update-the-docker-configuration)
+   3. [Other setup steps](#3-other-setup-steps)
 
-## Grafana
-Uses ports `3000`
+---
 
-## GreenTechHub
-Uses ports `8000`
-
-## Node Exporter
-Uses ports `9100`
-
-## NTFY
-Uses ports `8085`
-
-## Obsidian
-Uses ports `27123`
-
-## Portainer
-Uses ports `9443`
-
-## PyFinBot
-Uses ports `8001`
-
-## Prometheus
-Uses ports `9090`
-
-## Rust Desk
-Uses ports `21115`
-
-
-Change Docker's global volume storage location
+## 1. Putty SSH Access
+1. Create the SSH key pair using puttygen.
+2. Copy and paste the public key to the server:
 ```bash
-sudo nano /etc/docker/daemon.json
+type <filename>.pub | ssh pi@<rpi-ip> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+```
+--or--
+```bash
+mkdir ~/.ssh
+nano ~/.ssh/authorized_keys
+```
+> **_NOTE_**: Ensure the public key is on a single line without any line breaks. e.g. `ssh-ed25519 AAA... <user>`
+---
+
+## 2. Install the project
+### 1. Setup the SSH key for GitHub:
+1. Define GitHub SSH config:
+```bash
+nano ~/.ssh/config
+```
+Add the following content:
+```
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/github
+```
+2. Generate a new SSH key pair: with filename `github` and email `your_email`:
+```bash
+cd ~/.ssh
+ssh-keygen -t ed25519 -C "your_email"
+cat ~/.ssh/github.pub
+```
+3. Copy the public key to your clipboard.
+4. Add the public key to your GitHub account:
+   - Go to `GitHub > Settings > SSH and GPG keys > New SSH key`
+   - Paste the public key and give it a title.
+   - Click `Add SSH key`.
+### 2. Clone the repository:
+```bash
+apt install git -y
+git clone git@github.com:GreenMachine582/HomeLab.git
+```
+```bash
+mv HomeLab homelab
+```
+
+## 3. Harden the System
+1. Change the SSH port to `2189`:
+```bash
+sudo nano /etc/ssh/sshd_config
+```
+2. Uncomment and change the following lines:
+```bash
+Port 22 -> Port 2189
+AddressFamily any -> AddressFamily inet
+ListenAddress 0.0.0.0 -> ListenAddress 0.0.0.0
+PermitRootLogin yes -> PermitRootLogin no
+PublicKeyAuthentication yes
+PasswordAuthentication yes -> PasswordAuthentication no
+```
+3. Then restart the SSH service:
+```bash
+sudo systemctl restart ssh
+```
+4. Switch to root user:
+```bash
+sudo su -
+```
+5. Disable root Bash history:
+```bash
+sed -i -E 's/^HISTSIZE=/#HISTSIZE=/' ~/.bashrc
+sed -i -E 's/^HISTFILESIZE=/#HISTFILESIZE=/' ~/.bashrc
+echo "HISTFILESIZE=0" >> ~/.bashrc
+history -c; history -w
+source ~/.bashrc
+```
+6. Disable pi sudo nopassword:
+```bash
+rm /etc/sudoers.d/010_*
+```
+7. Set root and user password:
+```bash
+passwd root
+passwd <user>
+```
+8. Disable Bluetooth & Wi-Fi (Optional):
+```bash
+echo "dtoverlay=disable-bt" >> /boot/config.txt
+```
+```bash
+echo "dtoverlay=disable-wifi" >> /boot/config.txt
+```
+9. Allow IPv4 only:
+```bash
+cp /etc/sysctl.conf /etc/sysctl.conf.backup
+cat << "EOF" >> /etc/sysctl.conf
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF
+sysctl -p
+```
+10. Enable ufw and configure firewall rules:
+```bash
+apt install ufw -y
+bash homelab/scripts/setup-ufw.sh
+```
+To view the current status of UFW with numbered rules:
+```bash
+ufw status numbered verbose
+```
+
+11. Disable swap:
+```bash
+systemctl disable dphys-swapfile
+systemctl stop dphys-swapfile
+```
+
+12. Update APT index and upgrade packages:
+```bash
+apt update && apt upgrade -y
+```
+---
+
+## 4. Install Docker
+1. Switch to root user:
+```bash
+sudo su -
+```
+2. Run docker [🌐install commands](https://docs.docker.com/engine/install/debian/):
+```bash
+apt-get update
+apt-get install ca-certificates curl
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  tee /etc/apt/sources.list.d/docker.list > /dev/null
+apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin -y
+apt-get update
+```
+---
+
+## 5. Setup the Project
+> **_NOTE_**: Ensure you have an M.2 drive installed and formatted with `ext4` filesystem.
+ 
+> **_NOTE_**: Chnage to root user before running the commands below.
+### 1. Mount the M.2 drive:
+1. Identify the M.2 drive:
+```bash
+lsblk -o NAME,FSTYPE,SIZE,MOUNTPOINT,LABEL
+```
+2. Create a mount point for the M.2 drive and then mount it:
+```bash
+mkdir /mnt/m2drive
+mount /dev/nvme0n1p1 /mnt/m2drive
+```
+4. To make the mount persistent across reboots, edit the `/etc/fstab` file:
+```bash
+nano /etc/fstab
+```
+Add the following line to the end of the file:
+```
+/dev/nvme0n1p1 /mnt/m2drive ext4 defaults 0 2
+```
+5. Test it:
+```bash
+df -h /mnt/m2drive
+```
+### 2. Update the Docker configuration:
+1. Change Docker's global volume storage location:
+```bash
+mkdir -p /mnt/m2drive/docker
+mkdir -p /etc/docker
+nano /etc/docker/daemon.json
 ```
 Add the following content to the file:
 ```json
@@ -40,51 +200,40 @@ Add the following content to the file:
   "data-root": "/mnt/m2drive/docker"
 }
 ```
-The restart Docker service to apply the changes:
+2. Then restart Docker service to apply the changes:
 ```bash
-sudo systemctl restart docker
+systemctl restart docker
 ```
-
-Disable and stop Apache2 service as Caddy is used instead
+### 3. Other setup steps:
+1. Disable and stop Apache2 service as Caddy on ports is used instead
 ```bash
-sudo systemctl disable apache2
-sudo systemctl stop apache2
+systemctl disable apache2
+systemctl stop apache2
 ```
-
+2. Run projects [🗒️setup script](./setup.sh):
 ```bash
-cd HomeLab
-```
-
-```bash
+cd ~/homelab
 bash setup.sh
 ```
-
-
-## Monthly Update Script
-
-Edit the crontab:
+3. Monthly Update Script
+Edit the crontab and add the following line to run the monthly update script:
 ```bash
-sudo crontab -e
+crontab -e
 ```
-Then add to `cron`:
-```bash
-0 2 1 * * /root/HomeLab/monthly-update.sh
+```
 0 2 1 * * ~/homelab/monthly-update.sh
 ```
-Runs at 2 AM on the 1st of every month.
+> **_NOTE_**: Runs at 2 AM on the 1st of every month.
 
-
-# Test and check the setup of the systemd services 
+4. To test and check the setup of the systemd services 
 Below are the implemented systemd services for the HomeLab setup. You can test and check their status using the following commands:
-
 - monthly-update.service
 - on-boot.service
 - on-shutdown.service
 - on-ssh-success.service
-
 ```bash
-sudo systemctl start on-boot.service
+systemctl start on-boot.service
 ```
 ```bash
-sudo systemctl status on-boot.service
+systemctl status on-boot.service
 ```
