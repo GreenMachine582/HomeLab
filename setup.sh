@@ -15,6 +15,13 @@ HOMELAB_DIR="$(cd "$(dirname "$0")" && pwd)"
 export HOMELAB_DIR
 echo "HOMELAB_DIR set to $HOMELAB_DIR"
 
+# Setup fail2ban configuration
+echo "Preparing fail2ban..."
+sudo apt install fail2ban
+sudo cp ./fail2ban/fail2ban.conf /etc/fail2ban/jail.d/fail2ban.conf
+sudo systemctl restart fail2ban
+echo "Fail2ban configuration completed."
+
 # Make scripts executable
 echo "Modifying script files..."
 chmod +x "./scripts/on-boot.sh"
