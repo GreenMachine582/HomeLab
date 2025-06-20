@@ -33,6 +33,10 @@ nano ~/.ssh/authorized_keys
 ### 1. Setup the SSH key for GitHub:
 1. Define GitHub SSH config:
 ```bash
+sudo su -
+```
+```bash
+mkdir ~/.ssh
 nano ~/.ssh/config
 ```
 Add the following content:
@@ -56,6 +60,7 @@ cat ~/.ssh/github.pub
 ### 2. Clone the repository:
 ```bash
 apt install git -y
+cd ~
 git clone git@github.com:GreenMachine582/HomeLab.git
 ```
 ```bash
@@ -65,6 +70,7 @@ mv HomeLab homelab
 ## 3. Harden the System
 1. Change the SSH port to `2189`:
 ```bash
+sudo apt update && sudo apt upgrade -y
 sudo nano /etc/ssh/sshd_config
 ```
 2. Uncomment and change the following lines:
@@ -127,7 +133,7 @@ To view the current status of UFW with numbered rules:
 ```bash
 ufw status numbered verbose
 ```
-
+> **_NOTE_**: Test SSH access before applying the firewall rules to ensure you don't lock yourself out.
 11. Disable swap:
 ```bash
 systemctl disable dphys-swapfile
@@ -137,6 +143,9 @@ systemctl stop dphys-swapfile
 12. Update APT index and upgrade packages:
 ```bash
 apt update && apt upgrade -y
+```
+```bash
+reboot
 ```
 ---
 
@@ -148,7 +157,7 @@ sudo su -
 2. Run docker [🌐install commands](https://docs.docker.com/engine/install/debian/):
 ```bash
 apt-get update
-apt-get install ca-certificates curl
+apt-get install ca-certificates curl gnupg lsb-release
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
@@ -156,8 +165,9 @@ echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
   $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
   tee /etc/apt/sources.list.d/docker.list > /dev/null
-apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin -y
-apt-get update
+```
+```bash
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 ```
 ---
 
@@ -168,12 +178,12 @@ apt-get update
 ### 1. Mount the M.2 drive:
 1. Identify the M.2 drive:
 ```bash
-lsblk -o NAME,FSTYPE,SIZE,MOUNTPOINT,LABEL
+lsblk -o NAME,PARTUUID,FSTYPE,SIZE,MOUNTPOINT,LABEL
 ```
 2. Create a mount point for the M.2 drive and then mount it:
 ```bash
 mkdir /mnt/m2drive
-mount /dev/nvme0n1p1 /mnt/m2drive
+mount /dev/<name> /mnt/m2drive
 ```
 4. To make the mount persistent across reboots, edit the `/etc/fstab` file:
 ```bash
@@ -181,7 +191,7 @@ nano /etc/fstab
 ```
 Add the following line to the end of the file:
 ```
-/dev/nvme0n1p1 /mnt/m2drive ext4 defaults 0 2
+PARTUUID=<part_id> /mnt/m2drive ext4 defaults 0 2
 ```
 5. Test it:
 ```bash
@@ -211,6 +221,7 @@ systemctl disable apache2
 systemctl stop apache2
 ```
 2. Run projects [🗒️setup script](./setup.sh):
+> **_NOTE_**: Ensure to add/configure `.env` files before running the setup script.
 ```bash
 cd ~/homelab
 bash setup.sh
@@ -227,7 +238,6 @@ crontab -e
 
 4. To test and check the setup of the systemd services 
 Below are the implemented systemd services for the HomeLab setup. You can test and check their status using the following commands:
-- monthly-update.service
 - on-boot.service
 - on-shutdown.service
 - on-ssh-success.service
