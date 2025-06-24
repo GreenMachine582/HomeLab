@@ -45,22 +45,6 @@ services:
         generic+http://ntfy/cf-ddns-updates?title=CF-DDNS&tags=cloudflare,ddns
         ${SHOUTRRR_DISCORD_ALERTS}
 
-#  fail2ban:
-#    image: lscr.io/linuxserver/fail2ban:latest
-#    container_name: fail2ban
-#    cap_add:
-#      - NET_ADMIN
-#      - NET_RAW
-#    network_mode: host
-#    environment:
-#      - PUID=1000
-#      - PGID=1000
-#      - TZ=Etc/UTC
-#    volumes:
-#      - ./fail2ban/config:/config
-#      - /var/log:/var/log:ro
-#    restart: unless-stopped
-
   grafana:
     build: ./grafana
     container_name: grafana
