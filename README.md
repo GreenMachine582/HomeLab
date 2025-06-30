@@ -214,7 +214,29 @@ Add the following content to the file:
 ```bash
 systemctl restart docker
 ```
-### 3. Other setup steps:
+### 3. Configure static IP address:
+1. Ensure the `NetworkManager` is installed:
+```bash
+nmcli device status
+```
+2. Edit the `wlan0` connection to set a static IP address:
+```bash
+nmtui edit "preconfigured"
+```
+3. Set the following values:
+   - **IPv4 Method**: Manual
+   - **Address**: `192.168.xx.xx/24` (replace `xx.xx` with your desired IP)
+   - **Gateway**: `192.168.xx.1`
+   - **DNS Server**: `192.168.xx.1`
+4. Restart the NetworkManager service to apply the changes:
+```bash
+systemctl restart NetworkManager
+```
+4. Verify the static IP configuration in `IP4.ADDRESS[1]`:
+```bash
+nmcli device show wlan0
+```
+### 4. Other setup steps:
 1. Disable and stop Apache2 service as Caddy on ports is used instead
 ```bash
 systemctl disable apache2
