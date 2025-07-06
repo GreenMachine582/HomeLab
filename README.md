@@ -75,7 +75,6 @@ sudo nano /etc/ssh/sshd_config
 ```
 2. Uncomment and change the following lines:
 ```bash
-Port 22 -> Port 2189
 AddressFamily any -> AddressFamily inet
 ListenAddress 0.0.0.0 -> ListenAddress 0.0.0.0
 PermitRootLogin yes -> PermitRootLogin no
@@ -232,7 +231,7 @@ nmtui edit "preconfigured"
 ```bash
 systemctl restart NetworkManager
 ```
-4. Verify the static IP configuration in `IP4.ADDRESS[1]`:
+5. Verify the static IP configuration in `IP4.ADDRESS[1]`:
 ```bash
 nmcli device show wlan0
 ```

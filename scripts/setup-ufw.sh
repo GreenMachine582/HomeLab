@@ -13,8 +13,8 @@ ufw default allow outgoing
 # Allow loopback
 ufw allow in on lo
 
-# SSH (port 2189) with rate limiting
-ufw limit 2189/tcp
+# SSH with rate limiting
+ufw limit 22/tcp
 
 # HTTP and HTTPS
 ufw allow 80/tcp
