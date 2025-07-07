@@ -214,26 +214,24 @@ Add the following content to the file:
 systemctl restart docker
 ```
 ### 3. Configure static IP address:
-1. Ensure the `NetworkManager` is installed:
+1. Install dhcpcd5:
 ```bash
-nmcli device status
+apt install dhcpcd5 -y
 ```
-2. Edit the `wlan0` connection to set a static IP address:
+2. Edit the dhcpcd configuration file:
 ```bash
-nmtui edit "preconfigured"
+nano /etc/dhcpcd.conf
 ```
-3. Set the following values:
-   - **IPv4 Method**: Manual
-   - **Address**: `192.168.xx.xx/24` (replace `xx.xx` with your desired IP)
-   - **Gateway**: `192.168.xx.1`
-   - **DNS Server**: `192.168.xx.1`
-4. Restart the NetworkManager service to apply the changes:
-```bash
-systemctl restart NetworkManager
+3. Add the following lines at the end of the file:
 ```
-5. Verify the static IP configuration in `IP4.ADDRESS[1]`:
+interface eth0
+static ip_address=192.168.50.10/24
+static routers=192.168.50.1
+static domain_name_servers=192.168.50.1 1.1.1.1
+```
+4. Restart the dhcpcd service:
 ```bash
-nmcli device show wlan0
+systemctl restart dhcpcd
 ```
 ### 4. Other setup steps:
 1. Disable and stop Apache2 service as Caddy on ports is used instead
