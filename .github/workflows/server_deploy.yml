@@ -25,15 +25,6 @@ jobs:
           PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USERNAME: ${{ secrets.PROD_USERNAME }}
         run: |
-          # Ensure required environment variables are set
-          # Debug env vars
-          echo "🔧 PROD_HOST: ${PROD_HOST:-not set}"
-          echo "🔧 PROD_USERNAME: ${PROD_USERNAME:-not set}"
-          if [[ -z "$PROD_PRIVATE_KEY" || -z "$PROD_HOST" || -z "$PROD_USERNAME" ]]; then
-            echo "❌ Missing PROD SSH credentials. Ensure PROD_PRIVATE_KEY, PROD_HOST, and PROD_USERNAME are set."
-            exit 1
-          fi
-          
           mkdir -p ~/.ssh
           echo "$PROD_PRIVATE_KEY" > ~/.ssh/github_deploy_key
           chmod 600 ~/.ssh/github_deploy_key
