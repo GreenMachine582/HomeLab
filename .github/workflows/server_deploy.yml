@@ -27,12 +27,12 @@ jobs:
             exit 1
           fi
           
-          mkdir -p ~/.ssh
+          mkdir -p ~/.ssh/
           echo "${{ secrets.PROD_PRIVATE_KEY }}" > ~/.ssh/github_deploy_key
           chmod 600 ~/.ssh/github_deploy_key
           
           # Add to known hosts (avoids interactive prompt)
-          ssh-keyscan -H "${{ secrets.PROD_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
 
       - name: Test SSH Connection
         run: |
