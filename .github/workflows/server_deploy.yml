@@ -3,10 +3,10 @@ name: Production Deployment
 on:
   push:
     branches:
-      - main
+      - master
 
 concurrency:
-  group: main
+  group: master
   cancel-in-progress: true
 
 jobs:
