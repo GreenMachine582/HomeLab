@@ -1,0 +1,43 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: Production
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup SSH Key
+        run: |
+          # Ensure required environment variables are set
+          if [[ -z "$PROD_PRIVATE_KEY" || -z "$PROD_HOST" || -z "$PROD_USERNAME" ]]; then
+            echo "❌ Missing PROD SSH credentials. Ensure PROD_PRIVATE_KEY, PROD_HOST, and PROD_USERNAME are set."
+            exit 1
+          fi
+          
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_PRIVATE_KEY }}" > ~/.ssh/github_deploy_key
+          chmod 600 ~/.ssh/github_deploy_key
+          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Test SSH Connection
+        run: |
+          ssh -i ~/.ssh/github_deploy_key ${{ secrets.PROD_USERNAME }}@${{ secrets.PROD_HOST }} "echo '✅ SSH Connected to Server'"
+
+      - name: Run Deployment Commands
+        run: |
+          ssh -i ~/.ssh/github_deploy_key ${{ secrets.PROD_USERNAME }}@${{ secrets.PROD_HOST }} << 'EOF'
+            sudo /root/homelab/deploy_homelab.sh
+          EOF

@@ -1,5 +1,6 @@
 # Homelab
 ![GitHub release](https://img.shields.io/github/v/release/GreenMachine582/HomeLab?include_prereleases)
+![GitHub deployments](https://img.shields.io/github/deployments/GreenMachine582/GreenTechHub/Master)
 
 ## Table of Contents
 1. [Putty SSH Access](#1-putty-ssh-access)
