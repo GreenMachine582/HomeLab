@@ -59,16 +59,34 @@ cat ~/.ssh/github.pub
    - Click `Add SSH key`.
 ### 2. Clone the repository:
 ```bash
-apt install git -y
+apt install git expect -y
 cd ~
 git clone git@github.com:GreenMachine582/HomeLab.git
 ```
 ```bash
 mv HomeLab homelab
 ```
+### 3. Setup github-deploy user:
+1. Create a new user for the HomeLab:
+```bash
+sudo adduser github-deploy --disabled-password --gecos ""
+```
+2. Add the user to the sudo group:`
+```bash
+sudo chown github-deploy:github-deploy ~/.ssh/github
+```
+3. Setup SSH access for the `github-deploy` user, follow [previous steps](#1-putty-ssh-access)
+4. Test the SSH connection
+5. Allow the `github-deploy` user to run deploy script without a password:
+```bash
+sudo visudo -f /etc/sudoers.d/github-deploy
+```
+```nano
+github-deploy ALL=(root) NOPASSWD: /root/homelab/deploy_homelab.sh
+```
 
 ## 3. Harden the System
-1. Change the SSH port to `2189`:
+1. Update the system and SSH configuration:
 ```bash
 sudo apt update && sudo apt upgrade -y
 sudo nano /etc/ssh/sshd_config
