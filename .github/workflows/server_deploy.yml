@@ -20,14 +20,26 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Setup SSH Key
-        env:
-          PROD_PRIVATE_KEY: ${{ secrets.PROD_PRIVATE_KEY }}
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_USERNAME: ${{ secrets.PROD_USERNAME }}
+#        env:
+#          PROD_PRIVATE_KEY: ${{ secrets.PROD_PRIVATE_KEY }}
+#          PROD_HOST: ${{ secrets.PROD_HOST }}
+#          PROD_USERNAME: ${{ secrets.PROD_USERNAME }}
         run: |
+          # Ensure required environment variables are set
+          if [[ -z "${{ secrets.PROD_PRIVATE_KEY }}" ]]; then
+            echo "❌ Missing PROD SSH credentials. Ensure PROD_PRIVATE_KEY is set."
+            exit 1
+          fi
+          if [[ -z "$PROD_PRIVATE_KEY" || -z "$PROD_HOST" || -z "$PROD_USERNAME" ]]; then
+            echo "❌ Missing PROD SSH credentials. Ensure PROD_PRIVATE_KEY, PROD_HOST, and PROD_USERNAME are set."
+            exit 1
+          fi
+          
           mkdir -p ~/.ssh
           echo "$PROD_PRIVATE_KEY" > ~/.ssh/github_deploy_key
           chmod 600 ~/.ssh/github_deploy_key
+          
+          # Add to known hosts (avoids interactive prompt)
           ssh-keyscan -H "$PROD_HOST" >> ~/.ssh/known_hosts
 
       - name: Test SSH Connection
