@@ -20,26 +20,48 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Setup SSH Key
+        env:
+          SERVER_PRIVATE_KEY: ${{ secrets.SERVER_PRIVATE_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
         run: |
           # Ensure required environment variables are set
-          if [[ -z "${{ secrets.PROD_PRIVATE_KEY }}" || -z "${{ secrets.PROD_HOST }}" || -z "${{ secrets.PROD_USERNAME }}" ]]; then
-            echo "❌ Missing PROD SSH credentials. Ensure PROD_PRIVATE_KEY, PROD_HOST, and PROD_USERNAME are set."
+          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USERNAME" ]; then
+            echo "❌ Missing SSH credentials. Ensure SERVER_HOST and SERVER_USERNAME are set."
             exit 1
           fi
           
           mkdir -p ~/.ssh/
-          echo "${{ secrets.PROD_PRIVATE_KEY }}" > ~/.ssh/github_deploy_key
-          chmod 600 ~/.ssh/github_deploy_key
+          echo "$SERVER_PRIVATE_KEY" > ~/.ssh/github_deploy_key.ppk
+          chmod 600 ~/.ssh/github_deploy_key.ppk
+          
+          # Validate the SSH key format
+          if ! grep -q "PRIVATE KEY" ~/.ssh/github_deploy_key.ppk; then
+            echo "❌ SSH key does not look valid!"
+            exit 1
+          fi
           
           # Add to known hosts (avoids interactive prompt)
-          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+          if ! ssh-keyscan -p "${SERVER_PORT:-22}" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "❌ ssh-keyscan failed: host '$SERVER_HOST' could not be resolved or reached."
+            exit 1
+          fi
 
       - name: Test SSH Connection
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
         run: |
-          ssh -i ~/.ssh/github_deploy_key "${{ secrets.PROD_USERNAME }}@${{ secrets.PROD_HOST }}" "echo '✅ SSH Connected to Server'"
+          ssh -p "${SERVER_PORT:-22}" -i ~/.ssh/github_deploy_key.ppk "$SERVER_USERNAME@$SERVER_HOST" "echo '✅ SSH Connected to Server'"
 
       - name: Run Deployment Commands
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
         run: |
-          ssh -i ~/.ssh/github_deploy_key "${{ secrets.PROD_USERNAME }}@${{ secrets.PROD_HOST }}" << 'EOF'
+          ssh -p "${SERVER_PORT:-22}" -i ~/.ssh/github_deploy_key.ppk "$SERVER_USERNAME@$SERVER_HOST" << 'EOF'
             sudo /root/homelab/deploy_homelab.sh
           EOF
