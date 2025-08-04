@@ -18,7 +18,7 @@ echo "HOMELAB_DIR set to $HOMELAB_DIR"
 # Setup fail2ban configuration
 echo "Preparing fail2ban..."
 sudo apt install fail2ban
-sudo cp ./fail2ban/fail2ban.conf /etc/fail2ban/jail.d/fail2ban.conf
+envsubst '${SERVER_SSH_PORT}' < ./fail2ban/fail2ban.conf.tmpl > /etc/fail2ban/jail.d/fail2ban.conf
 sudo systemctl restart fail2ban
 echo "Fail2ban configuration completed."
 

@@ -245,9 +245,9 @@ nano /etc/dhcpcd.conf
 3. Add the following lines at the end of the file:
 ```
 interface eth0
-static ip_address=192.168.50.10/24
-static routers=192.168.50.1
-static domain_name_servers=192.168.50.1 1.1.1.1
+static ip_address=192.168.xx.xx/24
+static routers=192.168.xx.1
+static domain_name_servers=192.168.xx.1 1.1.1.1
 ```
 4. Restart the dhcpcd service:
 ```bash
