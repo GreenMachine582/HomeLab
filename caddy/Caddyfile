@@ -17,21 +17,19 @@ green-tech-hub.com {
 # Subdomains
 #==========================================
 # Subdomains
+grafana.green-tech-hub.com {
+    reverse_proxy grafana:3000
+ }
+ntfy.green-tech-hub.com {
+    reverse_proxy ntfy:80
+}
 portainer.green-tech-hub.com {
     reverse_proxy portainer:9000
 }
-
-test.green-tech-hub.com {
-    respond "Hello from Caddy!" 200
+prometheus.green-tech-hub.com {
+    reverse_proxy prometheus:9000
 }
 
-# Uncomment and modify when ready
-# grafana.green-tech-hub.com {
-#     reverse_proxy grafana:3000
-# }
-# ntfy.green-tech-hub.com {
-#     reverse_proxy ntfy:80
-# }
-# prometheus.green-tech-hub.com {
-#     reverse_proxy prometheus:9000
-# }
+#test.green-tech-hub.com {
+#    respond "Hello from Caddy!" 200
+#}
