@@ -72,11 +72,12 @@ mv HomeLab homelab
 ```bash
 sudo adduser github-deploy --disabled-password --gecos ""
 ```
-2. Add the user to the sudo group:`
+2. Add the user to the sudo group:
 ```bash
 sudo chown github-deploy:github-deploy ~/.ssh/github
 ```
 3. Setup SSH access for the `github-deploy` user, follow [previous steps](#1-putty-ssh-access)
+> **_NOTE_**: Ensure the key is of openSSH format and without passphase, if not, convert it using Puttygen.
 4. Test the SSH connection
 5. Allow the `github-deploy` user to run deploy script without a password:
 ```bash

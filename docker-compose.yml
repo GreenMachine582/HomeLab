@@ -119,25 +119,25 @@ services:
     networks:
       - monitoring_net
 
-  rustdesk_hbbs:
-    image: rustdesk/rustdesk-server:latest
-    container_name: rustdesk_hbbs
-    command: hbbs
-    volumes:
-      - rustdesk_data:/root
-    network_mode: "host"
-    depends_on:
-      - rustdesk_hbbr
-    restart: unless-stopped
-
-  rustdesk_hbbr:
-    image: rustdesk/rustdesk-server:latest
-    container_name: rustdesk_hbbr
-    command: hbbr
-    volumes:
-      - rustdesk_data:/root
-    network_mode: "host"
-    restart: unless-stopped
+#  rustdesk_hbbs:
+#    image: rustdesk/rustdesk-server:latest
+#    container_name: rustdesk_hbbs
+#    command: hbbs
+#    volumes:
+#      - rustdesk_data:/root
+#    network_mode: "host"
+#    depends_on:
+#      - rustdesk_hbbr
+#    restart: unless-stopped
+#
+#  rustdesk_hbbr:
+#    image: rustdesk/rustdesk-server:latest
+#    container_name: rustdesk_hbbr
+#    command: hbbr
+#    volumes:
+#      - rustdesk_data:/root
+#    network_mode: "host"
+#    restart: unless-stopped
 
 #  ssh_exporter:
 #    build: ./ssh_exporter
