@@ -54,7 +54,7 @@ jobs:
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
         run: |
-          ssh -p "${SERVER_PORT:-22}" -i ~/.ssh/github_deploy_key.ppk "$SERVER_USERNAME@$SERVER_HOST" "echo '✅ SSH Connected to Server'"
+          ssh -p "${SERVER_PORT:-22}" -i ~/.ssh/github_deploy_key.ppk $SERVER_USERNAME@$SERVER_HOST "echo '✅ SSH Connected to Server'"
 
       - name: Run Deployment Commands
         env:
@@ -62,6 +62,7 @@ jobs:
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
         run: |
-          ssh -p "${SERVER_PORT:-22}" -i ~/.ssh/github_deploy_key.ppk "$SERVER_USERNAME@$SERVER_HOST" << 'EOF'
+          ssh -p "${SERVER_PORT:-22}" -i ~/.ssh/github_deploy_key.ppk $SERVER_USERNAME@$SERVER_HOST << 'EOF'
             sudo /root/homelab/deploy_homelab.sh
           EOF
+          echo "✅ Deployment completed successfully"
