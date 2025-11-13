@@ -17,52 +17,21 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Setup SSH Key
-        env:
-          SERVER_PRIVATE_KEY: ${{ secrets.SERVER_PRIVATE_KEY }}
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
-        run: |
-          # Ensure required environment variables are set
-          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USERNAME" ]; then
-            echo "❌ Missing SSH credentials. Ensure SERVER_HOST and SERVER_USERNAME are set."
-            exit 1
-          fi
-          
-          mkdir -p ~/.ssh/
-          echo "$SERVER_PRIVATE_KEY" > ~/.ssh/github_deploy_key.ppk
-          chmod 600 ~/.ssh/github_deploy_key.ppk
-          
-          # Validate the SSH key format
-          if ! grep -q "PRIVATE KEY" ~/.ssh/github_deploy_key.ppk; then
-            echo "❌ SSH key does not look valid!"
-            exit 1
-          fi
-          
-          # Add to known hosts (avoids interactive prompt)
-          if ! ssh-keyscan -p "${SERVER_PORT:-22}" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
-            echo "❌ ssh-keyscan failed: host '$SERVER_HOST' could not be resolved or reached."
-            exit 1
-          fi
+      - name: Deploy over Cloudflare Tunnel (SSH)
+        uses: and-fm/cloudflared-ssh-action@v3
+        with:
+          host: ${{ secrets.SSH_HOST }}            # ssh.green-tech-hub.com
+          port: ${{ secrets.SSH_PORT }}            # usually 22
+          username: ${{ secrets.SSH_USERNAME }}    # github-deploy
+          private_key_filename: github_deploy_key  # filename used inside runner
+          private_key_value: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Test SSH Connection
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
-        run: |
-          ssh -p "${SERVER_PORT:-22}" -i ~/.ssh/github_deploy_key.ppk $SERVER_USERNAME@$SERVER_HOST "echo '✅ SSH Connected to Server'"
+          service_token_id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          service_token_secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
-      - name: Run Deployment Commands
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
-        run: |
-          ssh -p "${SERVER_PORT:-22}" -i ~/.ssh/github_deploy_key.ppk $SERVER_USERNAME@$SERVER_HOST << 'EOF'
+          commands: |
+            echo "✅ Connected via Cloudflare Tunnel as $(whoami)"
             sudo /root/homelab/deploy_homelab.sh
-          EOF
-          echo "✅ Deployment completed successfully"
+            echo "✅ Deployment completed successfully"
