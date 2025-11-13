@@ -20,9 +20,6 @@ ufw limit 22/tcp
 ufw allow 80/tcp
 ufw allow 443/tcp
 
-# WireGuard
-ufw allow 51820/udp
-
 # DNS (UDP and TCP)
 ufw allow 53/udp
 ufw allow 53/tcp

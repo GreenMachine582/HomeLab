@@ -13,39 +13,17 @@ services:
     networks:
       - monitoring_net
 
-  caddy:
-    build: ./caddy
-    container_name: caddy
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
     restart: unless-stopped
     env_file:
-      - ./caddy/.env
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
+      - ./cloudflared/.env
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
     networks:
+      - monitoring_net
       - mgmt_net
-
-  cloudflare-ddns:
-    image: favonia/cloudflare-ddns:latest
-    container_name: cloudflare-ddns
-    networks:
       - noti_net
-    restart: always
-    user: "1000:1000"
-    read_only: true
-    security_opt: [ no-new-privileges:true ]
-    depends_on:
-      - ntfy
-    env_file:
-      - ./cloudflare_ddns/.env
-    environment:
-      SHOUTRRR: |
-        generic+http://ntfy/cf-ddns-updates?title=CF-DDNS&tags=cloudflare,ddns
-        ${SHOUTRRR_DISCORD_ALERTS}
 
   grafana:
     build: ./grafana
@@ -119,26 +97,6 @@ services:
     networks:
       - monitoring_net
 
-#  rustdesk_hbbs:
-#    image: rustdesk/rustdesk-server:latest
-#    container_name: rustdesk_hbbs
-#    command: hbbs
-#    volumes:
-#      - rustdesk_data:/root
-#    network_mode: "host"
-#    depends_on:
-#      - rustdesk_hbbr
-#    restart: unless-stopped
-#
-#  rustdesk_hbbr:
-#    image: rustdesk/rustdesk-server:latest
-#    container_name: rustdesk_hbbr
-#    command: hbbr
-#    volumes:
-#      - rustdesk_data:/root
-#    network_mode: "host"
-#    restart: unless-stopped
-
 #  ssh_exporter:
 #    build: ./ssh_exporter
 #    container_name: ssh-exporter
@@ -149,9 +107,6 @@ services:
 #      - monitoring_net
 
 networks:
-#  rust_desk_net:
-#    name: rustdesk_network
-#    driver: bridge
   monitoring_net:
     name: monitoring_network
     driver: bridge
@@ -165,10 +120,8 @@ networks:
     external: true
 
 volumes:
-  caddy_data:
-  caddy_config:
-  grafana_data:
-  ntfy_cache:
-  portainer_data:
-  prometheus_data:
-  rustdesk_data:
+  grafana_data: {}
+  ntfy_cache: {}
+  portainer_data: {}
+  prometheus_data: {}
+  rustdesk_data: {}
