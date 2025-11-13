@@ -22,10 +22,9 @@ jobs:
       - name: Deploy over Cloudflare Tunnel (SSH)
         uses: and-fm/cloudflared-ssh-action@v3
         with:
-          host: ${{ secrets.SSH_HOST }}            # ssh.green-tech-hub.com
-          port: ${{ secrets.SSH_PORT }}            # usually 22
-          username: ${{ secrets.SSH_USERNAME }}    # github-deploy
-          private_key_filename: github_deploy_key  # filename used inside runner
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          private_key_filename: github_deploy_key
           private_key_value: ${{ secrets.SSH_PRIVATE_KEY }}
 
           service_token_id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
