@@ -17,25 +17,27 @@
 ---
 
 ## 1. Putty SSH Access
-1. Create the SSH key pair using puttygen.
-2. Copy and paste the public key to the server:
+1. Generate an SSH key pair using **PuTTYgen**.
+2. Copy the public key to the server:
 ```bash
 type <filename>.pub | ssh pi@<rpi-ip> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
 ```
---or--
+**Or manually:**
+Login to the server with the correct user.
 ```bash
 mkdir ~/.ssh
 nano ~/.ssh/authorized_keys
 ```
-> **_NOTE_**: Ensure the public key is on a single line without any line breaks. e.g. `ssh-ed25519 AAA... <user>`
+> Ensure the public key is on a single line, e.g. `ssh-ed25519 AAA... <user>`
 ---
 
-## 2. Install the project
-### 1. Setup the SSH key for GitHub:
-1. Define GitHub SSH config:
+## 2. Install the Project
+### 2.1 Setup the SSH key for GitHub
+1. Become root user:
 ```bash
 sudo su -
 ```
+2. Create SSH config file:
 ```bash
 mkdir ~/.ssh
 nano ~/.ssh/config
@@ -47,45 +49,46 @@ Host github.com
     User git
     IdentityFile ~/.ssh/github
 ```
-2. Generate a new SSH key pair: with filename `github` and email `your_email`:
+3. Generate the GitHub SSH key:
 ```bash
 cd ~/.ssh
 ssh-keygen -t ed25519 -C "your_email"
 cat ~/.ssh/github.pub
 ```
-3. Copy the public key to your clipboard.
 4. Add the public key to your GitHub account:
    - Go to `GitHub > Settings > SSH and GPG keys > New SSH key`
    - Paste the public key and give it a title.
    - Click `Add SSH key`.
-### 2. Clone the repository:
+---
+### 2.2 Clone the repository
 ```bash
 apt install git expect -y
 cd ~
 git clone git@github.com:GreenMachine582/HomeLab.git
-```
-```bash
 mv HomeLab homelab
 ```
-### 3. Setup github-deploy user:
-1. Create a new user for the HomeLab:
+---
+### 2.3 Create `github-deploy` user
+1. Create the user:
 ```bash
 sudo adduser github-deploy --disabled-password --gecos ""
 ```
-2. Add the user to the sudo group:
+2. Fix permissioned for the GitHub key:
 ```bash
-sudo chown github-deploy:github-deploy ~/.ssh/github
+sudo chown github-deploy:github-deploy /root/.ssh/github
 ```
-3. Setup SSH access for the `github-deploy` user, follow [previous steps](#1-putty-ssh-access)
-> **_NOTE_**: Ensure the key is of openSSH format and without passphase, if not, convert it using Puttygen.
+3. Setup SSH access for `github-deploy` (same steps as [section 1](#1-putty-ssh-access)).
+> Ensure the key is of openSSH format and without passphase, if not, convert it using **PuTTYgen**.
 4. Test the SSH connection
-5. Allow the `github-deploy` user to run deploy script without a password:
+5. Allow passwordless execution of deploy script:
 ```bash
 sudo visudo -f /etc/sudoers.d/github-deploy
 ```
+Insert the following line:
 ```nano
 github-deploy ALL=(root) NOPASSWD: /root/homelab/deploy_homelab.sh
 ```
+---
 
 ## 3. Harden the System
 1. Update the system and SSH configuration:
@@ -93,7 +96,7 @@ github-deploy ALL=(root) NOPASSWD: /root/homelab/deploy_homelab.sh
 sudo apt update && sudo apt upgrade -y
 sudo nano /etc/ssh/sshd_config
 ```
-2. Uncomment and change the following lines:
+2. Change or ensure the following lines:
 ```bash
 AddressFamily any -> AddressFamily inet
 ListenAddress 0.0.0.0 -> ListenAddress 0.0.0.0
@@ -101,122 +104,121 @@ PermitRootLogin yes -> PermitRootLogin no
 PublicKeyAuthentication yes
 PasswordAuthentication yes -> PasswordAuthentication no
 ```
-3. Then restart the SSH service:
+3. Restart the SSH service:
 ```bash
 sudo systemctl restart ssh
 ```
-4. Switch to root user:
+4. Disable root Bash history:
 ```bash
 sudo su -
-```
-5. Disable root Bash history:
-```bash
 sed -i -E 's/^HISTSIZE=/#HISTSIZE=/' ~/.bashrc
 sed -i -E 's/^HISTFILESIZE=/#HISTFILESIZE=/' ~/.bashrc
 echo "HISTFILESIZE=0" >> ~/.bashrc
 history -c; history -w
 source ~/.bashrc
 ```
-6. Disable pi sudo nopassword:
+5. Disable pi sudo nopassword:
 ```bash
 rm /etc/sudoers.d/010_*
 ```
-7. Set root and user password:
+6. Set root and user password:
 ```bash
 passwd root
 passwd <user>
 ```
-8. Disable Bluetooth & Wi-Fi (Optional):
+7. Disable Bluetooth & Wi-Fi (Optional):
 ```bash
 echo "dtoverlay=disable-bt" >> /boot/config.txt
-```
-```bash
 echo "dtoverlay=disable-wifi" >> /boot/config.txt
 ```
-9. Allow IPv4 only:
+8. Allow IPv4 only:
 ```bash
-cp /etc/sysctl.conf /etc/sysctl.conf.backup
-cat << "EOF" >> /etc/sysctl.conf
+mkdir -p /etc/sysctl.d
+
+cat << "EOF" > /etc/sysctl.d/99-disable-ipv6.conf
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
-sysctl -p
+
+sysctl --system
 ```
-10. Enable ufw and configure firewall rules:
+9. Enable ufw and configure firewall rules:
 ```bash
 apt install ufw -y
-bash homelab/scripts/setup-ufw.sh
+bash ~/homelab/scripts/setup-ufw.sh
 ```
-To view the current status of UFW with numbered rules:
+To view the current status of **UFW** with numbered rules:
 ```bash
 ufw status numbered verbose
 ```
-> **_NOTE_**: Test SSH access before applying the firewall rules to ensure you don't lock yourself out.
-11. Disable swap:
+> ⚠️ Test SSH access before applying the firewall rules to ensure you don't lock yourself out.
+10. Disable swap:
 ```bash
-systemctl disable dphys-swapfile
-systemctl stop dphys-swapfile
+systemctl disable --now systemd-zram-setup@zram0.service
+systemctl mask systemd-zram-setup@zram0.service
 ```
-
-12. Update APT index and upgrade packages:
+11. Update APT index and upgrade packages:
 ```bash
 apt update && apt upgrade -y
-```
-```bash
 reboot
 ```
 ---
 
 ## 4. Install Docker
-1. Switch to root user:
+1. Run **Docker** [🌐install commands](https://docs.docker.com/engine/install/debian/):
 ```bash
 sudo su -
-```
-2. Run docker [🌐install commands](https://docs.docker.com/engine/install/debian/):
-```bash
 apt-get update
-apt-get install ca-certificates curl gnupg lsb-release
+apt-get install -y ca-certificates curl gnupg lsb-release
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  tee /etc/apt/sources.list.d/docker.list > /dev/null
 ```
+2. Add the **Docker** repository:
 ```bash
+echo \
+"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+https://download.docker.com/linux/debian \
+$(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+```
+3. Install Docker
+```bash
+apt-get update
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 ```
 ---
 
 ## 5. Setup the Project
-> **_NOTE_**: Ensure you have an M.2 drive installed and formatted with `ext4` filesystem.
+> Ensure you have an M.2 drive installed and formatted with `ext4` filesystem.
  
-> **_NOTE_**: Chnage to root user before running the commands below.
-### 1. Mount the M.2 drive:
-1. Identify the M.2 drive:
+> ⚠️ Run all commands as root
+### 5.1 Mount the M.2 drive
+1. Identify:
 ```bash
 lsblk -o NAME,PARTUUID,FSTYPE,SIZE,MOUNTPOINT,LABEL
 ```
-2. Create a mount point for the M.2 drive and then mount it:
+2. Mount:
 ```bash
 mkdir /mnt/m2drive
 mount /dev/<name> /mnt/m2drive
 ```
-4. To make the mount persistent across reboots, edit the `/etc/fstab` file:
+4. Make it persistent:
 ```bash
 nano /etc/fstab
 ```
-Add the following line to the end of the file:
+Add:
 ```
 PARTUUID=<part_id> /mnt/m2drive ext4 defaults 0 2
 ```
-5. Test it:
+5. Test:
 ```bash
 df -h /mnt/m2drive
 ```
-### 2. Update the Docker configuration:
+---
+### 5.2 Update the Docker configuration
 1. Change Docker's global volume storage location:
 ```bash
 mkdir -p /mnt/m2drive/docker
@@ -233,13 +235,12 @@ Add the following content to the file:
 ```bash
 systemctl restart docker
 ```
-### 3. Configure static IP address:
+---
+
+### 5.3 Configure static IP address
 1. Install dhcpcd5:
 ```bash
 apt install dhcpcd5 -y
-```
-2. Edit the dhcpcd configuration file:
-```bash
 nano /etc/dhcpcd.conf
 ```
 3. Add the following lines at the end of the file:
@@ -249,18 +250,19 @@ static ip_address=192.168.xx.xx/24
 static routers=192.168.xx.1
 static domain_name_servers=192.168.xx.1 1.1.1.1
 ```
-4. Restart the dhcpcd service:
+4. Apply:
 ```bash
 systemctl restart dhcpcd
 ```
-### 4. Other setup steps:
-1. Disable and stop Apache2 service as Caddy on ports is used instead
+---
+
+### 5.4 Other setup steps
+1. Disable Apache2
 ```bash
-systemctl disable apache2
-systemctl stop apache2
+systemctl disable --now apache2
 ```
-2. Run projects [🗒️setup script](./setup.sh):
-> **_NOTE_**: Ensure to add/configure `.env` files before running the setup script.
+2. Run project [🗒️setup script](./setup.sh):
+> Ensure to add/configure `.env` files before running the setup script.
 ```bash
 cd ~/homelab
 bash setup.sh
@@ -270,19 +272,16 @@ Edit the crontab and add the following line to run the monthly update script:
 ```bash
 crontab -e
 ```
+Add:
 ```
 0 2 1 * * ~/homelab/monthly-update.sh
 ```
-> **_NOTE_**: Runs at 2 AM on the 1st of every month.
+> Runs at 2 AM on the 1st of every month.
 
-4. To test and check the setup of the systemd services 
+4. **Systemd** service testing 
 Below are the implemented systemd services for the HomeLab setup. You can test and check their status using the following commands:
-- on-boot.service
-- on-shutdown.service
-- on-ssh-success.service
 ```bash
 systemctl start on-boot.service
-```
-```bash
 systemctl status on-boot.service
 ```
+(Same for: `on-shutdown.service`, `on-ssh-success.service`)
