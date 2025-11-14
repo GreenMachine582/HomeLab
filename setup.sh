@@ -39,7 +39,9 @@ systemctl daemon-reload
 sudo systemctl enable on-boot.service
 sudo systemctl enable on-shutdown.service
 sudo systemctl enable on-ssh-success.service
-echo "Systemd services completed."
+echo "Enabling services completed. Starting services now..."
+sudo systemctl start on-ssh-success.service
+echo "Systemd services started."
 
 # Setup Alertmanager configuration
 echo "Generating Alertmanager configuration from template..."
