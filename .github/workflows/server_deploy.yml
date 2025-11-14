@@ -19,18 +19,64 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Deploy over Cloudflare Tunnel (SSH)
-        uses: and-fm/cloudflared-ssh-action@v3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          private_key_filename: github_deploy_key
-          private_key_value: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Setup SSH key and cloudflared
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+        run: |
+          set -e
 
-          service_token_id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          service_token_secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USERNAME" ]; then
+            echo "❌ Missing SSH credentials. Ensure SSH_HOST and SSH_USERNAME are set."
+            exit 1
+          fi
 
-          commands: |
-            echo "✅ Connected via Cloudflare Tunnel as $(whoami)"
-            sudo /root/homelab/deploy_homelab.sh
-            echo "✅ Deployment completed successfully"
+          echo "🔑 Writing SSH key"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Store as an OpenSSH key file (NOT .ppk)
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/github_deploy_key
+          chmod 600 ~/.ssh/github_deploy_key
+
+          # Basic sanity check
+          if ! grep -q "PRIVATE KEY" ~/.ssh/github_deploy_key; then
+            echo "❌ SSH key does not look like a private key!"
+            exit 1
+          fi
+
+          echo "🌐 Installing cloudflared"
+          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+          chmod +x /usr/local/bin/cloudflared
+          cloudflared --version || { echo "❌ cloudflared failed to install"; exit 1; }
+
+          echo "📝 Writing SSH config"
+          cat > ~/.ssh/config <<EOF
+Host homelab
+  HostName $SSH_HOST
+  User $SSH_USERNAME
+  IdentityFile ~/.ssh/github_deploy_key
+  StrictHostKeyChecking no
+  UserKnownHostsFile=/dev/null
+
+  # Use cloudflared to reach SSH over the Cloudflare Tunnel
+  ProxyCommand cloudflared access ssh \
+    --hostname $SSH_HOST \
+    --destination ssh://localhost:${SSH_PORT:-22} \
+    --url 127.0.0.1:2222
+EOF
+
+          chmod 600 ~/.ssh/config
+
+      - name: Test SSH connection via Cloudflare Tunnel
+        run: |
+          echo "🔎 Testing SSH connection to homelab via Cloudflare Tunnel..."
+          ssh -v homelab "echo '✅ SSH connected via Cloudflare Tunnel on $(hostname)'"
+
+      - name: Run deployment script
+        run: |
+          echo "🚀 Running deploy_homelab.sh on server..."
+          ssh homelab "sudo /root/homelab/deploy_homelab.sh"
+          echo "✅ Deployment completed successfully"
