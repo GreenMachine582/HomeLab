@@ -3,20 +3,30 @@ set -e
 
 echo "🚀 Running deployment as $(whoami)..."
 
-# Load .env manually
-export $(cat /root/homelab/.env | xargs)
+# Ensure we are in the homelab directory
+cd /root/homelab
+
+# Load .env safely (ignore comments / blank lines)
+if [[ -f /root/homelab/.env ]]; then
+  echo "📄 Loading environment variables from /root/homelab/.env..."
+  # shellcheck disable=SC2046
+  export $(grep -v '^\s*#' /root/homelab/.env | xargs)
+else
+  echo "⚠️ /root/homelab/.env not found, continuing without extra env vars."
+fi
 
 if [[ -z "$GITHUB_SSH_KEY_PASSPHRASE" ]]; then
   echo "❌ GITHUB_SSH_KEY_PASSPHRASE is not set. Check your .env file."
   exit 1
 fi
 
-# Start ssh-agent
+# Start ssh-agent and ensure it’s killed on exit
 eval "$(ssh-agent -s)"
 export SSH_AUTH_SOCK
+trap 'echo "🧹 Stopping ssh-agent..."; ssh-agent -k >/dev/null 2>&1 || true' EXIT
 
-# Add masked SSH key
-cd ..
+# Add GitHub deploy key using expect for the passphrase
+echo "🔐 Adding GitHub SSH key via ssh-agent..."
 expect << 'EOD'
 set passphrase $env(GITHUB_SSH_KEY_PASSPHRASE)
 spawn ssh-add /root/.ssh/github
@@ -26,17 +36,16 @@ expect eof
 EOD
 
 echo "📥 Pulling latest code..."
-cd /root/homelab
-git pull origin master
+git fetch origin master
+git reset --hard origin/master
 
-echo "⚙️ Running setup..."
+echo "⚙️ Running setup script..."
 bash setup.sh
 
-echo "🔄 Stopping existing containers..."
-docker compose down
-
-echo "🆙 Starting containers..."
-docker compose up -d
-ssh-agent -k
+echo "🆙 Updating containers (without tearing down tunnel)..."
+# Pull latest images and recreate containers, removing old ones,
+# but without a brutal 'docker compose down' that would kill cloudflared/SSH mid-session.
+docker compose pull
+docker compose up -d --remove-orphans
 
 echo "✅ Deployment complete"
