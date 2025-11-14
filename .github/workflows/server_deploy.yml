@@ -21,15 +21,15 @@ jobs:
 
       - name: Setup SSH key and cloudflared
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+          SERVER_PRIVATE_KEY: ${{ secrets.SERVER_PRIVATE_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USERNAME: ${{ secrets.SERVER_USERNAME }}
         run: |
           set -e
 
-          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USERNAME" ]; then
-            echo "❌ Missing SSH credentials. Ensure SSH_HOST and SSH_USERNAME are set."
+          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USERNAME" ]; then
+            echo "❌ Missing SSH credentials. Ensure SERVER_HOST and SERVER_USERNAME are set."
             exit 1
           fi
 
@@ -38,7 +38,7 @@ jobs:
           chmod 700 ~/.ssh
 
           # Store as an OpenSSH key file (NOT .ppk)
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/github_deploy_key
+          echo "$SERVER_PRIVATE_KEY" > ~/.ssh/github_deploy_key
           chmod 600 ~/.ssh/github_deploy_key
 
           # Basic sanity check
@@ -55,16 +55,16 @@ jobs:
           echo "📝 Writing SSH config"
           cat > ~/.ssh/config <<EOF
           Host homelab
-            HostName $SSH_HOST
-            User $SSH_USERNAME
+            HostName $SERVER_HOST
+            User $SERVER_USERNAME
             IdentityFile ~/.ssh/github_deploy_key
             StrictHostKeyChecking no
             UserKnownHostsFile=/dev/null
           
             # Use cloudflared to reach SSH over the Cloudflare Tunnel
             ProxyCommand cloudflared access ssh \
-              --hostname $SSH_HOST \
-              --destination ssh://localhost:${SSH_PORT:-22} \
+              --hostname $SERVER_HOST \
+              --destination ssh://localhost:${SERVER_PORT:-22} \
               --url 127.0.0.1:2222
           EOF
 
