@@ -116,6 +116,7 @@ networks:
     driver: bridge
   greentechhub_net:
     external: true
+    name: greentechhub_network
 
 volumes:
   grafana_data: {}

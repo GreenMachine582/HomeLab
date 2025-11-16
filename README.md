@@ -67,13 +67,19 @@ cd ~
 git clone git@github.com:GreenMachine582/HomeLab.git
 mv HomeLab homelab
 ```
+Setup GreenTechHub project:
+```bash
+git clone git@github.com:GreenMachine582/GreenTechHub.git
+mkdir ~/homelab/python_projects
+mv GreenTechHub ~/homelab/python_projects/greentechhub
+```
 ---
 ### 2.3 Create `github-deploy` user
 1. Create the user:
 ```bash
 sudo adduser github-deploy --disabled-password --gecos ""
 ```
-2. Fix permissioned for the GitHub key:
+2. Fix permission for the GitHub key:
 ```bash
 sudo chown github-deploy:github-deploy /root/.ssh/github
 ```
@@ -87,6 +93,7 @@ sudo visudo -f /etc/sudoers.d/github-deploy
 Insert the following line:
 ```nano
 github-deploy ALL=(root) NOPASSWD: /root/homelab/deploy_homelab.sh
+github-deploy ALL=(root) NOPASSWD: /root/homelab/python_projects/deploy_greentechhub.sh
 ```
 ---
 
