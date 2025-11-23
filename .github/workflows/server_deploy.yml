@@ -80,5 +80,5 @@ jobs:
       - name: Run deployment script
         run: |
           echo "🚀 Kicking off deploy_homelab.sh in background..."
-          ssh homelab "nohup sudo /root/homelab/deploy_homelab.sh >/root/homelab/deploy.log 2>&1 &"
-          echo "✅ Deployment started (check /root/homelab/deploy.log on the server)"
+          ssh homelab "nohup sudo /root/homelab/deploy_homelab.sh"
+          echo "✅ Deployment started"
