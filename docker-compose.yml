@@ -22,6 +22,7 @@ services:
       - monitoring_net
       - mgmt_net
       - noti_net
+      - greentechhub_net
 
   grafana:
     build: ./grafana
