@@ -1,34 +1,40 @@
 #!/bin/bash
 set -e
 
-LOG_FILE="/root/homelab/python_projects/deploy_greentechhub.log"
+# Ensure the script is run from the correct directory
+HOMELAB_DIR=$(realpath "$(dirname "$0")/..")
+cd "$HOMELAB_DIR"
+echo "HOMELAB_DIR set to $HOMELAB_DIR"
+
+LOG_FILE="$HOMELAB_DIR/deploy_greentechhub.log"
 
 # Rotate old log
 if [[ -f "$LOG_FILE" ]]; then
   mv "$LOG_FILE" "$LOG_FILE.$(date +%Y%m%d-%H%M%S)"
 fi
 
-# Redirect everything into the log
-exec > >(tee -a "$LOG_FILE") 2>&1
+# Redirect stdout and stderr to log file with tee
+exec > >(awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush(); }' | tee -a "$LOG_FILE") 2>&1
 
 echo "🌿 Running greentechhub deployment as $(whoami)..."
 
-# Ensure we are in the greentechhub directory
-cd /root/homelab/python_projects/greentechhub
+GREENTECHHUB_DIR="$HOMELAB_DIR/python_projects/greentechhub"
 
-# Load env from the main homelab .env
-if [[ -f /root/homelab/.env ]]; then
-  echo "📄 Loading environment variables from /root/homelab/.env..."
-  # shellcheck disable=SC2046
-  export $(grep -v '^\s*#' /root/homelab/.env | xargs)
+# Ensure we are in the greentechhub directory
+cd "$GREENTECHHUB_DIR"
+
+# Load environment variables from .env
+if [ -f "$HOMELAB_DIR/.env" ]; then
+  echo "Loading environment variables from .env..."
+  export $(grep -v '^#' $HOMELAB_DIR/.env | xargs)
 else
-  echo "⚠️ /root/homelab/.env not found, continuing without extra env vars."
+  echo "⚠️ $HOMELAB_DIR/.env not found, continuing without extra env vars."
 fi
 
 # Optionally also load a project-specific .env if present
-if [[ -f /root/homelab/python_projects/greentechhub/.env ]]; then
-  echo "📄 Loading environment variables from /root/homelab/python_projects/greentechhub/.env..."
-  export $(grep -v '^\s*#' /root/homelab/greentechhub/.env | xargs)
+if [[ -f "$GREENTECHHUB_DIR/.env" ]]; then
+  echo "📄 Loading environment variables from $GREENTECHHUB_DIR/.env..."
+  export $(grep -v '^#' $GREENTECHHUB_DIR/.env | xargs)
 fi
 
 if [[ -z "$GITHUB_SSH_KEY_PASSPHRASE" ]]; then
