@@ -58,8 +58,8 @@ expect eof
 EOD
 
 echo "📥 Pulling latest greentechhub code..."
-git fetch origin master
-git reset --hard origin/master
+git fetch origin main
+git reset --hard origin/main
 
 # If greentechhub has its own setup script, run it
 if [[ -x ./setup.sh ]]; then
