@@ -1,6 +1,16 @@
 #!/bin/bash
 set -e
 
+LOG_FILE="/root/homelab/python_projects/deploy_greentechhub.log"
+
+# Rotate old log
+if [[ -f "$LOG_FILE" ]]; then
+  mv "$LOG_FILE" "$LOG_FILE.$(date +%Y%m%d-%H%M%S)"
+fi
+
+# Redirect everything into the log
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 echo "🌿 Running greentechhub deployment as $(whoami)..."
 
 # Ensure we are in the greentechhub directory
