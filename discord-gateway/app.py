@@ -120,6 +120,13 @@ def resolve_webhook(meta: dict) -> str:
 # Routes
 # ─────────────────────────────
 
+@app.post("/webhook/discord/interactions/test")
+async def discord_test(request: Request):
+    body = await request.json()
+    log("test_request_received", body)
+    return {"status": "ok", "received": body}
+
+
 @app.post("/webhook/discord/interactions")
 async def discord_interactions(request: Request):
     # Extract signature headers
