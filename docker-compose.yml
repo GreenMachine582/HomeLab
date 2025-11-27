@@ -48,6 +48,8 @@ services:
       - ./n8n/.env.secret
     volumes:
       - n8n_data:/home/node/.n8n
+      - /root/homelab:/homelab
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - mgmt_net
       - noti_net
