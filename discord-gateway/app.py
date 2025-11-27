@@ -4,6 +4,8 @@ import os
 import httpx
 import nacl.signing
 import nacl.exceptions
+import json
+import time
 
 # ─────────────────────────────
 # Config
@@ -24,6 +26,24 @@ app = FastAPI()
 
 
 # ─────────────────────────────
+# Logging helper
+# ─────────────────────────────
+
+def log(event: str, data: dict | None = None):
+    """
+    Lightweight structured logger.
+    Output is JSON for easy consumption through Docker logs or external log collectors.
+    """
+    entry = {
+        "ts": time.time(),
+        "event": event,
+    }
+    if data:
+        entry["data"] = data
+    print(json.dumps(entry), flush=True)
+
+
+# ─────────────────────────────
 # Helpers
 # ─────────────────────────────
 
@@ -39,16 +59,16 @@ def verify_signature(signature: str, timestamp: str, body: bytes) -> bool:
 
 def parse_custom_id(custom_id: str) -> dict:
     """
-    Parse a metadata-style custom_id, e.g.:
-
-      "deploy_project:approve_request:reject"
-
+    Parse a metadata-style custom_id:
+        "workflow:reference:action"
+    Example:
+        "deploy_project:approve_request:reject"
     Returns:
-      {
-        "workflow": "deploy_project",
-        "reference": "approve_request",
-        "action": "reject",
-      }
+        {
+            "workflow": "deploy_project",
+            "reference": "approve_request",
+            "action": "reject",
+        }
     """
     meta: dict[str, str] = {}
 
@@ -60,29 +80,39 @@ def parse_custom_id(custom_id: str) -> dict:
         return meta
 
     meta["workflow"] = parts[0]
-    if len(parts) == 2:
+    if len(parts) >= 2:
         meta["reference"] = parts[1]
-    elif len(parts) == 3:
-        meta["reference"] = parts[1]
+    if len(parts) >= 3:
         meta["action"] = parts[2]
+
     return meta
 
 
 def resolve_webhook(meta: dict) -> str:
     """
-    Choose n8n webhook based on metadata.
-
-    - Look for wf= or workflow=
-    - If mapped, return WEBHOOK_MAP[wf]
-    - Otherwise use DEFAULT_N8N_WEBHOOK_URL
+    Resolve the target n8n webhook:
+    1. workflow
+    2. workflow:reference
+    3. workflow:reference:action
+    4. default fallback
     """
-    workflow, reference, action = meta.get("workflow"), meta.get("reference"), meta.get("action")
-    if workflow and workflow in WEBHOOK_MAP:
-        return WEBHOOK_MAP[workflow]
-    elif (workflow and reference) and f"{workflow}:{reference}" in WEBHOOK_MAP:
-            return WEBHOOK_MAP[f"{workflow}:{reference}"]
-    elif (workflow and reference and action) and f"{workflow}:{reference}:{action}" in WEBHOOK_MAP:
-            return WEBHOOK_MAP[f"{workflow}:{reference}:{action}"]
+    wf = meta.get("workflow")
+    ref = meta.get("reference")
+    act = meta.get("action")
+
+    # Match least → most specific
+    keys_to_try = []
+    if wf:
+        keys_to_try.append(wf)
+    if wf and ref:
+        keys_to_try.append(f"{wf}:{ref}")
+    if wf and ref and act:
+        keys_to_try.append(f"{wf}:{ref}:{act}")
+
+    for key in keys_to_try:
+        if key in WEBHOOK_MAP:
+            return WEBHOOK_MAP[key]
+
     return N8N_WEBHOOK_URL
 
 
@@ -92,47 +122,74 @@ def resolve_webhook(meta: dict) -> str:
 
 @app.post("/webhook/discord/interactions")
 async def discord_interactions(request: Request):
-    # 1) Verify Discord signature
+    # Extract signature headers
     sig = request.headers.get("X-Signature-Ed25519")
     ts = request.headers.get("X-Signature-Timestamp")
     if not sig or not ts:
+        log("missing_signature_headers")
         raise HTTPException(status_code=401, detail="Missing signature headers")
 
     raw_body = await request.body()
 
+    # Verify signature
     if not verify_signature(sig, ts, raw_body):
+        log("invalid_signature", {"signature": sig, "timestamp": ts})
         raise HTTPException(status_code=401, detail="Invalid request signature")
 
     payload = await request.json()
 
-    # 2) Handle PING (type 1)
+    # Logged inbound payload (without flooding)
+    log("interaction_received", {
+        "id": payload.get("id"),
+        "type": payload.get("type"),
+        "custom_id": payload.get("data", {}).get("custom_id"),
+    })
+
+    # Handle PING
     if payload.get("type") == 1:
+        log("ping_received")
         return JSONResponse({"type": 1})
 
-    # 3) Any other interaction (components, slash commands, etc.)
+    # All other interactions
     data = payload.get("data") or {}
     custom_id = data.get("custom_id") or ""
 
     meta = parse_custom_id(custom_id)
+
+    log("metadata_parsed", meta)
+
     target_webhook = resolve_webhook(meta)
+
+    log("webhook_resolved", {
+        "custom_id": custom_id,
+        "meta": meta,
+        "target_webhook": target_webhook,
+    })
 
     forward_body = {
         "interaction": payload,
         "meta": meta,
     }
 
-    # Forward to n8n (fire-and-forget, minimal error handling)
-    async with httpx.AsyncClient() as client:
-        try:
+    # Forward to n8n webhook
+    try:
+        async with httpx.AsyncClient() as client:
             await client.post(
                 target_webhook,
                 json=forward_body,
                 timeout=5.0,
             )
-        except Exception as e:
-            # Replace with proper logging if desired
-            print(f"Error forwarding to n8n ({target_webhook}): {e}")
+        log("forward_success", {
+            "target_webhook": target_webhook,
+            "meta": meta,
+        })
+    except Exception as e:
+        log("forward_error", {
+            "error": str(e),
+            "target_webhook": target_webhook,
+            "meta": meta,
+        })
 
-    # 4) Generic ACK to Discord so it doesn't timeout
-    # Type 5 = deferred response (no immediate content required)
+    # Discord ACK
+    log("discord_ack_sent")
     return JSONResponse({"type": 5})
