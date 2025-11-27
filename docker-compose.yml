@@ -41,17 +41,15 @@ services:
     image: n8nio/n8n:latest
     container_name: n8n
     restart: unless-stopped
-    user: "0:0"
     ports:
       - "5678:5678"
     env_file:
       - ./n8n/.env
-      - ./n8n/.env.secret
+      - ./n8n/.env.secrets
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - n8n_data:/home/node/.n8n
-      - /root/homelab:/root/homelab
-      - /root/.ssh:/root/.ssh:ro
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - mgmt_net
       - noti_net
