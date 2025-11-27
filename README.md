@@ -93,7 +93,7 @@ sudo visudo -f /etc/sudoers.d/github-deploy
 Insert the following line:
 ```nano
 github-deploy ALL=(root) NOPASSWD: /root/homelab/deploy_homelab.sh
-github-deploy ALL=(root) NOPASSWD: /root/homelab/python_projects/deploy_greentechhub.sh
+github-deploy ALL=(root) NOPASSWD: /root/homelab/scripts/deploy_project.sh
 ```
 ---
 
