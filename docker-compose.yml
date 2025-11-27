@@ -54,6 +54,17 @@ services:
       - mgmt_net
       - noti_net
 
+  discord-gateway:
+    build: ./discord-gateway
+    container_name: discord-gateway
+    restart: unless-stopped
+    env_file:
+      - ./discord-gateway/.env
+      - ./discord-gateway/.env.secrets
+    networks:
+      - mgmt_net
+      - noti_net
+
   node-exporter:
     image: prom/node-exporter:latest
     container_name: node-exporter
