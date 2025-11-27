@@ -20,6 +20,11 @@ WEBHOOK_MAP = {
     "deploy_project:approve_request": N8N_WEBHOOK_URL + "3d0ded88-cde7-4a2a-8421-a0806d4ebc80",
 }
 
+HEADERS = {
+    "Content-Type": "application/json",
+    "X-N8N-Webhook-Auth": os.environ["N8N_WEBHOOK_SECRET"],
+}
+
 verify_key = nacl.signing.VerifyKey(bytes.fromhex(DISCORD_PUBLIC_KEY))
 
 app = FastAPI()
@@ -120,13 +125,6 @@ def resolve_webhook(meta: dict) -> str:
 # Routes
 # ─────────────────────────────
 
-@app.post("/webhook/discord/interactions/test")
-async def discord_test(request: Request):
-    body = await request.json()
-    log("test_request_received", body)
-    return {"status": "ok", "received": body}
-
-
 @app.post("/webhook/discord/interactions")
 async def discord_interactions(request: Request):
     # Extract signature headers
@@ -184,6 +182,7 @@ async def discord_interactions(request: Request):
             await client.post(
                 target_webhook,
                 json=forward_body,
+                headers=HEADERS,
                 timeout=5.0,
             )
         log("forward_success", {
