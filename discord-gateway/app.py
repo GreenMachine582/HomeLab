@@ -1,11 +1,17 @@
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
+from __future__ import annotations
+
 import os
+import json
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional
+
 import httpx
 import nacl.signing
 import nacl.exceptions
-import json
-import time
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+
 
 # ─────────────────────────────
 # Config
@@ -13,17 +19,24 @@ import time
 
 DISCORD_PUBLIC_KEY = os.environ["DISCORD_PUBLIC_KEY"]  # from Discord dev portal
 
-N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "http://n8n:5678/webhook/discord/interactions/")
+N8N_DOMAIN = os.environ.get("N8N_DOMAIN", "http://n8n:5678/")
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "discord/interactions/")
 
-# Mapping between workflow tags and n8n webhooks
-WEBHOOK_MAP = {
-    "deploy_project:approve_request": N8N_WEBHOOK_URL + "3d0ded88-cde7-4a2a-8421-a0806d4ebc80",
-}
+WEBHOOK_MAP_FILE = Path(os.environ.get("WEBHOOK_MAP_FILE", "webhook_map.json"))
+
+N8N_WEBHOOK_SECRET = os.environ.get("N8N_WEBHOOK_SECRET")
+if not N8N_WEBHOOK_SECRET:
+    print(
+        "⚠️  N8N_WEBHOOK_SECRET is not set. Requests will be sent without X-N8N-Webhook-Auth.",
+        flush=True,
+    )
+    quit()
 
 HEADERS = {
     "Content-Type": "application/json",
-    "X-N8N-Webhook-Auth": os.environ["N8N_WEBHOOK_SECRET"],
 }
+if N8N_WEBHOOK_SECRET:
+    HEADERS["X-N8N-Webhook-Auth"] = N8N_WEBHOOK_SECRET
 
 verify_key = nacl.signing.VerifyKey(bytes.fromhex(DISCORD_PUBLIC_KEY))
 
@@ -34,18 +47,71 @@ app = FastAPI()
 # Logging helper
 # ─────────────────────────────
 
-def log(event: str, data: dict | None = None):
+_WEBHOOK_MAP_CACHE: Dict[str, Any] = {}
+_WEBHOOK_MAP_MTIME: Optional[float] = None
+
+
+def log(event: str, data: Optional[Dict[str, Any]] = None) -> None:
     """
     Lightweight structured logger.
     Output is JSON for easy consumption through Docker logs or external log collectors.
     """
-    entry = {
+    entry: Dict[str, Any] = {
         "ts": time.time(),
         "event": event,
     }
     if data:
         entry["data"] = data
     print(json.dumps(entry), flush=True)
+
+
+def _load_webhook_map_if_needed() -> None:
+    """Load or reload webhook_map.json if it changed on disk."""
+    global _WEBHOOK_MAP_CACHE, _WEBHOOK_MAP_MTIME
+
+    try:
+        stat = WEBHOOK_MAP_FILE.stat()
+    except FileNotFoundError:
+        if _WEBHOOK_MAP_MTIME is not None:
+            # It used to exist, now it's gone
+            log("webhook_map_missing", {"path": str(WEBHOOK_MAP_FILE)})
+        _WEBHOOK_MAP_CACHE = {}
+        _WEBHOOK_MAP_MTIME = None
+        return
+
+    mtime = stat.st_mtime
+    if _WEBHOOK_MAP_MTIME is not None and mtime == _WEBHOOK_MAP_MTIME:
+        # No change
+        return
+
+    # (Re)load the file
+    try:
+        with WEBHOOK_MAP_FILE.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if not isinstance(data, dict):
+            raise ValueError("Root of webhook map JSON must be an object")
+
+        _WEBHOOK_MAP_CACHE = data
+        _WEBHOOK_MAP_MTIME = mtime
+        log(
+            "webhook_map_loaded",
+            {
+                "path": str(WEBHOOK_MAP_FILE),
+                "entries": len(_WEBHOOK_MAP_CACHE),
+            },
+        )
+    except Exception as e:
+        log(
+            "webhook_map_load_error",
+            {"path": str(WEBHOOK_MAP_FILE), "error": str(e)},
+        )
+        # On error, keep previous cache (if any), do not blow it away
+
+
+def get_webhook_map() -> Dict[str, Any]:
+    _load_webhook_map_if_needed()
+    return _WEBHOOK_MAP_CACHE
 
 
 # ─────────────────────────────
@@ -62,7 +128,7 @@ def verify_signature(signature: str, timestamp: str, body: bytes) -> bool:
         return False
 
 
-def parse_custom_id(custom_id: str) -> dict:
+def parse_custom_id(custom_id: str) -> Dict[str, str]:
     """
     Parse a metadata-style custom_id:
         "workflow:reference:action"
@@ -75,7 +141,7 @@ def parse_custom_id(custom_id: str) -> dict:
             "action": "reject",
         }
     """
-    meta: dict[str, str] = {}
+    meta: Dict[str, str] = {}
 
     if not custom_id:
         return meta
@@ -93,19 +159,28 @@ def parse_custom_id(custom_id: str) -> dict:
     return meta
 
 
-def resolve_webhook(meta: dict) -> str:
+def resolve_webhook(meta: Dict[str, str]) -> str:
     """
-    Resolve the target n8n webhook:
-    1. workflow
-    2. workflow:reference
-    3. workflow:reference:action
-    4. default fallback
+    Resolve the target n8n webhook URL based on metadata and webhook_map.json.
+
+    Try keys in order:
+      1. workflow
+      2. workflow:reference
+      3. workflow:reference:action
+
+    If found, value can be:
+      - { "env": "PROD"/"TEST", "id": "<uuid>" }
+      - "<uuid>" (string, assumes PROD)
+
+    Builds:
+      <N8N_DOMAIN>webhook[/-test]/<DISCORD_WEBHOOK_URL><id>
     """
     wf = meta.get("workflow")
     ref = meta.get("reference")
     act = meta.get("action")
 
-    # Match least → most specific
+    webhook_map = get_webhook_map()
+
     keys_to_try = []
     if wf:
         keys_to_try.append(wf)
@@ -115,17 +190,42 @@ def resolve_webhook(meta: dict) -> str:
         keys_to_try.append(f"{wf}:{ref}:{act}")
 
     for key in keys_to_try:
-        if key in WEBHOOK_MAP:
-            return WEBHOOK_MAP[key]
+        if key not in webhook_map:
+            continue
 
-    return N8N_WEBHOOK_URL
+        value = webhook_map[key]
+
+        env = "PROD"
+        webhook_id = None
+
+        if isinstance(value, dict):
+            env = str(value.get("env", "PROD")).upper()
+            webhook_id = value.get("id") or value.get("uuid")
+        else:
+            # Backwards-compatible: treat as string id
+            webhook_id = str(value)
+
+        if not webhook_id:
+            log(
+                "webhook_map_invalid_entry",
+                {"key": key, "value": value},
+            )
+            continue
+
+        prefix = "webhook" if env == "PROD" else "webhook-test"
+        return f"{N8N_DOMAIN}{prefix}/{DISCORD_WEBHOOK_URL}{webhook_id}"
+
+    # Fallback: default prod URL without specific ID
+    log("webhook_not_resolved", {"meta": meta})
+    return f"{N8N_DOMAIN}webhook/{DISCORD_WEBHOOK_URL}"
 
 
 # ─────────────────────────────
 # Routes
 # ─────────────────────────────
 
-@app.post("/webhook/discord/interactions")
+@app.post(f"/webhook/{DISCORD_WEBHOOK_URL}")
+@app.post(f"/webhook-test/{DISCORD_WEBHOOK_URL}")
 async def discord_interactions(request: Request):
     # Extract signature headers
     sig = request.headers.get("X-Signature-Ed25519")
@@ -147,7 +247,7 @@ async def discord_interactions(request: Request):
     log("interaction_received", {
         "id": payload.get("id"),
         "type": payload.get("type"),
-        "custom_id": payload.get("data", {}).get("custom_id"),
+        "custom_id": (payload.get("data") or {}).get("custom_id"),
     })
 
     # Handle PING
