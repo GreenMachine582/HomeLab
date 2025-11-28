@@ -61,6 +61,8 @@ services:
     env_file:
       - ./discord-gateway/.env
       - ./discord-gateway/.env.secrets
+    volumes:
+      - ./discord-gateway/data:/app/data
     networks:
       - mgmt_net
       - noti_net

@@ -19,24 +19,23 @@ from fastapi.responses import JSONResponse
 
 DISCORD_PUBLIC_KEY = os.environ["DISCORD_PUBLIC_KEY"]  # from Discord dev portal
 
-N8N_DOMAIN = os.environ.get("N8N_DOMAIN", "http://n8n:5678/")
-DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "discord/interactions/")
+N8N_DOMAIN = os.environ.get("N8N_DOMAIN", "http://n8n:5678").rstrip("/")
+DISCORD_WEBHOOK_PATH = os.environ.get("DISCORD_WEBHOOK_PATH", "discord/interactions").strip("/")
 
-WEBHOOK_MAP_FILE = Path(os.environ.get("WEBHOOK_MAP_FILE", "webhook_map.json"))
+WEBHOOK_MAP_FILE_PATH = Path(os.environ.get("WEBHOOK_MAP_FILE", "data/webhook_map.json"))
 
 N8N_WEBHOOK_SECRET = os.environ.get("N8N_WEBHOOK_SECRET")
 if not N8N_WEBHOOK_SECRET:
     print(
-        "⚠️  N8N_WEBHOOK_SECRET is not set. Requests will be sent without X-N8N-Webhook-Auth.",
+        "❌ N8N_WEBHOOK_SECRET is not set. This gateway requires it to call n8n.",
         flush=True,
     )
-    quit()
+    raise SystemExit(1)
 
-HEADERS = {
+HEADERS: Dict[str, str] = {
     "Content-Type": "application/json",
+    "X-N8N-Webhook-Auth": N8N_WEBHOOK_SECRET,
 }
-if N8N_WEBHOOK_SECRET:
-    HEADERS["X-N8N-Webhook-Auth"] = N8N_WEBHOOK_SECRET
 
 verify_key = nacl.signing.VerifyKey(bytes.fromhex(DISCORD_PUBLIC_KEY))
 
@@ -70,11 +69,11 @@ def _load_webhook_map_if_needed() -> None:
     global _WEBHOOK_MAP_CACHE, _WEBHOOK_MAP_MTIME
 
     try:
-        stat = WEBHOOK_MAP_FILE.stat()
+        stat = WEBHOOK_MAP_FILE_PATH.stat()
     except FileNotFoundError:
         if _WEBHOOK_MAP_MTIME is not None:
             # It used to exist, now it's gone
-            log("webhook_map_missing", {"path": str(WEBHOOK_MAP_FILE)})
+            log("webhook_map_missing", {"path": str(WEBHOOK_MAP_FILE_PATH)})
         _WEBHOOK_MAP_CACHE = {}
         _WEBHOOK_MAP_MTIME = None
         return
@@ -86,7 +85,7 @@ def _load_webhook_map_if_needed() -> None:
 
     # (Re)load the file
     try:
-        with WEBHOOK_MAP_FILE.open("r", encoding="utf-8") as f:
+        with WEBHOOK_MAP_FILE_PATH.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
         if not isinstance(data, dict):
@@ -97,14 +96,14 @@ def _load_webhook_map_if_needed() -> None:
         log(
             "webhook_map_loaded",
             {
-                "path": str(WEBHOOK_MAP_FILE),
+                "path": str(WEBHOOK_MAP_FILE_PATH),
                 "entries": len(_WEBHOOK_MAP_CACHE),
             },
         )
     except Exception as e:
         log(
             "webhook_map_load_error",
-            {"path": str(WEBHOOK_MAP_FILE), "error": str(e)},
+            {"path": str(WEBHOOK_MAP_FILE_PATH), "error": str(e)},
         )
         # On error, keep previous cache (if any), do not blow it away
 
@@ -173,7 +172,7 @@ def resolve_webhook(meta: Dict[str, str]) -> str:
       - "<uuid>" (string, assumes PROD)
 
     Builds:
-      <N8N_DOMAIN>webhook[/-test]/<DISCORD_WEBHOOK_URL><id>
+      <N8N_DOMAIN>/webhook[/-test]/<DISCORD_WEBHOOK_PATH>/<id>
     """
     wf = meta.get("workflow")
     ref = meta.get("reference")
@@ -213,19 +212,21 @@ def resolve_webhook(meta: Dict[str, str]) -> str:
             continue
 
         prefix = "webhook" if env == "PROD" else "webhook-test"
-        return f"{N8N_DOMAIN}{prefix}/{DISCORD_WEBHOOK_URL}{webhook_id}"
+        return f"{N8N_DOMAIN}/{prefix}/{DISCORD_WEBHOOK_PATH}/{webhook_id}"
 
     # Fallback: default prod URL without specific ID
     log("webhook_not_resolved", {"meta": meta})
-    return f"{N8N_DOMAIN}webhook/{DISCORD_WEBHOOK_URL}"
+    return f"{N8N_DOMAIN}/webhook/{DISCORD_WEBHOOK_PATH}"
 
 
 # ─────────────────────────────
 # Routes
 # ─────────────────────────────
 
-@app.post(f"/webhook/{DISCORD_WEBHOOK_URL}")
-@app.post(f"/webhook-test/{DISCORD_WEBHOOK_URL}")
+@app.post(f"/webhook/{DISCORD_WEBHOOK_PATH}")
+@app.post(f"/webhook/{DISCORD_WEBHOOK_PATH}/")
+@app.post(f"/webhook-test/{DISCORD_WEBHOOK_PATH}")
+@app.post(f"/webhook-test/{DISCORD_WEBHOOK_PATH}/")
 async def discord_interactions(request: Request):
     # Extract signature headers
     sig = request.headers.get("X-Signature-Ed25519")
@@ -241,7 +242,11 @@ async def discord_interactions(request: Request):
         log("invalid_signature", {"signature": sig, "timestamp": ts})
         raise HTTPException(status_code=401, detail="Invalid request signature")
 
-    payload = await request.json()
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except Exception as e:
+        log("json_parse_error", {"error": str(e)})
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
 
     # Logged inbound payload (without flooding)
     log("interaction_received", {
