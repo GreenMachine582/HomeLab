@@ -1,0 +1,11 @@
+---
+- name: Install Docker via convenience script
+  shell: curl -fsSL https://get.docker.com | sh
+  args:
+    creates: /usr/bin/docker
+
+- name: Ensure docker service is enabled
+  systemd:
+    name: docker
+    enabled: yes
+    state: started

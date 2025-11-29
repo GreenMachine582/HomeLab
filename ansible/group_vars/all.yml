@@ -1,0 +1,33 @@
+---
+timezone: "Australia/Sydney"
+
+common_packages:
+  - git
+  - curl
+  - vim
+  - htop
+  - unattended-upgrades
+  - expect
+
+enable_fail2ban: true
+enable_ufw: true
+enable_tailscale: false
+
+docker_package: "docker.io"
+
+# Primary homelab user
+homelab_user: "matt"
+homelab_home: "/home/{{ homelab_user }}"
+
+# GitHub SSH for pulling repos (belongs to matt)
+github_ssh_dir: "{{ homelab_home }}/.ssh"
+github_key_path: "{{ github_ssh_dir }}/github"
+
+# Repos
+github_homelab_repo: "git@github.com:GreenMachine582/HomeLab.git"
+
+homelab_base_dir: "{{ homelab_home }}/homelab"
+
+# Deploy user (GitHub Actions)
+github_deploy_user: "github-deploy"
+github_deploy_public_key: "{{ lookup('env', 'GITHUB_DEPLOY_PUBLIC_KEY') }}"

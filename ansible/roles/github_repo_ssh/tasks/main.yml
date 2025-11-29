@@ -1,0 +1,28 @@
+---
+- name: Ensure homelab user .ssh directory exists
+  file:
+    path: "{{ github_ssh_dir }}"
+    state: directory
+    owner: "{{ homelab_user }}"
+    group: "{{ homelab_user }}"
+    mode: "0700"
+
+- name: Create SSH config for GitHub (homelab user)
+  copy:
+    dest: "{{ github_ssh_dir }}/config"
+    owner: "{{ homelab_user }}"
+    group: "{{ homelab_user }}"
+    mode: "0600"
+    content: |
+      Host github.com
+          HostName github.com
+          User git
+          IdentityFile {{ github_key_path }}
+
+- name: Ensure GitHub private key has correct permissions if present
+  file:
+    path: "{{ github_key_path }}"
+    owner: "{{ homelab_user }}"
+    group: "{{ homelab_user }}"
+    mode: "0600"
+  when: github_key_path is file

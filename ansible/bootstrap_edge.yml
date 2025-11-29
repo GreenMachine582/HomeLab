@@ -1,0 +1,14 @@
+---
+- name: Bootstrap homelab-edge node
+  hosts: edge
+  become: yes
+
+  roles:
+    - base_hardening
+    - docker
+    - homelab_user
+    - fail2ban
+    - ufw
+    - github_root_ssh
+    - homelab_repos
+    - github_deploy

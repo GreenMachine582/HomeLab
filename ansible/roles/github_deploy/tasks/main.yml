@@ -1,0 +1,31 @@
+---
+- name: Create github-deploy user without password
+  user:
+    name: "{{ github_deploy_user }}"
+    shell: /bin/bash
+    create_home: yes
+    password: "!"          # disabled password
+    state: present
+
+- name: Ensure .ssh directory exists for github-deploy
+  file:
+    path: "/home/{{ github_deploy_user }}/.ssh"
+    state: directory
+    owner: "{{ github_deploy_user }}"
+    group: "{{ github_deploy_user }}"
+    mode: "0700"
+
+- name: Authorize SSH key for github-deploy
+  authorized_key:
+    user: "{{ github_deploy_user }}"
+    state: present
+    key: "{{ github_deploy_public_key }}"
+
+- name: Create sudoers file for github-deploy
+  template:
+    src: sudoers_github_deploy.j2
+    dest: "/etc/sudoers.d/{{ github_deploy_user }}"
+    owner: root
+    group: root
+    mode: "0440"
+  validate: "visudo -cf %s"

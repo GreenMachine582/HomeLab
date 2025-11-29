@@ -1,0 +1,19 @@
+---
+- name: Ensure homelab base directory exists
+  file:
+    path: "{{ homelab_base_dir }}"
+    state: directory
+    owner: "{{ homelab_user }}"
+    group: "{{ homelab_user }}"
+    mode: "0755"
+
+- name: Clone HomeLab repo into homelab_base_dir (as homelab user)
+  become: yes
+  become_user: "{{ homelab_user }}"
+  git:
+    repo: "{{ github_homelab_repo }}"
+    dest: "{{ homelab_base_dir }}"
+    version: "main"
+    key_file: "{{ github_key_path }}"
+    accept_hostkey: yes
+    update: yes

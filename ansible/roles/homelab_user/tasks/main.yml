@@ -1,0 +1,20 @@
+---
+- name: Ensure homelab user exists
+  user:
+    name: "{{ homelab_user }}"
+    shell: /bin/bash
+    create_home: yes
+    state: present
+
+- name: Ensure homelab user is in sudo group
+  user:
+    name: "{{ homelab_user }}"
+    groups: sudo
+    append: yes
+
+- name: Ensure homelab user is in docker group
+  user:
+    name: "{{ homelab_user }}"
+    groups: docker
+    append: yes
+  when: "'docker' in ansible_facts.packages or docker_package is defined"
