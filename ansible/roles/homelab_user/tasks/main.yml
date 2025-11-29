@@ -17,4 +17,3 @@
     name: "{{ homelab_user }}"
     groups: docker
     append: yes
-  when: "'docker' in ansible_facts.packages or docker_package is defined"
