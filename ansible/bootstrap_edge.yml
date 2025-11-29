@@ -9,6 +9,6 @@
     - homelab_user
     - fail2ban
     - ufw
-    - github_root_ssh
+    - github_repo_ssh
     - homelab_repos
     - github_deploy
