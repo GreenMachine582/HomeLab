@@ -28,4 +28,4 @@
     owner: root
     group: root
     mode: "0440"
-  validate: "visudo -cf %s"
+    validate: "visudo -cf %s"
