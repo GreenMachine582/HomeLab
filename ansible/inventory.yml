@@ -3,5 +3,5 @@ all:
     edge:
       hosts:
         homelab-edge:
-          ansible_host: "{{ lookup('env', 'EDGE_IP') }}"
+          ansible_connection: local
           ansible_user: matt
