@@ -5,17 +5,17 @@
     state: present
   when: enable_ufw
 
-- name: Set default policy deny incoming
+- name: Set default deny incoming
   ufw:
     state: enabled
+    direction: in
     policy: deny
-    direction: incoming
   when: enable_ufw
 
-- name: Allow outgoing
+- name: Set default allow outgoing
   ufw:
-    rule: allow
-    direction: outgoing
+    direction: out
+    policy: allow
   when: enable_ufw
 
 - name: Allow SSH
