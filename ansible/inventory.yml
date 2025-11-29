@@ -1,0 +1,7 @@
+all:
+  children:
+    edge:
+      hosts:
+        homelab-edge:
+          ansible_host: "{{ lookup('env', 'EDGE_IP') }}"
+          ansible_user: matt
