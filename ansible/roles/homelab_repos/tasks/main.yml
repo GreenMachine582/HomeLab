@@ -13,6 +13,5 @@
   git:
     repo: "{{ github_homelab_repo }}"
     dest: "{{ homelab_base_dir }}"
-    version: "main"
     accept_hostkey: yes
     update: yes
