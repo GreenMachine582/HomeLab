@@ -8,7 +8,6 @@
     - docker
     - homelab_user
     - fail2ban
-    - ufw
     - github_repo_ssh
     - homelab_repos
     - github_deploy
