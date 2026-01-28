@@ -1,107 +1,31 @@
 ---
-- name: Ensure UFW is installed
-  apt:
-    name: ufw
-    state: present
+- name: Configure UFW
+  ansible.builtin.shell: |
+    ufw --force reset
+
+    # Default policies
+    ufw default deny incoming
+    ufw default allow outgoing
+
+    # Always allow loopback
+    ufw allow in on lo
+
+    # SSH (rate-limited)
+    ufw allow 22/tcp comment 'SSH access'
+
+    # Web
+    ufw allow 80/tcp comment 'HTTP'
+    ufw allow 443/tcp comment 'HTTPS'
+
+    # DNS
+    ufw allow 53/tcp comment 'DNS TCP'
+    ufw allow 53/udp comment 'DNS UDP'
+
+    # DHCP
+    ufw allow 67/udp comment 'DHCP client'
+
+    # Enable firewall
+    ufw --force enable
   when: enable_ufw
-
-- name: Check UFW status
-  command: ufw status
-  register: ufw_status
-  changed_when: false
-  failed_when: false
-  when: enable_ufw
-
-- name: Set fact whether UFW is active
-  set_fact:
-    ufw_is_active: "{{ 'Status: active' in ufw_status.stdout }}"
-  when: enable_ufw
-
-- name: Disable IPv6 in UFW config
-  lineinfile:
-    path: /etc/default/ufw
-    regexp: '^IPV6='
-    line: 'IPV6=no'
-  when: enable_ufw
-
-- name: Reset UFW to defaults if currently inactive
-  ufw:
-    state: reset
-  when:
-    - enable_ufw
-    - not ufw_is_active | default(false)
-
-- name: Set default deny incoming
-  ufw:
-    direction: incoming
-    policy: deny
-  when: enable_ufw
-
-- name: Set default allow outgoing
-  ufw:
-    direction: outgoing
-    policy: allow
-  when: enable_ufw
-
-- name: Allow loopback
-  ufw:
-    rule: allow
-    interface: lo
-    direction: in
-  when: enable_ufw
-
-- name: Allow SSH (rate limited)
-  ufw:
-    rule: limit
-    port: 22
-    proto: tcp
-  when: enable_ufw
-
-- name: Allow HTTP
-  ufw:
-    rule: allow
-    port: 80
-    proto: tcp
-  when: enable_ufw
-
-- name: Allow HTTPS
-  ufw:
-    rule: allow
-    port: 443
-    proto: tcp
-  when: enable_ufw
-
-- name: Allow DNS UDP
-  ufw:
-    rule: allow
-    port: 53
-    proto: udp
-  when: enable_ufw
-
-- name: Allow DNS TCP
-  ufw:
-    rule: allow
-    port: 53
-    proto: tcp
-  when: enable_ufw
-
-- name: Allow DHCP client
-  ufw:
-    rule: allow
-    port: 67
-    proto: udp
-  when: enable_ufw
-
-- name: Enable UFW if it was inactive
-  ufw:
-    state: enabled
-  when:
-    - enable_ufw
-    - not ufw_is_active | default(false)
-
-- name: Reload UFW if it was already active
-  ufw:
-    state: reloaded
-  when:
-    - enable_ufw
-    - ufw_is_active | default(false)
+  args:
+    executable: /bin/bash

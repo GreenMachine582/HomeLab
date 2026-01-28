@@ -1,0 +1,9 @@
+---
+- name: Bootstrap homelab-edge services
+  hosts: edge
+  become: true
+
+  roles:
+    - ufw
+    - fail2ban
+    - github_deploy
