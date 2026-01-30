@@ -1,0 +1,31 @@
+---
+- name: "Bootstrap | Edge | Core services"
+  hosts: edge
+  become: true
+
+  vars:
+    play_description: >
+      Configures host-level security controls and container runtime.
+      Assumes base system, users, and SSH access are already provisioned.
+
+  pre_tasks:
+    - name: "Meta | Show play description"
+      debug:
+        msg: "{{ play_description }}"
+      tags: [meta]
+
+  roles:
+    - role: ufw
+      tags: [security, firewall]
+      vars:
+        role_description: "Host firewall configuration (UFW)"
+
+    - role: fail2ban
+      tags: [security, intrusion-prevention]
+      vars:
+        role_description: "Brute-force protection for exposed services"
+
+    - role: docker
+      tags: [containers, runtime]
+      vars:
+        role_description: "Docker engine installation and enablement"

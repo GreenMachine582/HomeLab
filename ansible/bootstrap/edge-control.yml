@@ -1,0 +1,38 @@
+---
+- name: "Bootstrap | Edge | Control plane & repo"
+  hosts: edge
+  become: true
+
+  vars:
+    play_description: >
+      Configures the homelab edge node as an Ansible control plane.
+      Ensures repository access, clones the HomeLab repo as the
+      homelab service user, and installs Ansible tooling.
+
+  pre_tasks:
+    - name: "Meta | Show play description"
+      debug:
+        msg: "{{ play_description }}"
+      tags: [meta]
+
+    - name: "Meta | Update and upgrade system packages"
+      apt:
+        update_cache: yes
+        upgrade: dist
+      tags: [base, packages]
+
+  roles:
+    - role: github_repo_ssh
+      tags: [ssh, github]
+      vars:
+        role_description: "Ensure GitHub SSH key permissions for homelab user"
+
+    - role: homelab_repos
+      tags: [repo, homelab]
+      vars:
+        role_description: "Clone and maintain HomeLab repository as homelab user"
+
+    - role: control_node
+      tags: [ansible, control-plane]
+      vars:
+        role_description: "Install and verify Ansible control tooling"

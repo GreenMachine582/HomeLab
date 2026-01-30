@@ -1,0 +1,36 @@
+---
+- name: "Bootstrap | Edge | Base system & access"
+  hosts: edge
+  become: true
+
+  vars:
+    play_description: >
+      Establishes the foundational state of the homelab edge node.
+      Provisions base OS configuration, system users, and outbound
+      SSH access for the homelab service account.
+      Safe to re-run.
+
+  pre_tasks:
+    - name: "Meta | Show play description"
+      debug:
+        msg: "{{ play_description }}"
+      tags: [meta]
+
+  roles:
+    - role: base_hardening
+      tags: [base, hardening]
+      vars:
+        role_description: "OS baseline, packages, timezone, unattended upgrades"
+
+    - role: users
+      tags: [base, users, security]
+      vars:
+        role_description: "Declarative system users, groups, passwords, sudo rules"
+
+    - role: ssh_common
+      tags: [base, ssh, access]
+      vars:
+        role_description: "Outbound SSH configuration for homelab service user"
+        ssh_user: "{{ homelab_user }}"
+        ssh_home: "{{ homelab_home }}/.ssh"
+        ssh_key_path: "{{ github_ssh_key_path }}"

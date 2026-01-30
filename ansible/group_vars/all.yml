@@ -1,6 +1,9 @@
 ---
 timezone: "Australia/Sydney"
 
+# -------------------------------------------------------------------
+# Base system packages
+# -------------------------------------------------------------------
 common_packages:
   - git
   - curl
@@ -9,30 +12,56 @@ common_packages:
   - unattended-upgrades
   - expect
 
+# -------------------------------------------------------------------
+# System users (authoritative)
+# -------------------------------------------------------------------
+users:
+  - name: matt
+    groups: [sudo, docker]
+
+  - name: homelab
+    groups: [docker]
+
+  - name: github-deploy
+    groups: [docker]
+    shell: /usr/sbin/nologin
+    password: "!"
+    sudo:
+      nopasswd: true
+      commands:
+        - "{{ homelab_base_dir }}/deploy_homelab.sh"
+        - "{{ homelab_base_dir }}/scripts/deploy_project.sh"
+
+# -------------------------------------------------------------------
+# Feature flags
+# -------------------------------------------------------------------
 enable_fail2ban: true
 enable_ufw: true
 enable_tailscale: false
 
 docker_package: "docker.io"
 
-# Primary homelab user
-homelab_user: "matt"
+# -------------------------------------------------------------------
+# Homelab service user (repo owner)
+# -------------------------------------------------------------------
+homelab_user: "homelab"
 homelab_home: "/home/{{ homelab_user }}"
-
-# GitHub SSH for pulling repos
-github_ssh_key_name: github
-github_ssh_dir: "{{ homelab_home }}/.ssh"
-github_key_path: "{{ github_ssh_dir }}/{{ github_ssh_key_name }}"
-
-# Repos
-github_homelab_repo: "git@github.com:GreenMachine582/HomeLab.git"
-
 homelab_base_dir: "{{ homelab_home }}/homelab"
 
-# Deploy user (GitHub Actions)
+# -------------------------------------------------------------------
+# SSH (outbound to GitHub) — homelab user ONLY
+# -------------------------------------------------------------------
+github_ssh_key_name: github
+github_ssh_dir: "{{ homelab_home }}/.ssh"
+github_ssh_key_path: "{{ github_ssh_dir }}/{{ github_ssh_key_name }}"
+
+# -------------------------------------------------------------------
+# GitHub repository
+# -------------------------------------------------------------------
+github_homelab_repo: "git@github.com:GreenMachine582/HomeLab.git"
+
+# -------------------------------------------------------------------
+# CI / GitHub Actions (inbound only)
+# -------------------------------------------------------------------
 github_deploy_user: "github-deploy"
 github_deploy_public_key: "{{ lookup('env', 'GITHUB_DEPLOY_PUBLIC_KEY') }}"
-
-docker_users:
-  - homelab
-  - github-deploy
