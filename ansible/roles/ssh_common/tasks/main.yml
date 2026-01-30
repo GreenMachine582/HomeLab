@@ -1,5 +1,5 @@
-
-- name: Ensure .ssh directory exists
+---
+- name: "SSH | Ensure .ssh directory exists"
   file:
     path: "{{ ssh_home }}"
     state: directory
@@ -7,7 +7,7 @@
     group: "{{ ssh_user }}"
     mode: "0700"
 
-- name: Install SSH config
+- name: SSH | Install SSH config
   template:
     src: config.j2
     dest: "{{ ssh_home }}/config"
@@ -15,8 +15,9 @@
     group: "{{ ssh_user }}"
     mode: "0600"
 
-- name: Ensure known hosts
+- name: "SSH | Add GitHub to known_hosts"
   known_hosts:
     path: "{{ ssh_home }}/known_hosts"
     name: github.com
     key: "{{ lookup('pipe', 'ssh-keyscan github.com') }}"
+    state: present

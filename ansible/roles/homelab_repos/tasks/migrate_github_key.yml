@@ -1,0 +1,57 @@
+---
+- name: "Repo | Check for legacy GitHub SSH key under matt"
+  stat:
+    path: "/home/matt/.ssh/github"
+  register: legacy_github_key
+  tags: [repo, ssh]
+
+- name: "Repo | Ensure homelab .ssh directory exists"
+  file:
+    path: "{{ github_ssh_dir }}"
+    state: directory
+    owner: "{{ homelab_user }}"
+    group: "{{ homelab_user }}"
+    mode: "0700"
+  when: legacy_github_key.stat.exists
+  tags: [repo, ssh]
+
+- name: "Repo | Move GitHub SSH key to homelab user"
+  command: >
+    mv /home/matt/.ssh/github {{ github_ssh_key_path }}
+  when: legacy_github_key.stat.exists
+  tags: [repo, ssh]
+
+- name: "Repo | Move GitHub SSH public key to homelab user"
+  command: >
+    mv /home/matt/.ssh/github.pub {{ github_ssh_key_path }}.pub
+  when: legacy_github_key.stat.exists
+  tags: [repo, ssh]
+
+- name: "Repo | Fix ownership of GitHub SSH key"
+  file:
+    path: "{{ github_ssh_key_path }}"
+    owner: "{{ homelab_user }}"
+    group: "{{ homelab_user }}"
+    mode: "0600"
+  when: legacy_github_key.stat.exists
+  tags: [repo, ssh]
+
+- name: "Repo | Fix ownership of GitHub SSH public key"
+  file:
+    path: "{{ github_ssh_key_path }}.pub"
+    owner: "{{ homelab_user }}"
+    group: "{{ homelab_user }}"
+    mode: "0644"
+  when: legacy_github_key.stat.exists
+  tags: [repo, ssh]
+
+- name: "Repo | Assert GitHub SSH key exists for homelab"
+  stat:
+    path: "{{ github_ssh_key_path }}"
+  register: github_key
+
+- name: "Repo | Fail if GitHub SSH key missing"
+  fail:
+    msg: "GitHub SSH key not found at {{ github_ssh_key_path }}"
+  when: not github_key.stat.exists
+

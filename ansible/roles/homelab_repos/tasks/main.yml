@@ -1,17 +1,54 @@
 ---
-- name: Ensure homelab base directory exists
-  file:
-    path: "{{ homelab_base_dir }}"
-    state: directory
-    owner: "{{ homelab_user }}"
-    group: "{{ homelab_user }}"
-    mode: "0755"
+- import_tasks: migrate_github_key.yml
 
-- name: Clone HomeLab repo into homelab_base_dir (as homelab user)
-  become: yes
+- name: "Repo | Check if destination directory exists"
+  stat:
+    path: "{{ homelab_base_dir }}"
+  register: homelab_repo_dir
+
+- name: "Repo | Check if destination is a git repository"
+  stat:
+    path: "{{ homelab_base_dir }}/.git"
+  register: homelab_git_dir
+  when: homelab_repo_dir.stat.exists
+
+- name: "Repo | Set git repo existence flag"
+  set_fact:
+    homelab_git_exists: "{{ homelab_git_dir.stat.exists | default(false) }}"
+
+- name: "Repo | Clone HomeLab repository"
+  become: true
   become_user: "{{ homelab_user }}"
+  environment:
+    HOME: "{{ homelab_home }}"
   git:
     repo: "{{ github_homelab_repo }}"
     dest: "{{ homelab_base_dir }}"
+    version: master
     accept_hostkey: yes
+  when: not homelab_repo_dir.stat.exists
+  tags: [repo]
+
+- name: "Repo | Update HomeLab repository"
+  become: true
+  become_user: "{{ homelab_user }}"
+  environment:
+    HOME: "{{ homelab_home }}"
+  git:
+    repo: "{{ github_homelab_repo }}"
+    dest: "{{ homelab_base_dir }}"
+    version: master
     update: yes
+    accept_hostkey: yes
+  when: homelab_git_exists
+  tags: [repo]
+
+- name: "Repo | Fail if destination exists but is not a git repository"
+  fail:
+    msg: >
+      {{ homelab_base_dir }} exists but is not a git repository.
+      Refusing to overwrite. Remove or fix the directory manually.
+  when:
+    - homelab_repo_dir.stat.exists
+    - not homelab_git_exists
+  tags: [repo, safety]

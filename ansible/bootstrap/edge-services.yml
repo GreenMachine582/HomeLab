@@ -5,8 +5,8 @@
 
   vars:
     play_description: >
-      Configures host-level security controls and container runtime.
-      Assumes base system, users, and SSH access are already provisioned.
+      Configures host-level security controls and core runtimes.
+      Installs tooling required for local orchestration and services.
 
   pre_tasks:
     - name: "Meta | Show play description"
@@ -29,3 +29,13 @@
       tags: [containers, runtime]
       vars:
         role_description: "Docker engine installation and enablement"
+
+    - role: ansible_runtime
+      tags: [ansible, runtime]
+      vars:
+        role_description: "Install Ansible for local orchestration"
+
+    - role: homelab_repos
+      tags: [repo, homelab]
+      vars:
+        role_description: "Clone and maintain project repositories"
