@@ -2,200 +2,225 @@
 ![GitHub release](https://img.shields.io/github/v/release/GreenMachine582/HomeLab?include_prereleases)
 ![GitHub deployments](https://img.shields.io/github/deployments/GreenMachine582/HomeLab/Production)
 
-## Table of Contents
-1. [Putty SSH Access](#1-putty-ssh-access)
-2. [Install the project](#2-install-the-project)
-   1. [Setup the SSH key for GitHub](#1-setup-the-ssh-key-for-github)
-   2. [Clone the repository](#2-clone-the-repository)
-3. [Harden the System](#3-harden-the-system)
-4. [Install Docker](#4-install-docker)
-5. [Setup the Project](#5-setup-the-project)
-   1. [Mount the M.2 drive](#1-mount-the-m2-drive)
-   2. [Update the Docker configuration](#2-update-the-docker-configuration)
-   3. [Other setup steps](#3-other-setup-steps)
+<!-- TOC -->
+* [Homelab](#homelab)
+  * [One-Time Manual Setup (Required)](#one-time-manual-setup-required)
+    * [1. Establish Initial SSH Access to the Edge Node](#1-establish-initial-ssh-access-to-the-edge-node)
+      * [On your PC (Windows – PowerShell)](#on-your-pc-windows--powershell)
+      * [Copy the public key to the edge node](#copy-the-public-key-to-the-edge-node)
+      * [Verify access](#verify-access)
+    * [2. Generate a GitHub SSH Key and Add It to GitHub](#2-generate-a-github-ssh-key-and-add-it-to-github)
+      * [On the edge node](#on-the-edge-node)
+      * [Add the key to GitHub](#add-the-key-to-github)
+      * [Verify GitHub access (as homelab)](#verify-github-access-as-homelab)
+    * [3. Prepare WSL for Ansible (One Time)](#3-prepare-wsl-for-ansible-one-time)
+* [Tier-0 Bootstrap (Run from WSL / Ubuntu)](#tier-0-bootstrap-run-from-wsl--ubuntu)
+      * [Copy the SSH key into WSL](#copy-the-ssh-key-into-wsl)
+      * [Change to the Ansible project directory](#change-to-the-ansible-project-directory)
+      * [Load environment variables](#load-environment-variables)
+      * [Run the Edge Base bootstrap](#run-the-edge-base-bootstrap)
+      * [Run the Edge Services bootstrap](#run-the-edge-services-bootstrap)
+  * [Tier-1 Bootstrap (Project Control – Run from Edge)](#tier-1-bootstrap-project-control--run-from-edge)
+      * [Run the Edge Control bootstrap](#run-the-edge-control-bootstrap)
+<!-- TOC -->
 
 ---
 
-## 1. Putty SSH Access
-1. Generate an SSH key pair using **PuTTYgen**.
-2. Copy the public key to the server:
-```bash
-type <filename>.pub | ssh pi@<rpi-ip> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
-```
-**Or manually:**
-Login to the server with the correct user.
-```bash
-mkdir ~/.ssh
-nano ~/.ssh/authorized_keys
-```
-> Ensure the public key is on a single line, e.g. `ssh-ed25519 AAA... <user>`
+## One-Time Manual Setup (Required)
+
+These steps are intentionally **not automated**.
+They establish **initial trust and credentials** so Ansible can take over safely and repeatably.
+
+Once completed, **all further configuration is handled by Ansible**.
+
 ---
 
-## 2. Install the Project
-### 2.1 Setup the SSH key for GitHub
-1. Become root user:
-```bash
-sudo su -
+### 1. Establish Initial SSH Access to the Edge Node
+
+This step allows Ansible to connect to the edge node for the first time.
+
+#### On your PC (Windows – PowerShell)
+
+Generate an SSH key for accessing the edge node (if you don’t already have one):
+
+```powershell
+ssh-keygen -t ed25519 -f .ssh/homelab-edge
 ```
-2. Create SSH config file:
-```bash
-mkdir ~/.ssh
-nano ~/.ssh/config
+
+This creates:
+
+* `.ssh/homelab-edge` (private key)
+* `.ssh/homelab-edge.pub` (public key)
+
+#### Copy the public key to the edge node
+
+Replace the hostname or IP address as required:
+
+```powershell
+type .ssh/homelab-edge.pub | ssh matt@homelab-edge "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 ```
-Add the following content:
+
+#### Verify access
+
+```powershell
+ssh -i .ssh/homelab-edge matt@homelab-edge
 ```
-Host github.com
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/github
-```
-3. Generate the GitHub SSH key:
+
+> ℹ️ Use `puttygen` (PuTTYgen) to convert the private key to `.ppk` format if using PuTTY.
+
+---
+
+### 2. Generate a GitHub SSH Key and Add It to GitHub
+
+This key is used by the edge node to securely pull repositories and run automated deployments.
+
+#### On the edge node
+
+> ⚠️ Don't add a passphrase to this key, as it will be used for automated access.
+
 ```bash
 cd ~/.ssh
-ssh-keygen -t ed25519 -C "your_email"
+ssh-keygen -t ed25519 -f github -C "your_email@example.com"
+```
+
+Start the SSH agent and add the key:
+
+```bash
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/github
+```
+
+Display the public key:
+
+```bash
 cat ~/.ssh/github.pub
 ```
-4. Add the public key to your GitHub account:
-   - Go to `GitHub > Settings > SSH and GPG keys > New SSH key`
-   - Paste the public key and give it a title.
-   - Click `Add SSH key`.
----
-### 2.2 Clone the repository
-```bash
-apt install git expect -y
-cd ~
-git clone git@github.com:GreenMachine582/HomeLab.git
-mv HomeLab homelab
-```
-Setup GreenTechHub project:
-```bash
-git clone git@github.com:GreenMachine582/GreenTechHub.git
-mkdir ~/homelab/python_projects
-mv GreenTechHub ~/homelab/python_projects/greentechhub
-```
----
-### 2.3 Create `github-deploy` user
-1. Create the user:
-```bash
-sudo adduser github-deploy --disabled-password --gecos ""
-```
-2. Fix permission for the GitHub key:
-```bash
-sudo chown github-deploy:github-deploy /root/.ssh/github
-```
-3. Setup SSH access for `github-deploy` (same steps as [section 1](#1-putty-ssh-access)).
-> Ensure the key is of openSSH format and without passphase, if not, convert it using **PuTTYgen**.
-4. Test the SSH connection
-5. Allow passwordless execution of deploy script:
-```bash
-sudo visudo -f /etc/sudoers.d/github-deploy
-```
-Insert the following line:
-```nano
-github-deploy ALL=(root) NOPASSWD: /root/homelab/deploy_homelab.sh
-github-deploy ALL=(root) NOPASSWD: /root/homelab/scripts/deploy_project.sh
-```
+
 ---
 
-## 3. Harden the System
-1. Update the system and SSH configuration:
-```bash
-sudo apt update && sudo apt upgrade -y
-sudo nano /etc/ssh/sshd_config
-```
-2. Change or ensure the following lines:
-```bash
-AddressFamily any -> AddressFamily inet
-ListenAddress 0.0.0.0 -> ListenAddress 0.0.0.0
-PermitRootLogin yes -> PermitRootLogin no
-PublicKeyAuthentication yes
-PasswordAuthentication yes -> PasswordAuthentication no
-```
-3. Restart the SSH service:
-```bash
-sudo systemctl restart ssh
-```
-4. Disable root Bash history:
-```bash
-sudo su -
-sed -i -E 's/^HISTSIZE=/#HISTSIZE=/' ~/.bashrc
-sed -i -E 's/^HISTFILESIZE=/#HISTFILESIZE=/' ~/.bashrc
-echo "HISTFILESIZE=0" >> ~/.bashrc
-history -c; history -w
-source ~/.bashrc
-```
-5. Disable pi sudo nopassword:
-```bash
-rm /etc/sudoers.d/010_*
-```
-6. Set root and user password:
-```bash
-passwd root
-passwd <user>
-```
-7. Disable Bluetooth & Wi-Fi (Optional):
-```bash
-echo "dtoverlay=disable-bt" >> /boot/config.txt
-echo "dtoverlay=disable-wifi" >> /boot/config.txt
-```
-8. Allow IPv4 only:
-```bash
-mkdir -p /etc/sysctl.d
+#### Add the key to GitHub
 
-cat << "EOF" > /etc/sysctl.d/99-disable-ipv6.conf
-net.ipv6.conf.all.disable_ipv6 = 1
-net.ipv6.conf.default.disable_ipv6 = 1
-net.ipv6.conf.lo.disable_ipv6 = 1
-EOF
+**Recommended:** add this as a **Deploy Key** on the HomeLab repository.
 
-sysctl --system
-```
-9. Enable ufw and configure firewall rules:
-```bash
-apt install ufw -y
-bash ~/homelab/scripts/setup-ufw.sh
-```
-To view the current status of **UFW** with numbered rules:
-```bash
-ufw status numbered verbose
-```
-> ⚠️ Test SSH access before applying the firewall rules to ensure you don't lock yourself out.
-10. Disable swap:
-```bash
-systemctl disable --now systemd-zram-setup@zram0.service
-systemctl mask systemd-zram-setup@zram0.service
-```
-11. Update APT index and upgrade packages:
-```bash
-apt update && apt upgrade -y
-reboot
-```
+1. Go to **GitHub → Repository → Settings → Deploy Keys**
+2. Click **Add deploy key**
+3. Paste the public key
+4. Give it a clear name (e.g. `homelab-edge`)
+5. Enable **Read access** (or Write only if required)
+6. Save
+
 ---
 
-## 4. Install Docker
-1. Run **Docker** [🌐install commands](https://docs.docker.com/engine/install/debian/):
+#### Verify GitHub access (as homelab)
+
 ```bash
-sudo su -
-apt-get update
-apt-get install -y ca-certificates curl gnupg lsb-release
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-chmod a+r /etc/apt/keyrings/docker.asc
+ssh -T git@github.com
 ```
-2. Add the **Docker** repository:
-```bash
-echo \
-"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
-https://download.docker.com/linux/debian \
-$(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+Expected output:
 
 ```
-3. Install Docker
-```bash
-apt-get update
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+Hi <github-username>! You've successfully authenticated, but GitHub does not provide shell access.
 ```
+
+Exit the edge node:
+
+```bash
+exit
+```
+
+---
+
+### 3. Prepare WSL for Ansible (One Time)
+
+This is only required on the **machine running Ansible** (your PC via WSL).
+
+1. Install **Ubuntu** from the Microsoft Store if not already installed.
+2. Launch Ubuntu.
+3. Run the following:
+    ```bash
+    sudo apt update
+    sudo apt install -y ansible python3-pip ssh expect
+    ```
+4. Verify:
+    ```bash
+    ansible --version
+    ```
+
+---
+
+## Tier-0 Bootstrap (Run from WSL / Ubuntu)
+
+This stage bootstraps the edge node with **base OS configuration, users, security, and runtimes**.
+
+> ⚠️ Run this _once per WSL session_:
+> 
+```bash
+eval "$(ssh-agent -s)"
+```
+
+### 1. Copy the SSH key into WSL
+```bash
+cp /mnt/c/Users/Chad/OneDrive/Desktop/Python-Projects/HomeLab/.ssh/homelab-edge ~/.ssh/
+chmod 600 ~/.ssh/homelab-edge
+```
+
+---
+
+### 2. Change to the Ansible project directory
+
+```bash
+cd /mnt/c/Users/Chad/OneDrive/Desktop/Python-Projects/HomeLab/ansible
+```
+
+#### Load environment variables
+
+```bash
+set -a
+source .env.secret
+set +a
+expect ./load_ssh_key.sh "$SSH_KEY"
+```
+
+#### Run the Edge Base bootstrap
+
+```bash
+ANSIBLE_CONFIG=./ansible.cfg ansible-playbook -i inventory_pc.yml bootstrap/edge-base.yml
+```
+
+---
+
+### 3. Run the Edge Services bootstrap
+
+```bash
+ANSIBLE_CONFIG=./ansible.cfg ansible-playbook -i inventory_pc.yml bootstrap/edge-services.yml
+```
+
+This installs:
+
+* Firewall (UFW)
+* Fail2ban
+* Docker
+* Ansible runtime
+* Clone repo
+
+---
+
+## Tier-1 Bootstrap (Project Control – Run from Edge)
+
+This stage prepares **project-level state**, including repositories and control scripts.
+
+### Run the Edge Control bootstrap
+
+```bash
+ssh matt@homelab-edge
+```
+```bash
+sudo su homelab
+cd ~/homelab/ansible
+ANSIBLE_CONFIG=./ansible.cfg ansible-playbook -i inventory.yml bootstrap/edge-control.yml
+```
+
 ---
 
 ## 5. Setup the Project
@@ -243,52 +268,3 @@ Add the following content to the file:
 systemctl restart docker
 ```
 ---
-
-### 5.3 Configure static IP address
-1. Install dhcpcd5:
-```bash
-apt install dhcpcd5 -y
-nano /etc/dhcpcd.conf
-```
-3. Add the following lines at the end of the file:
-```
-interface eth0
-static ip_address=192.168.xx.xx/24
-static routers=192.168.xx.1
-static domain_name_servers=192.168.xx.1 1.1.1.1
-```
-4. Apply:
-```bash
-systemctl restart dhcpcd
-```
----
-
-### 5.4 Other setup steps
-1. Disable Apache2
-```bash
-systemctl disable --now apache2
-```
-2. Run project [🗒️setup script](./setup.sh):
-> Ensure to add/configure `.env` files before running the setup script.
-```bash
-cd ~/homelab
-bash setup.sh
-```
-3. Monthly Update Script
-Edit the crontab and add the following line to run the monthly update script:
-```bash
-crontab -e
-```
-Add:
-```
-0 2 1 * * ~/homelab/monthly-update.sh
-```
-> Runs at 2 AM on the 1st of every month.
-
-4. **Systemd** service testing 
-Below are the implemented systemd services for the HomeLab setup. You can test and check their status using the following commands:
-```bash
-systemctl start on-boot.service
-systemctl status on-boot.service
-```
-(Same for: `on-shutdown.service`, `on-ssh-success.service`)
