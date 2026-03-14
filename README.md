@@ -1,270 +1,323 @@
 # Homelab
-![GitHub release](https://img.shields.io/github/v/release/GreenMachine582/HomeLab?include_prereleases)
-![GitHub deployments](https://img.shields.io/github/deployments/GreenMachine582/HomeLab/Production)
+
+A Raspberry Pi homelab managed entirely through Ansible. Manual intervention is limited to the one-time bootstrap 
+(Phase 1); all subsequent deployments and updates are automated.
+
+**See [BOOTSTRAP.md](./BOOTSTRAP.md) to get started.**
 
 <!-- TOC -->
 * [Homelab](#homelab)
-  * [One-Time Manual Setup (Required)](#one-time-manual-setup-required)
-    * [1. Establish Initial SSH Access to the Edge Node](#1-establish-initial-ssh-access-to-the-edge-node)
-      * [On your PC (Windows – PowerShell)](#on-your-pc-windows--powershell)
-      * [Copy the public key to the edge node](#copy-the-public-key-to-the-edge-node)
-      * [Verify access](#verify-access)
-    * [2. Generate a GitHub SSH Key and Add It to GitHub](#2-generate-a-github-ssh-key-and-add-it-to-github)
-      * [On the edge node](#on-the-edge-node)
-      * [Add the key to GitHub](#add-the-key-to-github)
-      * [Verify GitHub access (as homelab)](#verify-github-access-as-homelab)
-    * [3. Prepare WSL for Ansible (One Time)](#3-prepare-wsl-for-ansible-one-time)
-* [Tier-0 Bootstrap (Run from WSL / Ubuntu)](#tier-0-bootstrap-run-from-wsl--ubuntu)
-      * [Copy the SSH key into WSL](#copy-the-ssh-key-into-wsl)
-      * [Change to the Ansible project directory](#change-to-the-ansible-project-directory)
-      * [Load environment variables](#load-environment-variables)
-      * [Run the Edge Base bootstrap](#run-the-edge-base-bootstrap)
-      * [Run the Edge Services bootstrap](#run-the-edge-services-bootstrap)
-  * [Tier-1 Bootstrap (Project Control – Run from Edge)](#tier-1-bootstrap-project-control--run-from-edge)
-      * [Run the Edge Control bootstrap](#run-the-edge-control-bootstrap)
+  * [Architecture Overview](#architecture-overview)
+    * [Deployment Phases](#deployment-phases)
+  * [Repo Structure](#repo-structure)
+  * [Network](#network)
+    * [IP Assignments](#ip-assignments)
+    * [DNS](#dns)
+    * [External Access](#external-access)
+  * [Security](#security)
+    * [User Model](#user-model)
+    * [Defense in Depth](#defense-in-depth)
+    * [Secret Management](#secret-management)
+  * [Backup Strategy](#backup-strategy)
+    * [What Is Backed Up](#what-is-backed-up)
+    * [Running the Backup Playbook](#running-the-backup-playbook)
+    * [Disaster Recovery](#disaster-recovery)
+  * [Monitoring & Alerting](#monitoring--alerting)
+    * [Alert Rules](#alert-rules)
+    * [Grafana Dashboards](#grafana-dashboards)
+    * [Uptime Kuma Monitors](#uptime-kuma-monitors)
 <!-- TOC -->
 
 ---
 
-## One-Time Manual Setup (Required)
+## Architecture Overview
 
-These steps are intentionally **not automated**.
-They establish **initial trust and credentials** so Ansible can take over safely and repeatably.
+The homelab is organised into four node roles. Full hardware and service details are in [NODES.md](./NODES.md).
 
-Once completed, **all further configuration is handled by Ansible**.
+| Node                | Role                                          | Status   |
+|---------------------|-----------------------------------------------|----------|
+| `homelab-edge`      | Internet edge, DNS, ingress, Ansible control  | Active   |
+| `homelab-observe`   | Monitoring, logging, alerting                 | Active   |
+| `homelab-svc-01`    | Orchestration, databases (Camunda stack)      | Active   |
+| `homelab-svc-02`    | User-facing application workloads             | Planned  |
+| `homelab-svc-03`    | Media server (Jellyfin)                       | Future   |
+
+### Deployment Phases
+
+```
+Phase 1:  PC ────────────────► homelab-edge        (bootstrap from PC, one-time)
+Phase 2:  homelab-edge ──────► itself              (edge self-deploys its services)
+Phase 3:  homelab-edge ──────► other nodes         (edge deploys observe + svc nodes)
+Phase 4:  GitHub push ──► n8n/Camunda ──► edge     (automated deploys via automation endpoint)
+```
+
+After Phase 1, all deployments are driven by Ansible playbooks running on the edge node. On push to `master`, a minimal 
+GitHub Actions workflow POSTs to an n8n or Camunda endpoint, which SSHes to the edge as the `deploy` user and runs 
+`scripts/deploy.sh`. The edge is the sole Ansible control node — GitHub never connects directly to any homelab node.
 
 ---
 
-### 1. Establish Initial SSH Access to the Edge Node
+## Repo Structure
 
-This step allows Ansible to connect to the edge node for the first time.
+```text
+homelab/
+  README.md                   # This file
+  BOOTSTRAP.md                # Step-by-step bootstrap guide (Phases 1–4)
+  NODES.md                    # Hardware and service details per node
 
-#### On your PC (Windows – PowerShell)
+  inventories/
+    bootstrap.ini             # Phase 1: bootstrap edge from PC
+    prod.ini                  # All nodes, production groups
+    staging.ini               # Future: staging environment
 
-Generate an SSH key for accessing the edge node (if you don’t already have one):
+  group_vars/
+    all.yml                   # Common: timezone, NTP, users
+    edge.yml                  # Edge-specific: Tailscale subnet, firewall rules
+    observe.yml               # Observability: retention, alert endpoints
+    svc.yml                   # Service nodes: Docker daemon config, resource limits
 
-```powershell
-ssh-keygen -t ed25519 -f .ssh/homelab-edge
-```
+  host_vars/
+    homelab-edge.yml          # Cloudflare tunnel ID, Pi-hole upstream
+    homelab-observe.yml       # Prometheus scrape targets, Loki config
+    homelab-svc-01.yml        # Camunda: Elasticsearch heap, DB config
+    homelab-svc-02.yml        # GreenTechHub: Django config, Redis
+    homelab-svc-03.yml        # Jellyfin: media paths, transcoding settings
 
-This creates:
+  playbooks/
+    bootstrap_edge.yml        # Phase 1: initial edge setup
+    bootstrap_node.yml        # Phase 3: bootstrap a new node
+    deploy_edge.yml           # Phase 2: deploy edge services
+    deploy_observe.yml        # Phase 3: deploy monitoring stack
+    deploy_svc.yml            # Phase 3: deploy service workloads
+    update_all.yml            # OS updates, Docker image pulls
+    backup.yml                # Database backups, config exports
+    rollback.yml              # Revert to previous Docker images
+    healthcheck.yml           # Verify all services are healthy
 
-* `.ssh/homelab-edge` (private key)
-* `.ssh/homelab-edge.pub` (public key)
+  roles/
+    base_hardening/           # SSH hardening, firewall, fail2ban, sysctl
+    docker/                   # Docker install and daemon config
+    docker_compose/           # Docker Compose plugin
+    tailscale/                # Tailscale install and config
+    firewall/                 # ufw/nftables rules
+    fail2ban/                 # SSH + HTTP jails
+    node_exporter/            # Prometheus node exporter
+    cadvisor/                 # Container metrics (svc nodes)
+    alloy/                    # Grafana Alloy (logs → Loki)
+    edge_services/            # cloudflared, Pi-hole, Unbound
+    observe_services/         # Prometheus, Loki, Grafana, Alertmanager, Uptime Kuma
+    camunda/                  # Camunda 8 stack
+    greentechhub/             # Django application
+    jellyfin/                 # Media server
 
-#### Copy the public key to the edge node
+  compose/
+    edge.yml                  # Edge services
+    observe.yml               # Observability stack
+    camunda.yml               # Camunda 8 + dependencies
+    greentechhub.yml          # Django + Redis + Celery
+    jellyfin.yml              # Media server
 
-Replace the hostname or IP address as required:
+  templates/
+    cloudflared/config.yml.j2
+    pihole/custom.list.j2
+    prometheus/
+      prometheus.yml.j2
+      alerts.yml.j2
+    alertmanager/alertmanager.yml.j2
+    grafana/
+      datasources.yml.j2
+      dashboards/
+    loki/loki.yml.j2
+    postgres/postgresql.conf.j2
+    elasticsearch/elasticsearch.yml.j2
+    alloy/config.alloy.j2
 
-```powershell
-type .ssh/homelab-edge.pub | ssh matt@homelab-edge "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
-```
+  secrets/
+    vault.yml                 # Ansible Vault: passwords, API keys, certificates
+    vault.yml.example         # Template — commit this, never vault.yml itself
 
-#### Verify access
+  scripts/
+    backup_databases.sh       # Manual database backup
+    test_connectivity.sh      # Verify Tailscale mesh
+    deploy.sh                 # Pull latest repo + run specified playbook
 
-```powershell
-ssh -i .ssh/homelab-edge matt@homelab-edge
-```
+  docs/
+    NETWORK.md                # IP assignments, firewall rules, Tailscale ACLs
+    MONITORING.md             # Grafana dashboard guide, alert tuning
+    TROUBLESHOOTING.md        # Common issues and recovery procedures
 
-> ℹ️ Use `puttygen` (PuTTYgen) to convert the private key to `.ppk` format if using PuTTY.
-
----
-
-### 2. Generate a GitHub SSH Key and Add It to GitHub
-
-This key is used by the edge node to securely pull repositories and run automated deployments.
-
-#### On the edge node
-
-> ⚠️ Don't add a passphrase to this key, as it will be used for automated access.
-
-```bash
-cd ~/.ssh
-ssh-keygen -t ed25519 -f github -C "your_email@example.com"
-```
-
-Start the SSH agent and add the key:
-
-```bash
-eval "$(ssh-agent -s)"
-ssh-add ~/.ssh/github
-```
-
-Display the public key:
-
-```bash
-cat ~/.ssh/github.pub
-```
-
----
-
-#### Add the key to GitHub
-
-**Recommended:** add this as a **Deploy Key** on the HomeLab repository.
-
-1. Go to **GitHub → Repository → Settings → Deploy Keys**
-2. Click **Add deploy key**
-3. Paste the public key
-4. Give it a clear name (e.g. `homelab-edge`)
-5. Enable **Read access** (or Write only if required)
-6. Save
-
----
-
-#### Verify GitHub access (as homelab)
-
-```bash
-ssh -T git@github.com
-```
-
-Expected output:
-
-```
-Hi <github-username>! You've successfully authenticated, but GitHub does not provide shell access.
-```
-
-Exit the edge node:
-
-```bash
-exit
-```
-
----
-
-### 3. Prepare WSL for Ansible (One Time)
-
-This is only required on the **machine running Ansible** (your PC via WSL).
-
-1. Install **Ubuntu** from the Microsoft Store if not already installed.
-2. Launch Ubuntu.
-3. Run the following:
-    ```bash
-    sudo apt update
-    sudo apt install -y ansible python3-pip ssh expect
-    ```
-4. Verify:
-    ```bash
-    ansible --version
-    ```
-
----
-
-## Tier-0 Bootstrap (Run from WSL / Ubuntu)
-
-This stage bootstraps the edge node with **base OS configuration, users, security, and runtimes**.
-
-> ⚠️ Run this _once per WSL session_:
-> 
-```bash
-eval "$(ssh-agent -s)"
-```
-
-### 1. Copy the SSH key into WSL
-```bash
-cp /mnt/c/Users/Chad/OneDrive/Desktop/Python-Projects/HomeLab/.ssh/homelab-edge ~/.ssh/
-chmod 600 ~/.ssh/homelab-edge
+  .github/
+    workflows/
+      deploy.yml              # On push to master: POST to n8n/Camunda deploy endpoint
+      test.yml                # Ansible lint, YAML validation on pull request
 ```
 
 ---
 
-### 2. Change to the Ansible project directory
+## Network
 
-```bash
-cd /mnt/c/Users/Chad/OneDrive/Desktop/Python-Projects/HomeLab/ansible
-```
+### IP Assignments
 
-#### Load environment variables
+| Node              | Local IP       | Tailscale IP  | Role                      |
+|-------------------|----------------|---------------|---------------------------|
+| `homelab-edge`    | 192.168.1.10   | 100.x.x.1     | Edge, DNS, reverse proxy  |
+| `homelab-observe` | 192.168.1.11   | 100.x.x.2     | Monitoring                |
+| `homelab-svc-01`  | 192.168.1.20   | 100.x.x.3     | Camunda, databases        |
+| `homelab-svc-02`  | 192.168.1.21   | 100.x.x.4     | GreenTechHub              |
+| `homelab-svc-03`  | 192.168.1.22   | 100.x.x.5     | Jellyfin                  |
 
-```bash
-set -a
-source .env.secret
-set +a
-expect ./load_ssh_key.sh "$SSH_KEY"
-```
+Static DHCP reservations should be configured on your router. These IPs are also referenced in `host_vars/`.
 
-#### Run the Edge Base bootstrap
+### DNS
 
-```bash
-ANSIBLE_CONFIG=./ansible.cfg ansible-playbook -i inventory_pc.yml bootstrap/edge-base.yml
-```
+Pi-hole runs on `homelab-edge` and handles **internal DNS only**. Its responsibilities are:
 
----
+- Resolving `.homelab.local` hostnames so nodes can address each other by name
+- Ad-blocking and DNSSEC validation for LAN clients
+- Forwarding upstream queries to Unbound (recursive, DNSSEC)
 
-### 3. Run the Edge Services bootstrap
+Port 53 is firewalled to LAN only — Pi-hole is never exposed externally. External DNS for public hostnames is managed 
+entirely by Cloudflare.
 
-```bash
-ANSIBLE_CONFIG=./ansible.cfg ansible-playbook -i inventory_pc.yml bootstrap/edge-services.yml
-```
+### External Access
 
-This installs:
+Cloudflare Tunnel (`cloudflared`) handles all inbound public traffic. It connects outbound from the edge node to 
+Cloudflare's edge — no ports need to be forwarded on the router, and Pi-hole plays no part in this path. DNS resolution 
+for public hostnames happens at Cloudflare before requests reach the homelab.
 
-* Firewall (UFW)
-* Fail2ban
-* Docker
-* Ansible runtime
-* Clone repo
+TLS terminates at Cloudflare. Configure tunnel hostnames in `host_vars/homelab-edge.yml`.
 
 ---
 
-## Tier-1 Bootstrap (Project Control – Run from Edge)
+## Security
 
-This stage prepares **project-level state**, including repositories and control scripts.
+### User Model
 
-### Run the Edge Control bootstrap
+Three separate system users are created by the bootstrap playbook:
 
-```bash
-ssh matt@homelab-edge
-```
-```bash
-sudo su homelab
-cd ~/homelab/ansible
-ANSIBLE_CONFIG=./ansible.cfg ansible-playbook -i inventory.yml bootstrap/edge-control.yml
-```
+| User      | Purpose                   | SSH Key        | Sudo                             |
+|-----------|---------------------------|----------------|----------------------------------|
+| `admin`   | Manual maintenance        | `homelab-edge` | Yes (password)                   |
+| `homelab` | Ansible automation        | `homelab`      | Yes (passwordless)               |
+| `deploy`  | Webhook-triggered deploys | `deploy`       | `/usr/bin/ansible-playbook` only |
+
+Separation ensures a webhook or script compromise cannot escalate beyond running approved playbooks.
+
+### Defense in Depth
+
+1. **Network perimeter** — only ports 80/443 forwarded to edge (or eliminated entirely with Cloudflare Tunnel); UPnP disabled.
+2. **Edge node** — fail2ban (SSH: ban after 3 failures; HTTP: ban after 10); Pi-hole blocks malicious domains; 
+Cloudflare Tunnel rate-limits and filters traffic at the edge before it reaches the homelab.
+3. **All nodes** — SSH key-only, no root login, no password auth; ufw default-deny inbound; unattended security updates.
+4. **Secrets** — all credentials in Ansible Vault, encrypted at rest; no hardcoded values in playbooks or templates.
+5. **Tailscale VPN** — MagicDNS for internal discovery; ACLs restrict node-to-node communication; admin access requires Tailscale login with MFA.
+6. **Monitoring** — Alertmanager notifies on failed SSH attempts (from fail2ban logs); Uptime Kuma alerts on downtime.
+
+### Secret Management
+
+Secrets stored in `secrets/vault.yml` (Ansible Vault, never committed unencrypted):
+
+- Database passwords (PostgreSQL, Elasticsearch)
+- API keys (Cloudflare, Tailscale)
+- Application secrets (Django secret key, Camunda admin credentials)
+- SSL/TLS certificates (where not using Let's Encrypt)
+
+See `secrets/vault.yml.example` for required variable names.
 
 ---
 
-## 5. Setup the Project
-> Ensure you have an M.2 drive installed and formatted with `ext4` filesystem.
- 
-> ⚠️ Run all commands as root
-### 5.1 Mount the M.2 drive
-1. Identify:
+## Backup Strategy
+
+### What Is Backed Up
+
+| Data                    | Method                          | Destination                  | Frequency |
+|-------------------------|---------------------------------|------------------------------|-----------|
+| PostgreSQL databases    | `pg_dump`                       | `/mnt/nvme/backups`          | Daily     |
+| Elasticsearch snapshots | Snapshot API                    | `/mnt/nvme/elasticsearch`    | Daily     |
+| All configuration       | Git (Ansible repo)              | GitHub                       | On commit |
+| Grafana dashboards      | Exported JSON in repo           | GitHub                       | On commit |
+| Pi-hole config          | `custom.list` in repo           | GitHub                       | On commit |
+
+### Running the Backup Playbook
+
 ```bash
-lsblk -o NAME,PARTUUID,FSTYPE,SIZE,MOUNTPOINT,LABEL
+ansible-playbook playbooks/backup.yml --vault-password-file .vault_pass
 ```
-2. Mount:
-```bash
-mkdir /mnt/m2drive
-mount /dev/<name> /mnt/m2drive
-```
-4. Make it persistent:
-```bash
-nano /etc/fstab
-```
-Add:
-```
-PARTUUID=<part_id> /mnt/m2drive ext4 defaults 0 2
-```
-5. Test:
-```bash
-df -h /mnt/m2drive
-```
+
+Tasks performed:
+
+- SSH to `svc-01`, run `pg_dump` for each database
+- Compress: `gzip /mnt/nvme/backups/*.sql`
+- Rotate: retain last 7 days
+- Sync to external storage (configure one):
+  - rsync to local NAS
+  - rclone to Backblaze B2
+  - Tailscale + rsync to a remote machine
+
+### Disaster Recovery
+
+**Edge node SD card failure:**
+1. Flash a new SD card with RPi OS Lite (64-bit)
+2. Run `bootstrap_edge.yml` from your PC (see BOOTSTRAP.md)
+3. Run `deploy_edge.yml` from the edge
+4. Pi-hole `custom.list` and all config restore from the Git repo automatically
+5. Re-authenticate Cloudflare Tunnel if credentials have expired
+
+**Database corruption on `svc-01`:**
+1. Stop the affected service: `docker compose stop postgres`
+2. Restore from the latest backup:
+   ```bash
+   docker exec -i postgres psql -U <db-user> < /mnt/nvme/backups/<dump>.sql
+   ```
+3. Restart and verify data integrity
+
+**Complete rebuild:**
+- Re-run all bootstrap and deploy playbooks in order (Phases 1–3)
+- Restore databases from the most recent backup
+- Maximum data loss equals the backup interval (default: 24 hours)
+
 ---
-### 5.2 Update the Docker configuration
-1. Change Docker's global volume storage location:
-```bash
-mkdir -p /mnt/m2drive/docker
-mkdir -p /etc/docker
-nano /etc/docker/daemon.json
-```
-Add the following content to the file:
-```json
-{
-  "data-root": "/mnt/m2drive/docker"
-}
-```
-2. Then restart Docker service to apply the changes:
-```bash
-systemctl restart docker
-```
----
+
+## Monitoring & Alerting
+
+### Alert Rules
+
+| Severity | Condition                            | Channel       |
+|----------|--------------------------------------|---------------|
+| Critical | Node down (no heartbeat > 2 min)     | Discord / SMS |
+| Critical | Disk < 5%                            | Discord / SMS |
+| Critical | Container crash loop (> 3 in 10 min) | Discord / SMS |
+| Warning  | CPU or memory > 80% for 5 min        | Discord       |
+| Warning  | Disk < 10%                           | Discord       |
+| Warning  | SSL certificate expiring < 7 days    | Discord       |
+| Info     | Package updates available            | Discord       |
+| Info     | Backup completed                     | Discord       |
+| Info     | New node joined Tailscale            | Discord       |
+
+### Grafana Dashboards
+
+All dashboards are pre-imported by the `deploy_observe.yml` playbook from JSON files in `templates/grafana/dashboards/`.
+
+| Dashboard           | Contents                                                |
+|---------------------|---------------------------------------------------------|
+| Homelab Overview    | CPU, memory, disk, network, container status, uptime    |
+| Node Detail         | Per-node load, I/O wait, disk IOPS, top processes       |
+| Container Metrics   | cAdvisor: CPU/memory/restarts/network per container     |
+| Pi-hole Analytics   | DNS queries/sec, blocked domains, query types           |
+| Application Logs    | Loki: error aggregation, log volume by service, search  |
+| Camunda Metrics     | Active instances, job queue, incidents (future)         |
+
+### Uptime Kuma Monitors
+
+HTTP checks every 60 seconds against internal endpoints:
+
+| Service       | Endpoint                                    |
+|---------------|---------------------------------------------|
+| Edge health   | `http://homelab-edge/health`                |
+| Pi-hole admin | `http://homelab-edge/admin`                 |
+| Grafana       | `http://homelab-observe:3000/api/health`    |
+| Camunda       | `http://homelab-svc-01:8081`                |
+| GreenTechHub  | `http://homelab-svc-02:8000/health`         |
+| Jellyfin      | `http://homelab-svc-03:8096/health`         |
+
+Notifications are routed via Alertmanager. Configure channels (Discord) in `templates/alertmanager/alertmanager.yml.j2`.
