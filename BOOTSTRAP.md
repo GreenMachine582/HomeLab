@@ -33,7 +33,6 @@ steps are kept to the absolute minimum.
     * [4.2 Configure the Automation Endpoint (n8n or Camunda)](#42-configure-the-automation-endpoint-n8n-or-camunda)
     * [4.3 GitHub Workflow](#43-github-workflow)
     * [4.4 Manual Trigger](#44-manual-trigger)
-    * [Benefits](#benefits)
 <!-- TOC -->
 
 ---
@@ -147,7 +146,7 @@ ssh-keygen -t ed25519 -f .ssh/homelab-github -C "homelab-repo"
 Set correct permissions:
 
 ```bash
-chmod 600 .ssh/homelab-edge .ssh/homelab .ssh/github-deploy .ssh/homelab-github
+chmod 600 .ssh/homelab-edge .ssh/homelab .ssh/deploy .ssh/homelab-github
 chmod 644 .ssh/*.pub
 ```
 
@@ -540,12 +539,3 @@ ssh deploy@homelab-edge
 
 The `deploy` user's sudo is restricted to `ansible-playbook` only. Deployments work even if GitHub or the automation 
 endpoint is unavailable.
-
----
-
-### Benefits
-
-- No self-hosted runner to maintain on the edge
-- GitHub holds no Ansible secrets, no SSH keys, no internal IPs
-- Automation endpoint (n8n/Camunda) provides visibility, retries, and audit logging
-- Manual SSH fallback means the homelab is never dependent on external services to deploy

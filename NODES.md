@@ -92,7 +92,16 @@ Clients access services directly at `http://<hostname>:<port>`. Internal traffic
 | Tailscale IP | 100.x.x.2     |
 | Public ports | None          |
 
-ACL: accessible from edge node and admin devices only.
+ACL: accessible from edge node and admin devices only. Tailscale runs directly on this node — reachable over VPN even if `homelab-edge` is down.
+
+### Host-Level Services
+
+| Service             | Purpose                                                           |
+|---------------------|-------------------------------------------------------------------|
+| Tailscale           | Direct VPN node; independent of edge; own Tailscale IP (100.x.x.2) |
+| ufw / nftables      | Firewall: allow 22, service ports (LAN / VPN only)               |
+| SSH hardening       | Key-only, no root, no password auth                               |
+| Unattended upgrades | Automatic security patches                                        |
 
 ### Dockerized Services
 
@@ -128,7 +137,16 @@ ACL: accessible from edge node and admin devices only.
 | Tailscale IP | 100.x.x.3     |
 | Public ports | None          |
 
-ACL: accessible from edge node only.
+ACL: accessible from edge node and admin devices only. Tailscale runs directly on this node — reachable over VPN even if `homelab-edge` is down.
+
+### Host-Level Services
+
+| Service             | Purpose                                                           |
+|---------------------|-------------------------------------------------------------------|
+| Tailscale           | Direct VPN node; independent of edge; own Tailscale IP (100.x.x.3) |
+| ufw / nftables      | Firewall: allow 22, 8080, 5432, 9200 (LAN / VPN only)           |
+| SSH hardening       | Key-only, no root, no password auth                               |
+| Unattended upgrades | Automatic security patches                                        |
 
 ### Dockerized Services
 
@@ -191,6 +209,8 @@ docker compose --profile camunda up -d
 | Tailscale IP | 100.x.x.4     |
 | Public ports | None          |
 
+Tailscale runs directly on this node — reachable over VPN even if `homelab-edge` is down.
+
 ### Dockerized Services
 
 | Service         | Notes                                                     |
@@ -232,6 +252,8 @@ ansible-playbook playbooks/deploy_svc.yml --tags greentechhub --vault-password-f
 | Local IP     | 192.168.1.22  |
 | Tailscale IP | 100.x.x.5     |
 | Public ports | None          |
+
+Tailscale runs directly on this node — reachable over VPN even if `homelab-edge` is down.
 
 ### Dockerized Services
 

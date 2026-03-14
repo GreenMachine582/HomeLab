@@ -11,21 +11,11 @@ A Raspberry Pi homelab managed entirely through Ansible. Manual intervention is 
     * [Deployment Phases](#deployment-phases)
   * [Repo Structure](#repo-structure)
   * [Network](#network)
-    * [IP Assignments](#ip-assignments)
-    * [DNS](#dns)
-    * [External Access](#external-access)
   * [Security](#security)
     * [User Model](#user-model)
     * [Defense in Depth](#defense-in-depth)
-    * [Secret Management](#secret-management)
   * [Backup Strategy](#backup-strategy)
-    * [What Is Backed Up](#what-is-backed-up)
-    * [Running the Backup Playbook](#running-the-backup-playbook)
-    * [Disaster Recovery](#disaster-recovery)
   * [Monitoring & Alerting](#monitoring--alerting)
-    * [Alert Rules](#alert-rules)
-    * [Grafana Dashboards](#grafana-dashboards)
-    * [Uptime Kuma Monitors](#uptime-kuma-monitors)
 <!-- TOC -->
 
 ---
@@ -156,36 +146,21 @@ homelab/
 
 ## Network
 
-### IP Assignments
+IP assignments, firewall rules, DNS, Tailscale ACLs, and traffic flow diagrams are in [docs/NETWORK.md](./docs/NETWORK.md).
 
-| Node              | Local IP       | Tailscale IP  | Role                      |
-|-------------------|----------------|---------------|---------------------------|
-| `homelab-edge`    | 192.168.1.10   | 100.x.x.1     | Edge, DNS, reverse proxy  |
-| `homelab-observe` | 192.168.1.11   | 100.x.x.2     | Monitoring                |
-| `homelab-svc-01`  | 192.168.1.20   | 100.x.x.3     | Camunda, databases        |
-| `homelab-svc-02`  | 192.168.1.21   | 100.x.x.4     | GreenTechHub              |
-| `homelab-svc-03`  | 192.168.1.22   | 100.x.x.5     | Jellyfin                  |
+**Summary:**
 
-Static DHCP reservations should be configured on your router. These IPs are also referenced in `host_vars/`.
+| Node              | Local IP      | Tailscale IP |
+|-------------------|---------------|--------------|
+| `homelab-edge`    | 192.168.1.10  | 100.x.x.1    |
+| `homelab-observe` | 192.168.1.11  | 100.x.x.2    |
+| `homelab-svc-01`  | 192.168.1.20  | 100.x.x.3    |
+| `homelab-svc-02`  | 192.168.1.21  | 100.x.x.4    |
+| `homelab-svc-03`  | 192.168.1.22  | 100.x.x.5    |
 
-### DNS
-
-Pi-hole runs on `homelab-edge` and handles **internal DNS only**. Its responsibilities are:
-
-- Resolving `.homelab.local` hostnames so nodes can address each other by name
-- Ad-blocking and DNSSEC validation for LAN clients
-- Forwarding upstream queries to Unbound (recursive, DNSSEC)
-
-Port 53 is firewalled to LAN only — Pi-hole is never exposed externally. External DNS for public hostnames is managed 
-entirely by Cloudflare.
-
-### External Access
-
-Cloudflare Tunnel (`cloudflared`) handles all inbound public traffic. It connects outbound from the edge node to 
-Cloudflare's edge — no ports need to be forwarded on the router, and Pi-hole plays no part in this path. DNS resolution 
-for public hostnames happens at Cloudflare before requests reach the homelab.
-
-TLS terminates at Cloudflare. Configure tunnel hostnames in `host_vars/homelab-edge.yml`.
+- Internal DNS served by Pi-hole on `homelab-edge` (LAN only, port 53 firewalled)
+- External traffic enters via Cloudflare Tunnel — no router port forwards required
+- Tailscale is installed on every node individually; each node remains accessible over VPN even if `homelab-edge` is down
 
 ---
 
@@ -205,119 +180,56 @@ Separation ensures a webhook or script compromise cannot escalate beyond running
 
 ### Defense in Depth
 
-1. **Network perimeter** — only ports 80/443 forwarded to edge (or eliminated entirely with Cloudflare Tunnel); UPnP disabled.
-2. **Edge node** — fail2ban (SSH: ban after 3 failures; HTTP: ban after 10); Pi-hole blocks malicious domains; 
-Cloudflare Tunnel rate-limits and filters traffic at the edge before it reaches the homelab.
-3. **All nodes** — SSH key-only, no root login, no password auth; ufw default-deny inbound; unattended security updates.
-4. **Secrets** — all credentials in Ansible Vault, encrypted at rest; no hardcoded values in playbooks or templates.
-5. **Tailscale VPN** — MagicDNS for internal discovery; ACLs restrict node-to-node communication; admin access requires Tailscale login with MFA.
-6. **Monitoring** — Alertmanager notifies on failed SSH attempts (from fail2ban logs); Uptime Kuma alerts on downtime.
+1. **Network perimeter** — no open router ports; Cloudflare Tunnel handles all external ingress; UPnP disabled
+2. **Edge node** — fail2ban (SSH: 3 failures; HTTP: 10 failures); Pi-hole blocks malicious domains; Cloudflare Tunnel 
+rate-limits and filters before traffic reaches the homelab
+3. **All nodes** — SSH key-only, no root login, no password auth; ufw default-deny inbound; unattended security updates
+4. **Secrets** — all credentials in Ansible Vault, encrypted at rest; no hardcoded values in playbooks or templates
+5. **Tailscale VPN** — per-node ACLs restrict inter-node communication; admin access requires Tailscale login with MFA
+6. **Monitoring** — Alertmanager notifies on failed SSH attempts; Uptime Kuma alerts on service downtime
 
-### Secret Management
-
-Secrets stored in `secrets/vault.yml` (Ansible Vault, never committed unencrypted):
-
-- Database passwords (PostgreSQL, Elasticsearch)
-- API keys (Cloudflare, Tailscale)
-- Application secrets (Django secret key, Camunda admin credentials)
-- SSL/TLS certificates (where not using Let's Encrypt)
-
-See `secrets/vault.yml.example` for required variable names.
+Secrets are stored in `secrets/vault.yml`. See `secrets/vault.yml.example` for required variable names.
 
 ---
 
 ## Backup Strategy
 
-### What Is Backed Up
+| Data                    | Method                | Destination               | Frequency |
+|-------------------------|-----------------------|---------------------------|-----------|
+| PostgreSQL databases    | `pg_dump`             | `/mnt/nvme/backups`       | Daily     |
+| Elasticsearch snapshots | Snapshot API          | `/mnt/nvme/elasticsearch` | Daily     |
+| All configuration       | Git (Ansible repo)    | GitHub                    | On commit |
+| Grafana dashboards      | JSON in repo          | GitHub                    | On commit |
+| Pi-hole config          | `custom.list` in repo | GitHub                    | On commit |
 
-| Data                    | Method                          | Destination                  | Frequency |
-|-------------------------|---------------------------------|------------------------------|-----------|
-| PostgreSQL databases    | `pg_dump`                       | `/mnt/nvme/backups`          | Daily     |
-| Elasticsearch snapshots | Snapshot API                    | `/mnt/nvme/elasticsearch`    | Daily     |
-| All configuration       | Git (Ansible repo)              | GitHub                       | On commit |
-| Grafana dashboards      | Exported JSON in repo           | GitHub                       | On commit |
-| Pi-hole config          | `custom.list` in repo           | GitHub                       | On commit |
-
-### Running the Backup Playbook
+Run backups on demand:
 
 ```bash
 ansible-playbook playbooks/backup.yml --vault-password-file .vault_pass
 ```
 
-Tasks performed:
-
-- SSH to `svc-01`, run `pg_dump` for each database
-- Compress: `gzip /mnt/nvme/backups/*.sql`
-- Rotate: retain last 7 days
-- Sync to external storage (configure one):
-  - rsync to local NAS
-  - rclone to Backblaze B2
-  - Tailscale + rsync to a remote machine
-
-### Disaster Recovery
-
-**Edge node SD card failure:**
-1. Flash a new SD card with RPi OS Lite (64-bit)
-2. Run `bootstrap_edge.yml` from your PC (see BOOTSTRAP.md)
-3. Run `deploy_edge.yml` from the edge
-4. Pi-hole `custom.list` and all config restore from the Git repo automatically
-5. Re-authenticate Cloudflare Tunnel if credentials have expired
-
-**Database corruption on `svc-01`:**
-1. Stop the affected service: `docker compose stop postgres`
-2. Restore from the latest backup:
-   ```bash
-   docker exec -i postgres psql -U <db-user> < /mnt/nvme/backups/<dump>.sql
-   ```
-3. Restart and verify data integrity
-
-**Complete rebuild:**
-- Re-run all bootstrap and deploy playbooks in order (Phases 1–3)
-- Restore databases from the most recent backup
-- Maximum data loss equals the backup interval (default: 24 hours)
+For disaster recovery procedures see [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md#disaster-recovery).
 
 ---
 
 ## Monitoring & Alerting
 
-### Alert Rules
+Full stack reference (Prometheus, Loki, Grafana, Alertmanager, Uptime Kuma) is in [docs/MONITORING.md](./docs/MONITORING.md).
 
-| Severity | Condition                            | Channel       |
-|----------|--------------------------------------|---------------|
-| Critical | Node down (no heartbeat > 2 min)     | Discord / SMS |
-| Critical | Disk < 5%                            | Discord / SMS |
-| Critical | Container crash loop (> 3 in 10 min) | Discord / SMS |
-| Warning  | CPU or memory > 80% for 5 min        | Discord       |
-| Warning  | Disk < 10%                           | Discord       |
-| Warning  | SSL certificate expiring < 7 days    | Discord       |
-| Info     | Package updates available            | Discord       |
-| Info     | Backup completed                     | Discord       |
-| Info     | New node joined Tailscale            | Discord       |
+**Alert channels:**
 
-### Grafana Dashboards
+| Severity | Condition                                          | Channel       |
+|----------|----------------------------------------------------|---------------|
+| Critical | Node down, disk < 5%, crash loop                   | Discord / SMS |
+| Warning  | CPU/memory > 80%, disk < 10%, SSL expiry           | Discord       |
+| Info     | Updates available, backup done, new Tailscale node | Discord       |
 
-All dashboards are pre-imported by the `deploy_observe.yml` playbook from JSON files in `templates/grafana/dashboards/`.
+**Key service endpoints (internal):**
 
-| Dashboard           | Contents                                                |
-|---------------------|---------------------------------------------------------|
-| Homelab Overview    | CPU, memory, disk, network, container status, uptime    |
-| Node Detail         | Per-node load, I/O wait, disk IOPS, top processes       |
-| Container Metrics   | cAdvisor: CPU/memory/restarts/network per container     |
-| Pi-hole Analytics   | DNS queries/sec, blocked domains, query types           |
-| Application Logs    | Loki: error aggregation, log volume by service, search  |
-| Camunda Metrics     | Active instances, job queue, incidents (future)         |
-
-### Uptime Kuma Monitors
-
-HTTP checks every 60 seconds against internal endpoints:
-
-| Service       | Endpoint                                    |
-|---------------|---------------------------------------------|
-| Edge health   | `http://homelab-edge/health`                |
-| Pi-hole admin | `http://homelab-edge/admin`                 |
-| Grafana       | `http://homelab-observe:3000/api/health`    |
-| Camunda       | `http://homelab-svc-01:8081`                |
-| GreenTechHub  | `http://homelab-svc-02:8000/health`         |
-| Jellyfin      | `http://homelab-svc-03:8096/health`         |
-
-Notifications are routed via Alertmanager. Configure channels (Discord) in `templates/alertmanager/alertmanager.yml.j2`.
+| Service      | URL                                      |
+|--------------|------------------------------------------|
+| Grafana      | `http://grafana.homelab.local:3000`      |
+| Prometheus   | `http://prometheus.homelab.local:9090`   |
+| Alertmanager | `http://alertmanager.homelab.local:9093` |
+| Uptime Kuma  | `http://uptime.homelab.local:3001`       |
+| Portainer    | `http://portainer.homelab.local:9000`    |
