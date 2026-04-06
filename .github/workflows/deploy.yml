@@ -1,0 +1,55 @@
+name: Deploy
+
+# Triggers a deployment by POSTing to the n8n or Camunda webhook endpoint.
+# The automation platform SSHes to homelab-edge as the `deploy` user and
+# runs Ansible playbooks. GitHub never connects directly to the homelab.
+#
+# Required GitHub secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_ENDPOINT_URL  — n8n webhook URL or Camunda REST endpoint
+#   DEPLOY_SECRET        — shared secret; validated by n8n/Camunda before executing
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: master
+  cancel-in-progress: true
+
+jobs:
+  trigger:
+    name: Trigger Deploy Endpoint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate secrets are set
+        run: |
+          if [ -z "${{ secrets.DEPLOY_ENDPOINT_URL }}" ] || [ -z "${{ secrets.DEPLOY_SECRET }}" ]; then
+            echo "❌ DEPLOY_ENDPOINT_URL or DEPLOY_SECRET is not set in GitHub secrets."
+            exit 1
+          fi
+
+      - name: POST to deploy webhook
+        run: |
+          HTTP_STATUS=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Deploy-Secret: ${{ secrets.DEPLOY_SECRET }}" \
+            -d '{
+              "ref": "${{ github.ref }}",
+              "sha": "${{ github.sha }}",
+              "actor": "${{ github.actor }}"
+            }' \
+            "${{ secrets.DEPLOY_ENDPOINT_URL }}")
+
+          echo "Response: $(cat /tmp/response.txt)"
+          echo "HTTP status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "❌ Webhook returned non-2xx status: $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "✅ Deploy triggered successfully"
