@@ -48,6 +48,59 @@ services:
 #    networks:
 #      - edge_net
 
+  unbound:
+    image: mvance/unbound:latest
+    container_name: unbound
+    restart: unless-stopped
+    networks:
+      pihole_net:
+        ipv4_address: 172.20.0.2
+
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    environment:
+      TZ: "${TZ:-Australia/Sydney}"
+      WEBPASSWORD: "${PIHOLE_WEB_PASSWORD}"
+      PIHOLE_DNS_1: "172.20.0.2#5335"   # Unbound container
+      PIHOLE_DNS_2: "no"                 # No fallback — Unbound is the only upstream
+      DNSSEC: "true"
+      INTERFACE: "eth0"
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      # Caddy owns port 80 — Pi-hole admin exposed on 8080 (LAN: http://192.168.1.10:8080/admin)
+      # UFW rule for port 80 in group_vars/edge.yml should be updated to 8080 if direct access is desired,
+      # or Caddy can proxy pihole.homelab.local → pihole:80 on edge_net.
+      - "8080:80"
+    volumes:
+      - pihole_data:/etc/pihole
+      - pihole_dnsmasq:/etc/dnsmasq.d
+    networks:
+      pihole_net:
+        ipv4_address: 172.20.0.3
+      edge_net: {}
+    depends_on:
+      - unbound
+
+  pihole-exporter:
+    image: ekofr/pihole-exporter:latest
+    container_name: pihole-exporter
+    restart: unless-stopped
+    environment:
+      PIHOLE_HOSTNAME: pihole
+      PIHOLE_PASSWORD: "${PIHOLE_WEB_PASSWORD}"
+      PORT: "9617"
+    ports:
+      - "9617:9617"
+    networks:
+      - edge_net
+    depends_on:
+      - pihole
+
   portainer-agent:
     image: portainer/agent:latest
     container_name: portainer-agent
@@ -63,7 +116,14 @@ services:
 networks:
   edge_net:
     driver: bridge
+  pihole_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/29
 
 volumes:
   caddy_data: {}
   caddy_config: {}
+  pihole_data: {}
+  pihole_dnsmasq: {}
