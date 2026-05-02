@@ -11,6 +11,11 @@ steps are kept to the absolute minimum.
     * [Hardware](#hardware)
     * [Accounts](#accounts)
     * [Files](#files)
+  * [Phase 0: Flash the SD Card](#phase-0-flash-the-sd-card)
+    * [0.1 Download and Install RPi Imager](#01-download-and-install-rpi-imager)
+    * [0.2 Select OS and Storage](#02-select-os-and-storage)
+    * [0.3 Configure OS Customisation](#03-configure-os-customisation)
+    * [0.4 Flash and Boot](#04-flash-and-boot)
   * [Phase 1: PC → Edge (Bootstrap)](#phase-1-pc--edge-bootstrap)
     * [1.1 Prepare Your PC](#11-prepare-your-pc)
     * [1.2 Move the Repo into the WSL Filesystem](#12-move-the-repo-into-the-wsl-filesystem)
@@ -41,9 +46,9 @@ steps are kept to the absolute minimum.
 
 ### Hardware
 
-- [ ] All Raspberry Pis flashed with **Raspberry Pi OS Lite (64-bit)**
-- [ ] Edge node connected to the network (Ethernet recommended for bootstrap)
-- [ ] Static DHCP reservations configured on router (recommended)
+- [ ] All Raspberry Pis flashed with **Raspberry Pi OS Lite (64-bit)** — see [Phase 0](#phase-0-flash-the-sd-card)
+- [ ] Edge node powered on and connected to WiFi (or Ethernet)
+- [ ] Static DHCP reservations configured on router (recommended — can be done after initial boot)
 
 ### Accounts
 
@@ -55,6 +60,78 @@ steps are kept to the absolute minimum.
 
 - [ ] This repository cloned on your PC
 - [ ] Ansible Vault password chosen and stored securely (password manager recommended)
+
+---
+
+## Phase 0: Flash the SD Card
+
+**Goal:** Write Raspberry Pi OS to the SD card and pre-configure the OS so the Pi boots ready for SSH — no keyboard or monitor needed.
+
+> Repeat for each node. The steps below use `homelab-edge` as the example; swap the hostname for other nodes.
+
+---
+
+### 0.1 Download and Install RPi Imager
+
+Download **Raspberry Pi Imager** (v1.8+) from [raspberrypi.com/software](https://www.raspberrypi.com/software/) and install it on your PC or Mac.
+
+---
+
+### 0.2 Select OS and Storage
+
+1. Open RPi Imager
+2. **Choose Device** → select your Raspberry Pi model (e.g. Raspberry Pi 4)
+3. **Choose OS** → *Raspberry Pi OS (other)* → **Raspberry Pi OS Lite (64-bit)**
+4. **Choose Storage** → select your SD card (double-check the size — this will be erased)
+5. Click **Next**
+
+---
+
+### 0.3 Configure OS Customisation
+
+When prompted *"Would you like to apply OS customisation settings?"* click **Edit Settings**.
+
+**General tab:**
+
+| Field                   | Value                                                           |
+|-------------------------|-----------------------------------------------------------------|
+| Hostname                | `homelab-edge`                                                  |
+| Username                | `admin`                                                         |
+| Password                | A strong temporary password (you'll use this once in step 1.6) |
+| Configure wireless LAN  | ✅ Enabled                                                      |
+| SSID                    | Your WiFi network name                                          |
+| Password                | Your WiFi password                                              |
+| Wireless LAN country    | Your country code (e.g. `US`, `GB`)                             |
+| Set locale              | Your timezone and keyboard layout                               |
+
+> **No static IP here.** The Pi will obtain a DHCP address over WiFi at first boot. You'll discover the address in step 1.3 and configure a static reservation (or Ansible-managed static IP) later.
+
+**Services tab:**
+
+| Field          | Value                          |
+|----------------|--------------------------------|
+| Enable SSH     | ✅ Enabled                     |
+| Authentication | **Use password authentication** |
+
+> Password auth is only needed for the initial `ssh-copy-id` in step 1.6. Ansible will disable it and enforce key-only auth during the bootstrap playbook.
+
+Click **Save**, then **Yes** to apply the settings.
+
+---
+
+### 0.4 Flash and Boot
+
+1. Confirm the write prompt — RPi Imager will erase and flash the card
+2. Eject the SD card safely once writing and verification complete
+3. Insert the SD card into the Pi and apply power
+4. Allow 60–90 seconds for first boot (the Pi expands the filesystem on first start)
+5. Confirm the Pi has joined the network:
+   ```bash
+   ping homelab-edge.local
+   ```
+   If mDNS (`homelab-edge.local`) doesn't resolve, check your router's DHCP lease table for the IP.
+
+> **Ethernet alternative:** If you plug in Ethernet instead of (or as well as) WiFi, the Pi will prefer Ethernet. Either works for bootstrap — WiFi is expected at this stage and the IP will change once static DHCP is configured.
 
 ---
 
