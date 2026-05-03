@@ -1,0 +1,89 @@
+---
+# secrets/vault.yml.example
+# Template showing all variables required in secrets/vault.yml (Ansible Vault).
+#
+# DO NOT commit vault.yml — only this example file is committed.
+# The vault lives at inventories/group_vars/all/vault.yml so Ansible auto-loads it.
+# Create the encrypted vault with:
+#   ansible-vault create inventories/group_vars/all/vault.yml --vault-password-file .vault_pass
+#
+# Variable naming convention: vault_<service>_<field>
+
+# ── Bootstrap credentials ─────────────────────────────────────────────────────
+# admin sudo password — set in RPi Imager (BOOTSTRAP.md § 0.3); used only during Phase 1
+vault_admin_become_password: "changeme"
+
+# ── SSH public keys ───────────────────────────────────────────────────────────
+# Contents of the corresponding .pub files generated in BOOTSTRAP.md § 1.4
+vault_admin_ssh_pubkey: "ssh-ed25519 AAAA... admin"
+vault_homelab_ssh_pubkey: "ssh-ed25519 AAAA... homelab"
+vault_deploy_ssh_pubkey: "ssh-ed25519 AAAA... deploy"
+
+# ── GitHub ────────────────────────────────────────────────────────────────────
+vault_github_org: "your-github-username-or-org"
+
+# ── Tailscale ─────────────────────────────────────────────────────────────────
+# Generate a reusable auth key at https://login.tailscale.com/admin/settings/keys
+# Used by the tailscale role on every node.
+vault_tailscale_auth_key: "tskey-auth-..."
+
+# ── Cloudflare ────────────────────────────────────────────────────────────────
+# Tunnel token: Cloudflare Zero Trust → Tunnels → your tunnel
+vault_cloudflare_tunnel_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+vault_cloudflare_tunnel_token: "eyJ..."
+# API token: Cloudflare dashboard → My Profile → API Tokens
+vault_cloudflare_api_token: "changeme"
+
+# ── Pi-hole ───────────────────────────────────────────────────────────────────
+vault_pihole_web_password: "changeme"
+
+# ── Grafana ───────────────────────────────────────────────────────────────────
+vault_grafana_admin_password: "changeme"
+
+# ── Discord webhook URLs ──────────────────────────────────────────────────────
+# Create webhooks in Discord → Server Settings → Integrations → Webhooks
+vault_discord_webhook_critical: "https://discord.com/api/webhooks/..."
+vault_discord_webhook_warning: "https://discord.com/api/webhooks/..."
+vault_discord_webhook_info: "https://discord.com/api/webhooks/..."
+# Shoutrrr-format URL for scripts/systemd notification units (on-boot, on-shutdown, on-ssh-success)
+# Format: discord://token@channel_id  (derive from the webhook URL)
+vault_shoutrrr_discord_alerts: "discord://token@channel_id"
+
+# ── GitHub SSH ────────────────────────────────────────────────────────────────
+# Passphrase for the GitHub deploy SSH key (homelab-github keypair)
+vault_github_ssh_key_passphrase: "changeme"
+
+# ── PostgreSQL — Camunda (svc-01) ─────────────────────────────────────────────
+vault_camunda_db_user: "camunda"
+vault_camunda_db_password: "changeme"
+
+# ── Camunda admin + license ───────────────────────────────────────────────────
+vault_camunda_admin_user: "admin"
+vault_camunda_admin_password: "changeme"
+vault_camunda_license_key: ""              # Optional for dev; required for production
+
+# ── n8n ───────────────────────────────────────────────────────────────────────
+vault_n8n_user: "admin"
+vault_n8n_password: "changeme"
+vault_n8n_owner_email: "admin@example.com"
+vault_n8n_owner_password: "changeme"
+# Generate with: openssl rand -base64 32
+vault_n8n_encryption_key: "changeme"
+
+# ── discord-gateway ───────────────────────────────────────────────────────────
+# DISCORD_PUBLIC_KEY: found in Discord Developer Portal → your app → General Information
+vault_discord_public_key: "changeme"
+# Shared secret validated by discord-gateway when n8n calls back
+vault_n8n_webhook_secret: "changeme"
+
+# ── PostgreSQL — GreenTechHub (svc-02) ────────────────────────────────────────
+vault_greentechhub_db_user: "greentechhub"
+vault_greentechhub_db_password: "changeme"
+
+# ── Django ────────────────────────────────────────────────────────────────────
+# Generate with: python3 -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+vault_django_secret_key: "changeme"
+
+# ── Deploy endpoint ───────────────────────────────────────────────────────────
+# Shared secret validated by n8n/Camunda when receiving the GitHub webhook POST.
+vault_deploy_webhook_secret: "changeme"
