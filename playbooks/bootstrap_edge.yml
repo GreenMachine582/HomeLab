@@ -61,6 +61,11 @@
         tailscale_up: false   # Tailscale started in Phase 2 (deploy_edge.yml)
 
   tasks:
+    # Restart sshd before UFW default-deny.
+    # Existing SSH session stays alive, avoiding lockout.
+    - name: "SSH | Restart sshd on new port before UFW default-deny"
+      meta: flush_handlers
+
     - name: "Ansible | Install Ansible on edge (control node)"
       ansible.builtin.apt:
         name:
