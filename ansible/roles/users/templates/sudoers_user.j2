@@ -1,4 +1,0 @@
-{{ item.name }} ALL=(root) {% if item.sudo.nopasswd | default(false) %}NOPASSWD:{% endif %}
-{% for cmd in item.sudo.commands %}
-{{ cmd }}{% if not loop.last %}, {% endif %}
-{% endfor %}

@@ -1,7 +1,0 @@
-all:
-  children:
-    edge:
-      hosts:
-        homelab-edge:
-          ansible_connection: local
-          ansible_user: matt
