@@ -1,0 +1,120 @@
+---
+# playbooks/deploy_edge.yml
+#
+# Phase 2 — Deploys all edge services on homelab-edge.
+# Run from homelab-edge itself (or from PC targeting the edge via prod.ini).
+# Idempotent — safe to re-run on every deployment.
+#
+# Usage:
+#   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml \
+#     --limit homelab-edge --vault-password-file .vault_pass
+#
+# Tags:
+#   --tags hardening   Base OS hardening only
+#   --tags firewall    UFW rules only
+#   --tags fail2ban    fail2ban only
+#   --tags tailscale   Tailscale only
+#   --tags docker      Docker Compose stack only
+#   --tags pihole      Pi-hole + Unbound only
+#   --tags alloy       Grafana Alloy log shipper only
+#
+# Requires: roles/base_hardening, roles/users, roles/firewall,
+#           roles/fail2ban, roles/tailscale, roles/edge_services, roles/alloy
+
+- name: "Deploy | Edge | Host hardening and core services"
+  hosts: edge
+  become: true
+  gather_facts: true
+
+  vars:
+    play_description: >
+      Deploys the full edge node service stack:
+      base hardening, firewall, fail2ban, Tailscale (subnet-router),
+      Pi-hole + Unbound (internal DNS), cloudflared (Cloudflare Tunnel),
+      Caddy (reverse proxy), node-exporter, and Grafana Alloy (log shipper).
+
+    compose_file: "docker-compose.edge.yml"
+    compose_dir: "{{ homelab_repo_path }}"
+
+  pre_tasks:
+    - name: "Meta | Show play description"
+      ansible.builtin.debug:
+        msg: "{{ play_description }}"
+
+    - name: "Meta | Update repo to latest"
+      ansible.builtin.git:
+        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        dest: "{{ homelab_repo_path }}"
+        version: "{{ homelab_repo_branch }}"
+        accept_hostkey: true
+        key_file: /home/homelab/.ssh/github
+        force: false
+      become_user: homelab
+      tags: [repo]
+
+  roles:
+    - role: base_hardening
+      tags: [hardening]
+
+    - role: firewall
+      tags: [firewall]
+      vars:
+        firewall_rules: "{{ ufw_rules }}"
+
+    - role: fail2ban
+      tags: [fail2ban]
+      vars:
+        fail2ban_jails: "{{ fail2ban_jails }}"
+
+    - role: tailscale
+      tags: [tailscale]
+      vars:
+        tailscale_up: true
+        tailscale_advertise_routes: "{{ tailscale_advertise_routes }}"
+        tailscale_accept_routes: "{{ tailscale_accept_routes }}"
+
+    - role: alloy
+      tags: [alloy]
+      vars:
+        alloy_loki_endpoint: "{{ alloy_loki_endpoint }}"
+        alloy_scrape_systemd_units: "{{ alloy_scrape_systemd_units }}"
+
+    - role: edge_services
+      tags: [docker, pihole]
+      vars:
+        pihole_web_password: "{{ vault_pihole_web_password }}"
+        pihole_custom_dns: "{{ pihole_custom_dns }}"
+        cloudflared_tunnel_token: "{{ vault_cloudflare_tunnel_token }}"
+
+  post_tasks:
+    - name: "Docker | Pull latest images"
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_file }} pull
+        chdir: "{{ compose_dir }}"
+      tags: [docker]
+      changed_when: true
+
+    - name: "Docker | Apply edge stack"
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_file }} up -d --remove-orphans
+        chdir: "{{ compose_dir }}"
+      tags: [docker]
+      changed_when: true
+
+    - name: "Docker | Prune unused images"
+      ansible.builtin.command:
+        cmd: docker image prune -f
+      tags: [docker]
+      changed_when: true
+
+    - name: "Verify | Check cloudflared is running"
+      ansible.builtin.command:
+        cmd: docker inspect --format="{{ '{{' }}.State.Status{{ '}}' }}" cloudflared
+      register: cloudflared_status
+      changed_when: false
+      failed_when: cloudflared_status.stdout != "running"
+      tags: [docker]
+
+    - name: "Meta | Deploy complete"
+      ansible.builtin.debug:
+        msg: "Edge deployment complete. Cloudflare Tunnel status: {{ cloudflared_status.stdout }}"

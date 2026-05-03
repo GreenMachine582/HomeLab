@@ -1,0 +1,57 @@
+---
+# roles/docker/tasks/main.yml
+
+- name: "Docker | Install via convenience script"
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://get.docker.com | sh
+    creates: /usr/bin/docker
+  tags: [docker, install]
+
+- name: "Docker | Ensure data directory exists"
+  ansible.builtin.file:
+    path: "{{ docker_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0711"
+  tags: [docker]
+
+- name: "Docker | Write daemon.json"
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ docker_daemon_config | to_nice_json }}"
+  vars:
+    docker_daemon_config: "{{
+      {
+        'data-root': docker_data_dir,
+        'log-driver': docker_log_driver,
+        'log-opts': {
+          'max-size': docker_log_max_size,
+          'max-file': docker_log_max_file
+        },
+        'live-restore': docker_live_restore
+      } | combine(
+        {'metrics-addr': docker_metrics_addr, 'experimental': true}
+        if docker_metrics_enabled else {}
+      )
+    }}"
+  notify: Restart docker
+  tags: [docker, config]
+
+- name: "Docker | Enable and start service"
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+    daemon_reload: true
+  tags: [docker]
+
+- name: "Docker | Add homelab user to docker group"
+  ansible.builtin.user:
+    name: homelab
+    groups: docker
+    append: true
+  tags: [docker]

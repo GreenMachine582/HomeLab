@@ -1,0 +1,88 @@
+---
+# roles/base_hardening/tasks/main.yml
+
+- name: "Base | Update apt cache"
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: "Base | Upgrade installed packages"
+  ansible.builtin.apt:
+    upgrade: dist
+  tags: [packages]
+
+- name: "Base | Install base packages"
+  ansible.builtin.apt:
+    name: "{{ base_packages + ['rsyslog', 'logrotate', 'chrony', 'auditd', 'ufw'] }}"
+    state: present
+  tags: [packages]
+
+- name: "Base | Set timezone"
+  community.general.timezone:
+    name: "{{ timezone }}"
+  notify: Restart chrony
+  tags: [time]
+
+- name: "Base | Enable chrony (NTP)"
+  ansible.builtin.systemd:
+    name: chrony
+    enabled: true
+    state: started
+  tags: [time]
+
+- name: "Base | Configure unattended upgrades"
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "{{ '1' if unattended_upgrades_enabled else '0' }}";
+      APT::Periodic::AutocleanInterval "7";
+  tags: [updates]
+
+- name: "Security | Harden SSH config"
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    backup: true
+    validate: "sshd -t -f %s"
+  loop:
+    - { regexp: '^#?Port',                         line: "Port {{ ssh_port }}" }
+    - { regexp: '^#?PermitRootLogin',              line: "PermitRootLogin {{ ssh_permit_root_login }}" }
+    - { regexp: '^#?PasswordAuthentication',        line: "PasswordAuthentication {{ ssh_password_authentication }}" }
+    - { regexp: '^#?PubkeyAuthentication',          line: "PubkeyAuthentication {{ ssh_pubkey_authentication }}" }
+    - { regexp: '^#?ChallengeResponseAuthentication', line: 'ChallengeResponseAuthentication no' }
+    - { regexp: '^#?UsePAM',                       line: 'UsePAM yes' }
+    - { regexp: '^#?X11Forwarding',                line: 'X11Forwarding no' }
+    - { regexp: '^#?MaxAuthTries',                 line: "MaxAuthTries {{ ssh_max_auth_tries }}" }
+    - { regexp: '^#?ClientAliveInterval',          line: "ClientAliveInterval {{ ssh_client_alive_interval }}" }
+    - { regexp: '^#?ClientAliveCountMax',          line: "ClientAliveCountMax {{ ssh_client_alive_count_max }}" }
+  notify: Restart ssh
+  tags: [ssh, security]
+
+- name: "Security | Apply kernel hardening sysctls"
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+  loop:
+    - { name: net.ipv4.conf.all.accept_redirects,     value: "0" }
+    - { name: net.ipv4.conf.default.accept_redirects, value: "0" }
+    - { name: net.ipv4.conf.all.send_redirects,       value: "0" }
+    - { name: net.ipv4.conf.all.accept_source_route,  value: "0" }
+    - { name: net.ipv4.tcp_syncookies,                value: "1" }
+    - { name: net.ipv4.ip_forward,                    value: "0" }
+    - { name: kernel.dmesg_restrict,                  value: "1" }
+  tags: [security, kernel]
+
+- name: "Security | Enable auditd"
+  ansible.builtin.systemd:
+    name: auditd
+    enabled: true
+    state: started
+  tags: [security, audit]

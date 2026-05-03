@@ -1,0 +1,19 @@
+---
+# host_vars/homelab-edge.yml
+# Node-specific overrides for homelab-edge.
+# Group-level config is in group_vars/edge.yml and group_vars/all.yml.
+
+# ── Network ───────────────────────────────────────────────────────────────────
+node_lan_ip: "{{ ip_edge }}"
+node_interface: eth0
+node_hostname: homelab-edge
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+# SD card only — no NVMe on this node.
+# If Docker I/O degrades, mount a USB SSD and update docker_data_dir.
+docker_data_dir: /var/lib/docker
+
+# ── Ansible control node ──────────────────────────────────────────────────────
+# This node runs all playbooks for the homelab.
+is_control_node: true
+ansible_log_path: "{{ homelab_repo_path }}/logs/ansible.log"

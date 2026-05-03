@@ -1,0 +1,89 @@
+---
+# inventories/group_vars/all/main.yml
+# Non-secret variables applied to every node.
+# Secrets live alongside this file in vault.yml (Ansible Vault encrypted).
+# Node-specific overrides live in host_vars/<node>.yml
+
+# ── Network ───────────────────────────────────────────────────────────────────
+lan_subnet: "192.168.1.0/24"
+
+ip_edge:    "192.168.1.10"
+ip_observe: "192.168.1.11"
+ip_svc_01:  "192.168.1.20"
+ip_svc_02:  "192.168.1.21"
+ip_svc_03:  "192.168.1.22"
+
+# ── System ────────────────────────────────────────────────────────────────────
+timezone: "Australia/Sydney"
+locale: "en_AU.UTF-8"
+
+ntp_servers:
+  - 0.au.pool.ntp.org
+  - 1.au.pool.ntp.org
+  - 2.au.pool.ntp.org
+
+# ── Users ─────────────────────────────────────────────────────────────────────
+homelab_users:
+  - name: admin
+    groups: sudo
+    shell: /bin/bash
+    ssh_key: "{{ vault_admin_ssh_pubkey }}"
+    sudo_passwordless: false
+
+  - name: homelab
+    groups: docker
+    shell: /bin/bash
+    ssh_key: "{{ vault_homelab_ssh_pubkey }}"
+    sudo_passwordless: true
+
+  - name: deploy
+    groups: ""
+    shell: /bin/bash
+    ssh_key: "{{ vault_deploy_ssh_pubkey }}"
+    sudo_passwordless: false
+    sudo_commands:
+      - /usr/bin/ansible-playbook
+
+# ── SSH hardening ─────────────────────────────────────────────────────────────
+ssh_port: 2189
+ssh_permit_root_login: "no"
+ssh_password_authentication: "no"
+ssh_pubkey_authentication: "yes"
+ssh_max_auth_tries: 3
+ssh_client_alive_interval: 300
+ssh_client_alive_count_max: 2
+
+# ── Packages ──────────────────────────────────────────────────────────────────
+base_packages:
+  - curl
+  - git
+  - htop
+  - vim
+  - python3
+  - python3-pip
+  - unattended-upgrades
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+unattended_upgrades_enabled: true
+unattended_upgrades_auto_reboot: false
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+docker_data_dir: /var/lib/docker
+docker_log_driver: json-file
+docker_log_max_size: "10m"
+docker_log_max_file: "3"
+
+# ── Observability agents ──────────────────────────────────────────────────────
+node_exporter_port: 9100
+alloy_loki_endpoint: "http://{{ ip_observe }}:3100/loki/api/v1/push"
+
+# ── Tailscale (common) ───────────────────────────────────────────────────────
+tailscale_auth_key: "{{ vault_tailscale_auth_key }}"
+
+# ── Ansible repo path (on edge node) ─────────────────────────────────────────
+homelab_repo_path: /opt/homelab
+homelab_repo_url: "git@github.com:{{ vault_github_org }}/homelab.git"
+homelab_repo_branch: master

@@ -1,0 +1,86 @@
+---
+# group_vars/edge.yml
+# Applied to the [edge] group (homelab-edge only).
+
+# ── Firewall ──────────────────────────────────────────────────────────────────
+# Port 80 is LAN-only for Pi-hole admin. No ports are forwarded from the router.
+# Cloudflare Tunnel connects outbound — no external exposure required.
+ufw_rules:
+  - { port: "{{ ssh_port }}", proto: tcp,     src: any,               comment: "SSH admin" }
+  - { port: 53,               proto: tcp/udp, src: "{{ lan_subnet }}", comment: "Pi-hole DNS (LAN only)" }
+  - { port: 8080,             proto: tcp,     src: "{{ lan_subnet }}", comment: "Pi-hole admin UI (LAN only; port 80 used by Caddy)" }
+  - { port: 9001,             proto: tcp,     src: "{{ ip_observe }}", comment: "Portainer Agent (from observe)" }
+  - { port: 9100,             proto: tcp,     src: "{{ lan_subnet }}", comment: "node-exporter (Prometheus scrape)" }
+
+# ── fail2ban ──────────────────────────────────────────────────────────────────
+fail2ban_jails:
+  - name: sshd
+    port: "{{ ssh_port }}"
+    logpath: /var/log/auth.log
+    backend: systemd
+    max_retry: 3
+    ban_time: 3600    # 1 hour
+    find_time: 600
+  - name: pihole
+    port: "http,https"
+    logpath: /var/log/pihole.log
+    backend: auto
+    max_retry: 10
+    ban_time: 3600
+    find_time: 600
+
+# ── Tailscale ─────────────────────────────────────────────────────────────────
+tailscale_advertise_routes:
+  - "{{ lan_subnet }}"   # Subnet router — convenience for non-Tailscale LAN devices
+tailscale_accept_routes: false
+tailscale_exit_node: false
+
+# ── Pi-hole ───────────────────────────────────────────────────────────────────
+pihole_web_password: "{{ vault_pihole_web_password }}"
+pihole_dns_port: 53
+pihole_web_port: 80
+pihole_upstream_dns: "127.0.0.1#5335"   # Unbound
+pihole_domain: homelab.local
+pihole_interface: eth0
+pihole_dnssec: true
+pihole_rev_server: false
+
+pihole_custom_dns:
+  - { hostname: "grafana.homelab.local",      ip: "{{ ip_observe }}" }
+  - { hostname: "prometheus.homelab.local",   ip: "{{ ip_observe }}" }
+  - { hostname: "alertmanager.homelab.local", ip: "{{ ip_observe }}" }
+  - { hostname: "uptime.homelab.local",       ip: "{{ ip_observe }}" }
+  - { hostname: "portainer.homelab.local",    ip: "{{ ip_observe }}" }
+  - { hostname: "camunda.homelab.local",      ip: "{{ ip_svc_01 }}" }
+  - { hostname: "greentechhub.homelab.local", ip: "{{ ip_svc_02 }}" }
+  - { hostname: "jellyfin.homelab.local",     ip: "{{ ip_svc_03 }}" }
+
+# ── Unbound ───────────────────────────────────────────────────────────────────
+unbound_port: 5335
+unbound_interface: "127.0.0.1"
+unbound_access_control: "127.0.0.1/32 allow"
+unbound_dnssec: true
+
+# ── Cloudflare Tunnel ─────────────────────────────────────────────────────────
+cloudflared_tunnel_id: "{{ vault_cloudflare_tunnel_id }}"
+cloudflared_tunnel_token: "{{ vault_cloudflare_tunnel_token }}"
+
+# Public hostname → internal service mappings
+# Add new public hostnames here; Pi-hole custom.list handles internal resolution.
+cloudflared_ingress:
+  - hostname: "greentechhub.yourdomain.com"
+    service: "http://{{ ip_svc_02 }}:8000"
+  - hostname: "jellyfin.yourdomain.com"
+    service: "http://{{ ip_svc_03 }}:8096"
+  - hostname: "*.yourdomain.com"
+    service: "http_status:404"
+
+# ── Grafana Alloy (log shipping) ──────────────────────────────────────────────
+alloy_scrape_systemd_units:
+  - tailscaled
+  - ssh
+  - ufw
+  - fail2ban
+  - docker
+alloy_scrape_ansible_log: true
+alloy_ansible_log_path: "{{ homelab_repo_path }}/logs/ansible.log"

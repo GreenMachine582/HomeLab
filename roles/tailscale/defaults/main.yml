@@ -1,0 +1,8 @@
+---
+# roles/tailscale/defaults/main.yml
+
+tailscale_up: true
+tailscale_accept_routes: false
+tailscale_exit_node: false
+tailscale_advertise_routes: []
+tailscale_extra_args: ""

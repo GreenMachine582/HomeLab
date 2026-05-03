@@ -1,0 +1,10 @@
+---
+# roles/docker/defaults/main.yml
+
+docker_data_dir: /var/lib/docker
+docker_log_driver: json-file
+docker_log_max_size: "10m"
+docker_log_max_file: "3"
+docker_live_restore: false
+docker_metrics_enabled: false
+docker_metrics_addr: "127.0.0.1:9323"

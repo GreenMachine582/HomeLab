@@ -1,0 +1,151 @@
+---
+# playbooks/bootstrap_edge.yml
+#
+# Phase 1 — Run from your PC against a fresh homelab-edge OS install.
+# Converts the node into the Ansible control node for the entire homelab.
+#
+# Usage:
+#   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
+#     --vault-password-file .vault_pass --ask-become-pass
+#
+# Requires: roles/base_hardening, roles/users, roles/docker, roles/tailscale
+# See: BOOTSTRAP.md § Phase 1
+
+- name: "Bootstrap | Edge | Base system, users, and access"
+  hosts: edge_bootstrap
+  become: true
+  gather_facts: true
+
+  vars:
+    play_description: >
+      One-time bootstrap of homelab-edge from a fresh OS install.
+      Creates system users, installs Docker and Ansible, clones the repo,
+      hardens SSH, and configures the firewall. Safe to re-run.
+
+  pre_tasks:
+    - name: "Meta | Show play description"
+      ansible.builtin.debug:
+        msg: "{{ play_description }}"
+
+    - name: "Meta | Confirm target"
+      ansible.builtin.debug:
+        msg: "Bootstrapping {{ inventory_hostname }} ({{ ansible_host }})"
+
+    - name: "System | Set hostname"
+      ansible.builtin.hostname:
+        name: homelab-edge
+
+    - name: "System | Update apt cache"
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: "System | Install base packages"
+      ansible.builtin.apt:
+        name: "{{ base_packages }}"
+        state: present
+
+  roles:
+    - role: base_hardening
+      tags: [base, hardening]
+
+    - role: users
+      tags: [base, users]
+
+    - role: docker
+      tags: [docker]
+
+    - role: tailscale
+      tags: [tailscale]
+      vars:
+        tailscale_up: false   # Tailscale started in Phase 2 (deploy_edge.yml)
+
+  tasks:
+    - name: "Ansible | Install Ansible on edge (control node)"
+      ansible.builtin.apt:
+        name:
+          - ansible
+          - python3-pip
+        state: present
+      tags: [ansible]
+
+    - name: "Repo | Ensure /opt/homelab exists with correct ownership"
+      ansible.builtin.file:
+        path: "{{ homelab_repo_path }}"
+        state: directory
+        owner: homelab
+        group: homelab
+        mode: "0755"
+      tags: [repo]
+
+    - name: "Repo | Ensure homelab .ssh dir exists"
+      ansible.builtin.file:
+        path: /home/homelab/.ssh
+        state: directory
+        owner: homelab
+        group: homelab
+        mode: "0700"
+      tags: [repo]
+
+    - name: "Repo | Deploy GitHub deploy key"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../.ssh/homelab-github"
+        dest: /home/homelab/.ssh/github
+        owner: homelab
+        group: homelab
+        mode: "0600"
+      tags: [repo]
+
+    - name: "Repo | Clone homelab repo"
+      ansible.builtin.git:
+        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        dest: "{{ homelab_repo_path }}"
+        version: "{{ homelab_repo_branch }}"
+        accept_hostkey: true
+        key_file: /home/homelab/.ssh/github
+      become_user: homelab
+      tags: [repo]
+
+    - name: "Repo | Set repo ownership"
+      ansible.builtin.file:
+        path: "{{ homelab_repo_path }}"
+        owner: homelab
+        group: homelab
+        recurse: true
+      tags: [repo]
+
+    # base_hardening (above) moves sshd to ssh_port before this task runs.
+    # The existing Ansible connection on port 22 persists through the sshd
+    # restart, so we open ssh_port here — not 22 — so the node is reachable
+    # on the correct port for all Phase 2+ connections.
+    - name: "Firewall | Allow SSH on ssh_port from any"
+      community.general.ufw:
+        rule: allow
+        port: "{{ ssh_port }}"
+        proto: tcp
+        comment: "SSH admin"
+      tags: [firewall]
+
+    - name: "Firewall | Allow DNS from LAN (Pi-hole)"
+      community.general.ufw:
+        rule: allow
+        port: "53"
+        src: "{{ lan_subnet }}"
+        comment: "Pi-hole DNS (LAN only)"
+      tags: [firewall]
+
+    - name: "Firewall | Enable ufw default-deny"
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+      tags: [firewall]
+
+  post_tasks:
+    - name: "Meta | Bootstrap complete"
+      ansible.builtin.debug:
+        msg: >
+          homelab-edge bootstrap complete.
+          SSH to the node as 'homelab' and run Phase 2:
+          ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml
+          --limit homelab-edge --vault-password-file .vault_pass

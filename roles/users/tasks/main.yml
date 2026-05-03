@@ -1,0 +1,62 @@
+---
+# roles/users/tasks/main.yml
+# Creates system users defined in group_vars/all.yml homelab_users.
+
+- name: "Users | Ensure required groups exist"
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ homelab_users | map(attribute='groups') | select | list | unique }}"
+
+- name: "Users | Create system users"
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    shell: "{{ item.shell | default('/bin/bash') }}"
+    groups: "{{ item.groups | default('') }}"
+    append: true
+    create_home: true
+    state: present
+  loop: "{{ homelab_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Users | Set authorized SSH keys"
+  ansible.posix.authorized_key:
+    user: "{{ item.name }}"
+    key: "{{ item.ssh_key }}"
+    state: present
+    exclusive: true
+  loop: "{{ homelab_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.ssh_key is defined and item.ssh_key | length > 0
+
+- name: "Users | Configure passwordless sudo"
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ item.name }}"
+    content: "{{ item.name }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  loop: "{{ homelab_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.sudo_passwordless | default(false)
+
+- name: "Users | Configure restricted sudo commands"
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ item.name }}"
+    content: |
+      {{ item.name }} ALL=(ALL) NOPASSWD: {{ item.sudo_commands | join(', ') }}
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  loop: "{{ homelab_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - not (item.sudo_passwordless | default(false))
+    - item.sudo_commands is defined
+    - item.sudo_commands | length > 0
