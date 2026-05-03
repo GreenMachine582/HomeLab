@@ -38,16 +38,16 @@ Per-node hardware specifications and deployed services.
 
 | Property      | Value                                                                 |
 |---------------|-----------------------------------------------------------------------|
-| Local IP      | 192.168.1.10                                                          |
+| Local IP      | `ip_edge`                                                             |
 | Tailscale IP  | 100.x.x.1                                                             |
 | Port forwards | None — Cloudflare Tunnel connects outbound; no router forwards needed |
 
 ### Host-Level Services
 
-| Service             | Purpose                                                                           |
-|---------------------|-----------------------------------------------------------------------------------|
-| Tailscale           | Subnet-router mode; exposes homelab to VPN                                        |
-| ufw / nftables      | Firewall: allow 22 (any), 53 (LAN only); 80/443 not needed with Cloudflare Tunnel |
+| Service             | Purpose                                                                                    |
+|---------------------|--------------------------------------------------------------------------------------------|
+| Tailscale           | Subnet-router mode; exposes homelab to VPN                                                 |
+| ufw / nftables      | Firewall: allow `ssh_port` (any), 53 (LAN only); 80/443 not needed with Cloudflare Tunnel |
 | fail2ban            | SSH (3 failures) and HTTP (10 failures) banning                                   |
 | SSH hardening       | Key-only, no root, no password auth                                               |
 | Unattended upgrades | Automatic security patches                                                        |
@@ -63,18 +63,18 @@ Per-node hardware specifications and deployed services.
 | `node-exporter` | Host metrics for Prometheus                                                                                                                                        |
 | Grafana Alloy   | Log shipping to Loki on `homelab-observe`                                                                                                                          |
 
-**Pi-hole DNS mappings** (`pihole/custom.list`):
+**Pi-hole DNS mappings** (source: `pihole_custom_dns` in `group_vars/edge.yml`):
 
-| Hostname                     | Resolves to                |
-|------------------------------|----------------------------|
-| `grafana.homelab.local`      | `192.168.1.11` (port 3000) |
-| `prometheus.homelab.local`   | `192.168.1.11` (port 9090) |
-| `alertmanager.homelab.local` | `192.168.1.11` (port 9093) |
-| `uptime.homelab.local`       | `192.168.1.11` (port 3001) |
-| `portainer.homelab.local`    | `192.168.1.11` (port 9000) |
-| `camunda.homelab.local`      | `192.168.1.20` (port 8080) |
-| `greentechhub.homelab.local` | `192.168.1.21` (port 8000) |
-| `jellyfin.homelab.local`     | `192.168.1.22` (port 8096) |
+| Hostname                     | Resolves to              |
+|------------------------------|--------------------------|
+| `grafana.homelab.local`      | `ip_observe` (port 3000) |
+| `prometheus.homelab.local`   | `ip_observe` (port 9090) |
+| `alertmanager.homelab.local` | `ip_observe` (port 9093) |
+| `uptime.homelab.local`       | `ip_observe` (port 3001) |
+| `portainer.homelab.local`    | `ip_observe` (port 9000) |
+| `camunda.homelab.local`      | `ip_svc_01` (port 8080)  |
+| `greentechhub.homelab.local` | `ip_svc_02` (port 8000)  |
+| `jellyfin.homelab.local`     | `ip_svc_03` (port 8096)  |
 
 Clients access services directly at `http://<hostname>:<port>`. Internal traffic travels over Tailscale (encrypted) so a separate TLS layer is not required.
 
@@ -90,7 +90,7 @@ Clients access services directly at `http://<hostname>:<port>`. Internal traffic
 
 | Property     | Value         |
 |--------------|---------------|
-| Local IP     | 192.168.1.11  |
+| Local IP     | `ip_observe`  |
 | Tailscale IP | 100.x.x.2     |
 | Public ports | None          |
 
@@ -101,7 +101,7 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 | Service             | Purpose                                                           |
 |---------------------|-------------------------------------------------------------------|
 | Tailscale           | Direct VPN node; independent of edge; own Tailscale IP (100.x.x.2) |
-| ufw / nftables      | Firewall: allow 22, service ports (LAN / VPN only)               |
+| ufw / nftables      | Firewall: allow `ssh_port`, service ports (LAN / VPN only)       |
 | SSH hardening       | Key-only, no root, no password auth                               |
 | Unattended upgrades | Automatic security patches                                        |
 
@@ -135,7 +135,7 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 
 | Property     | Value         |
 |--------------|---------------|
-| Local IP     | 192.168.1.20  |
+| Local IP     | `ip_svc_01`   |
 | Tailscale IP | 100.x.x.3     |
 | Public ports | None          |
 
@@ -146,7 +146,7 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 | Service             | Purpose                                                           |
 |---------------------|-------------------------------------------------------------------|
 | Tailscale           | Direct VPN node; independent of edge; own Tailscale IP (100.x.x.3) |
-| ufw / nftables      | Firewall: allow 22, 8080, 5432, 9200 (LAN / VPN only)           |
+| ufw / nftables      | Firewall: allow `ssh_port`, 8080, 5432, 9200 (LAN / VPN only)   |
 | SSH hardening       | Key-only, no root, no password auth                               |
 | Unattended upgrades | Automatic security patches                                        |
 
@@ -207,7 +207,7 @@ docker compose --profile camunda up -d
 
 | Property     | Value         |
 |--------------|---------------|
-| Local IP     | 192.168.1.21  |
+| Local IP     | `ip_svc_02`   |
 | Tailscale IP | 100.x.x.4     |
 | Public ports | None          |
 
@@ -228,7 +228,7 @@ Tailscale runs directly on this node — reachable over VPN even if `homelab-edg
 
 ### Routing
 
-- **Internal:** Pi-hole resolves `greentechhub.homelab.local` → `192.168.1.21`; access via `http://greentechhub.homelab.local:8000`
+- **Internal:** Pi-hole resolves `greentechhub.homelab.local` → `ip_svc_02`; access via `http://greentechhub.homelab.local:8000`
 - **External:** Cloudflare Tunnel routes `yourdomain.com` → `svc-02:8000`
 
 ### Deployment
@@ -251,7 +251,7 @@ ansible-playbook playbooks/deploy_svc.yml --tags greentechhub
 
 | Property     | Value         |
 |--------------|---------------|
-| Local IP     | 192.168.1.22  |
+| Local IP     | `ip_svc_03`   |
 | Tailscale IP | 100.x.x.5     |
 | Public ports | None          |
 
@@ -268,7 +268,7 @@ Tailscale runs directly on this node — reachable over VPN even if `homelab-edg
 
 ### Routing
 
-- **Internal:** Pi-hole resolves `jellyfin.homelab.local` → `192.168.1.22`; access via `http://jellyfin.homelab.local:8096`
+- **Internal:** Pi-hole resolves `jellyfin.homelab.local` → `ip_svc_03`; access via `http://jellyfin.homelab.local:8096`
 - **External:** Cloudflare Tunnel routes `jellyfin.yourdomain.com` → `svc-03:8096`
 
 ### Future Enhancements

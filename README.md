@@ -41,9 +41,9 @@ Phase 3:  homelab-edge ──────► other nodes         (edge deploys o
 Phase 4:  GitHub push ──► n8n/Camunda ──► edge     (automated deploys via automation endpoint)
 ```
 
-After Phase 1, all deployments are driven by Ansible playbooks running on the edge node. On push to `master`, a minimal 
-GitHub Actions workflow POSTs to an n8n or Camunda endpoint, which SSHes to the edge as the `deploy` user and runs 
-`scripts/deploy.sh`. The edge is the sole Ansible control node — GitHub never connects directly to any homelab node.
+After Phase 1, all deployments are driven by Ansible playbooks running on the edge node. On push to `master`, a minimal
+GitHub Actions workflow POSTs to an n8n or Camunda endpoint, which SSHes to the edge as the `deploy` user and runs
+`ansible-playbook` directly. The edge is the sole Ansible control node — GitHub never connects directly to any homelab node.
 
 ---
 
@@ -58,10 +58,11 @@ homelab/
   inventories/
     bootstrap.ini             # Phase 1: bootstrap edge from PC
     prod.ini                  # All nodes, production groups
-    staging.ini               # Future: staging environment
 
   group_vars/
-    all.yml                   # Common: timezone, NTP, users
+    all/
+      main.yml                # Common: timezone, NTP, users, node IPs (ip_*, lan_subnet), SSH port
+      vault.yml               # Ansible Vault: all secrets (gitignored)
     edge.yml                  # Edge-specific: Tailscale subnet, firewall rules
     observe.yml               # Observability: retention, alert endpoints
     svc.yml                   # Service nodes: Docker daemon config, resource limits
@@ -85,51 +86,45 @@ homelab/
     healthcheck.yml           # Verify all services are healthy
 
   roles/
-    base_hardening/           # SSH hardening, firewall, fail2ban, sysctl
+    base_hardening/           # SSH hardening, sysctl
     docker/                   # Docker install and daemon config
     docker_compose/           # Docker Compose plugin
     tailscale/                # Tailscale install and config
-    firewall/                 # ufw/nftables rules
-    fail2ban/                 # SSH + HTTP jails
+    firewall/                 # ufw rules
+    fail2ban/                 # SSH + HTTP jails (templates/jail.conf.j2)
     node_exporter/            # Prometheus node exporter
     cadvisor/                 # Container metrics (svc nodes)
     alloy/                    # Grafana Alloy (logs → Loki)
-    edge_services/            # cloudflared, Pi-hole, Unbound
-    observe_services/         # Prometheus, Loki, Grafana, Alertmanager, Uptime Kuma
-    camunda/                  # Camunda 8 stack
-    greentechhub/             # Django application
-    jellyfin/                 # Media server
+    users/                    # System user creation (admin, homelab, deploy)
+    edge_services/            # cloudflared, Pi-hole, Unbound, Caddy
+    observe_services/         # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma
+    camunda/                  # Camunda 8 + n8n + discord-gateway env rendering
 
-  compose/
-    edge.yml                  # Edge services
-    observe.yml               # Observability stack
-    camunda.yml               # Camunda 8 + dependencies
-    greentechhub.yml          # Django + Redis + Celery
-    jellyfin.yml              # Media server
+  # Docker Compose stacks (at repo root, deployed per-node)
+  docker-compose.edge.yml     # cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter
+  docker-compose.observe.yml  # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer
+  docker-compose.svc01.yml    # Camunda 8, Elasticsearch, n8n, discord-gateway, Portainer Agent
 
-  templates/
-    cloudflared/config.yml.j2
-    pihole/custom.list.j2
-    prometheus/
-      prometheus.yml.j2
-      alerts.yml.j2
-    alertmanager/alertmanager.yml.j2
-    grafana/
-      datasources.yml.j2
-      dashboards/
-    loki/loki.yml.j2
-    postgres/postgresql.conf.j2
-    elasticsearch/elasticsearch.yml.j2
-    alloy/config.alloy.j2
+  # Jinja2 templates live inside each role at roles/<role>/templates/
+  # Key templates:
+  #   roles/alloy/templates/config.alloy.j2
+  #   roles/edge_services/templates/cloudflared/config.yml.j2
+  #   roles/edge_services/templates/pihole/custom.list.j2
+  #   roles/observe_services/templates/prometheus/prometheus.yml.j2
+  #   roles/observe_services/templates/alertmanager/alertmanager.yml.j2
+  #   roles/observe_services/templates/loki/loki.yml.j2
+  #   roles/observe_services/templates/ntfy/server.yml.j2
+  #   roles/observe_services/templates/grafana/datasources.yml.j2
+  #   roles/fail2ban/templates/jail.conf.j2
+  #   roles/camunda/templates/{camunda,n8n,discord_gateway}/{env,env.secrets}.j2
 
   secrets/
     vault.yml                 # Ansible Vault: passwords, API keys, certificates
     vault.yml.example         # Template — commit this, never vault.yml itself
 
   scripts/
-    backup_databases.sh       # Manual database backup
-    test_connectivity.sh      # Verify Tailscale mesh
-    deploy.sh                 # Pull latest repo + run specified playbook
+    backup_databases.sh       # Thin wrapper around playbooks/backup.yml
+    test_connectivity.sh      # LAN ping, Tailscale, SSH, HTTP endpoints, DNS checks
 
   docs/
     NETWORK.md                # IP assignments, firewall rules, Tailscale ACLs
@@ -150,13 +145,15 @@ IP assignments, firewall rules, DNS, Tailscale ACLs, and traffic flow diagrams a
 
 **Summary:**
 
-| Node              | Local IP      | Tailscale IP |
+| Node              | IP var        | Tailscale IP |
 |-------------------|---------------|--------------|
-| `homelab-edge`    | 192.168.1.10  | 100.x.x.1    |
-| `homelab-observe` | 192.168.1.11  | 100.x.x.2    |
-| `homelab-svc-01`  | 192.168.1.20  | 100.x.x.3    |
-| `homelab-svc-02`  | 192.168.1.21  | 100.x.x.4    |
-| `homelab-svc-03`  | 192.168.1.22  | 100.x.x.5    |
+| `homelab-edge`    | `ip_edge`     | 100.x.x.1    |
+| `homelab-observe` | `ip_observe`  | 100.x.x.2    |
+| `homelab-svc-01`  | `ip_svc_01`   | 100.x.x.3    |
+| `homelab-svc-02`  | `ip_svc_02`   | 100.x.x.4    |
+| `homelab-svc-03`  | `ip_svc_03`   | 100.x.x.5    |
+
+> IP values are defined in `inventories/group_vars/all/main.yml` (Network section). When changing IPs, also update the matching `ansible_host` entries in `inventories/prod.ini` — that file cannot use Jinja2 variables.
 
 - Internal DNS served by Pi-hole on `homelab-edge` (LAN only, port 53 firewalled)
 - External traffic enters via Cloudflare Tunnel — no router port forwards required

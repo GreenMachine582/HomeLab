@@ -36,15 +36,15 @@ Reference for IP assignments, firewall rules, DNS configuration, Tailscale ACLs,
 
 ### LAN (Static DHCP)
 
-| Node              | Local IP      | Role                           |
+| Node              | IP var        | Role                           |
 |-------------------|---------------|--------------------------------|
-| `homelab-edge`    | 192.168.1.10  | Edge, DNS, Ansible control     |
-| `homelab-observe` | 192.168.1.11  | Monitoring                     |
-| `homelab-svc-01`  | 192.168.1.20  | Camunda, databases             |
-| `homelab-svc-02`  | 192.168.1.21  | GreenTechHub                   |
-| `homelab-svc-03`  | 192.168.1.22  | Jellyfin                       |
+| `homelab-edge`    | `ip_edge`     | Edge, DNS, Ansible control     |
+| `homelab-observe` | `ip_observe`  | Monitoring                     |
+| `homelab-svc-01`  | `ip_svc_01`   | Camunda, databases             |
+| `homelab-svc-02`  | `ip_svc_02`   | GreenTechHub                   |
+| `homelab-svc-03`  | `ip_svc_03`   | Jellyfin                       |
 
-Configure static DHCP reservations on your router by MAC address. These values are also set in `host_vars/` and must stay in sync.
+IP values and `lan_subnet` are defined in `inventories/group_vars/all/main.yml` (Network section) — the single source of truth for all Ansible templates. When IPs change, update that file **and** the matching `ansible_host` entries in `inventories/prod.ini` (INI format cannot use Jinja2). Also configure static DHCP reservations on your router by MAC address.
 
 ### Tailscale (100.x.x.x)
 
@@ -56,7 +56,7 @@ Configure static DHCP reservations on your router by MAC address. These values a
 | `homelab-svc-02`  | 100.x.x.4     |
 | `homelab-svc-03`  | 100.x.x.5     |
 
-Tailscale IPs are assigned by the coordination server and stable per device. Update `group_vars/all.yml` if they change.
+Tailscale IPs are assigned by the coordination server and stable per device. Update `group_vars/all/main.yml` if they change.
 
 ### Service Ports
 
@@ -71,7 +71,7 @@ Tailscale IPs are assigned by the coordination server and stable per device. Upd
 | GreenTechHub      | `homelab-svc-02`  | 8000  |
 | Jellyfin          | `homelab-svc-03`  | 8096  |
 | Pi-hole admin     | `homelab-edge`    | 80    |
-| SSH (all nodes)   | all               | 22    |
+| SSH (all nodes)   | all               | `ssh_port` |
 
 ---
 
@@ -83,7 +83,7 @@ All nodes use `ufw` with a default-deny inbound policy. Rules are applied by the
 
 | Port | Protocol | Source  | Reason                        |
 |------|----------|---------|-------------------------------|
-| 22   | TCP      | any     | SSH admin access              |
+| `ssh_port` | TCP  | any     | SSH admin access              |
 | 53   | TCP/UDP  | LAN     | Pi-hole DNS (LAN only)        |
 | 80   | TCP      | LAN     | Pi-hole admin UI (LAN only)   |
 
@@ -93,7 +93,7 @@ No ports are forwarded from the router. Cloudflare Tunnel connects outbound — 
 
 | Port | Protocol | Source    | Reason                        |
 |------|----------|-----------|-------------------------------|
-| 22   | TCP      | LAN / VPN | SSH (edge + admin devices)    |
+| `ssh_port` | TCP  | LAN / VPN | SSH (edge + admin devices)    |
 | 3000 | TCP      | LAN / VPN | Grafana                       |
 | 9090 | TCP      | LAN / VPN | Prometheus                    |
 | 9093 | TCP      | LAN / VPN | Alertmanager                  |
@@ -106,7 +106,7 @@ No public exposure. Accessible via Tailscale from admin devices.
 
 | Port | Protocol | Source    | Reason                        |
 |------|----------|-----------|-------------------------------|
-| 22   | TCP      | LAN / VPN | SSH (edge only)               |
+| `ssh_port` | TCP  | LAN / VPN | SSH (edge only)               |
 | 8080 | TCP      | LAN / VPN | Camunda                       |
 | 5432 | TCP      | LAN / VPN | PostgreSQL (internal only)    |
 | 9200 | TCP      | LAN / VPN | Elasticsearch (internal only) |
@@ -115,7 +115,7 @@ No public exposure. Accessible via Tailscale from admin devices.
 
 | Port | Protocol | Source    | Reason                        |
 |------|----------|-----------|-------------------------------|
-| 22   | TCP      | LAN / VPN | SSH (edge only)               |
+| `ssh_port` | TCP  | LAN / VPN | SSH (edge only)               |
 | 8000 | TCP      | LAN / VPN | GreenTechHub (svc-02)         |
 | 8096 | TCP      | LAN / VPN | Jellyfin (svc-03)             |
 
@@ -134,22 +134,21 @@ ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags firewa
 
 ### Internal — Pi-hole + Unbound
 
-Pi-hole on `homelab-edge` (192.168.1.10) is the DNS server for all LAN clients. Set it as the primary DNS on your 
+Pi-hole on `homelab-edge` (`ip_edge`) is the DNS server for all LAN clients. Set it as the primary DNS on your 
 router's DHCP config.
 
-Internal hostnames are defined in `templates/pihole/custom.list.j2` and deployed by Ansible. Do not edit 
-`/etc/pihole/custom.list` directly on the node.
+Internal hostnames are driven by `pihole_custom_dns` in `group_vars/edge.yml` and rendered via `roles/edge_services/templates/pihole/custom.list.j2`. Do not edit `/etc/pihole/custom.list` directly — it is overwritten on every deploy.
 
 | Hostname                     | Resolves to   | Port |
 |------------------------------|---------------|------|
-| `grafana.homelab.local`      | 192.168.1.11  | 3000 |
-| `prometheus.homelab.local`   | 192.168.1.11  | 9090 |
-| `alertmanager.homelab.local` | 192.168.1.11  | 9093 |
-| `uptime.homelab.local`       | 192.168.1.11  | 3001 |
-| `portainer.homelab.local`    | 192.168.1.11  | 9000 |
-| `camunda.homelab.local`      | 192.168.1.20  | 8080 |
-| `greentechhub.homelab.local` | 192.168.1.21  | 8000 |
-| `jellyfin.homelab.local`     | 192.168.1.22  | 8096 |
+| `grafana.homelab.local`      | `ip_observe`  | 3000 |
+| `prometheus.homelab.local`   | `ip_observe`  | 9090 |
+| `alertmanager.homelab.local` | `ip_observe`  | 9093 |
+| `uptime.homelab.local`       | `ip_observe`  | 3001 |
+| `portainer.homelab.local`    | `ip_observe`  | 9000 |
+| `camunda.homelab.local`      | `ip_svc_01`   | 8080 |
+| `greentechhub.homelab.local` | `ip_svc_02`   | 8000 |
+| `jellyfin.homelab.local`     | `ip_svc_03`   | 8096 |
 
 Clients access services at `http://<hostname>:<port>`. Traffic between nodes travels over Tailscale (encrypted), so a 
 separate internal TLS layer is not required.
@@ -159,7 +158,7 @@ lookups directly against root servers — no third-party upstream DNS.
 
 ### Adding a New Internal Hostname
 
-1. Add an entry to `templates/pihole/custom.list.j2`
+1. Add an entry to `pihole_custom_dns` in `group_vars/edge.yml`
 2. Run the edge deploy playbook:
    ```bash
    ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags pihole
@@ -181,12 +180,12 @@ Pi-hole has no involvement in external DNS resolution.
 Tailscale is installed on **every node** individually. Each node has its own Tailscale IP and maintains a direct 
 encrypted connection to the Tailscale coordination server, independently of all other nodes.
 
-`homelab-edge` additionally runs in **subnet router** mode, advertising `192.168.1.0/24` to the Tailscale network. This 
+`homelab-edge` additionally runs in **subnet router** mode, advertising `lan_subnet` to the Tailscale network. This 
 is a convenience for reaching LAN devices that do not have Tailscale installed (e.g. a router, NAS, or IoT device) — it 
 is not a dependency for accessing homelab nodes.
 
 Because every node has its own Tailscale connection, the edge going dark has no impact on your ability to SSH into or 
-manage any other node over VPN. LAN access (direct IP on port 22) remains available regardless.
+manage any other node over VPN. LAN access (direct IP on `ssh_port`) remains available regardless.
 
 ### ACLs
 
@@ -205,7 +204,7 @@ Tailscale ACLs are defined in the Tailscale admin console (not in this repo). Re
 Tag admin devices in the Tailscale console as `tag:admin`. This gives you fine-grained per-node ACL control — tighter 
 than a blanket subnet route allow rule.
 
-> The edge subnet router (`192.168.1.0/24`) should **not** be granted broad access in ACLs. It exists only to reach 
+> The edge subnet router (`lan_subnet`) should **not** be granted broad access in ACLs. It exists only to reach 
 > non-Tailscale LAN devices; homelab nodes are accessed directly by their own Tailscale IPs.
 
 ### Key Rotation
@@ -243,7 +242,7 @@ No ports open on the router. No direct internet exposure of any homelab node.
 ### Internal Request (LAN Client)
 
 ```
-LAN client → Pi-hole DNS (192.168.1.10:53)
+LAN client → Pi-hole DNS (<ip_edge>:53)
     → resolves service.homelab.local → node IP
     → direct connection to node:port over LAN
 ```
@@ -252,7 +251,7 @@ LAN client → Pi-hole DNS (192.168.1.10:53)
 
 ```
 homelab-edge (homelab user)
-    → SSH to target node (22)
+    → SSH to target node (<ssh_port>)
     → executes tasks as homelab user with passwordless sudo
 ```
 

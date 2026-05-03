@@ -32,6 +32,7 @@ All configuration is managed by Ansible. Do not edit config files directly on no
   * [Tuning & Maintenance](#tuning--maintenance)
     * [Checking Stack Health](#checking-stack-health)
     * [Redeploying the Observability Stack](#redeploying-the-observability-stack)
+    * [Storage Pressure](#storage-pressure)
 <!-- TOC -->
 
 ---
@@ -47,7 +48,7 @@ All configuration is managed by Ansible. Do not edit config files directly on no
 | Uptime Kuma  | 3001  | HTTP/HTTPS endpoint availability monitoring  |
 | Portainer    | 9000  | Docker management UI across all nodes        |
 
-All services run as Docker containers on `homelab-observe` (192.168.1.11). Deployed and configured by `playbooks/deploy_observe.yml`.
+All services run as Docker containers on `homelab-observe` (`ip_observe`). Deployed and configured by `playbooks/deploy_observe.yml`.
 
 ---
 

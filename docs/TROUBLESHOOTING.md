@@ -116,7 +116,7 @@ ansible -i inventories/prod.ini <node> -m ping
 ansible-playbook -i inventories/prod.ini playbooks/healthcheck.yml -vvv
 ```
 
-Common causes: wrong IP in `host_vars/`, SSH key not deployed to the node, firewall blocking port 22 from edge.
+Common causes: wrong IP in `host_vars/`, SSH key not deployed to the node, firewall blocking `ssh_port` from edge.
 
 ---
 
@@ -247,8 +247,8 @@ docker ps | grep pihole
 
 **Check 2 — Test resolution directly against Pi-hole**
 ```bash
-dig @192.168.1.10 grafana.homelab.local
-dig @192.168.1.10 example.com
+dig @<ip_edge> grafana.homelab.local
+dig @<ip_edge> example.com
 ```
 
 If `grafana.homelab.local` fails but `example.com` resolves, the `custom.list` entry is missing or Pi-hole needs to be reloaded:
@@ -259,7 +259,7 @@ docker exec pihole pihole restartdns
 
 **Check 3 — Is the client using Pi-hole as its DNS server?**
 
-The client's DNS must point to `192.168.1.10`. Check DHCP config on the router.
+The client's DNS must point to `ip_edge`. Check DHCP config on the router.
 
 ### Unbound not resolving upstream
 
@@ -516,7 +516,7 @@ ssh deploy@homelab-edge
 The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, and Pi-hole. While it is down:
 
 - **Other nodes remain accessible** — each node has its own Tailscale connection, so you can still SSH to `homelab-observe`, `svc-01`, etc. directly over VPN
-- **LAN SSH also works** — connect directly to `192.168.1.11`, `.20` etc. from any device on the same network
+- **LAN SSH also works** — connect directly to `ip_observe`, `ip_svc_01` etc. from any device on the same network
 - **Internal DNS is down** — `.homelab.local` hostnames won't resolve; use IPs directly until the edge is restored
 - **External services are down** — Cloudflare Tunnel runs on the edge; public hostnames will be unreachable
 

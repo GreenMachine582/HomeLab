@@ -356,7 +356,7 @@ The `bootstrap_edge.yml` playbook fully configures the edge node:
 | Install Git                |                                            |
 | Clone repo                 | `/opt/homelab`, owned by `homelab`         |
 | Harden SSH                 | Key-only auth, no root login               |
-| Configure firewall         | ufw default-deny; allow 22 (any), 53 (LAN) |
+| Configure firewall         | ufw default-deny; allow `ssh_port` (any), 53 (LAN) |
 | Enable unattended upgrades |                                            |
 | Install Tailscale          | Not started yet; configured in Phase 2     |
 
