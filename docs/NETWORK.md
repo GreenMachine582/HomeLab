@@ -125,7 +125,7 @@ Firewall rules are managed by Ansible. Do not apply `ufw` changes manually — t
 deploy. Instead, edit `group_vars/<node>.yml` or the `firewall` role and re-run the relevant playbook:
 
 ```bash
-ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags firewall --vault-password-file .vault_pass
+ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags firewall
 ```
 
 ---
@@ -162,7 +162,7 @@ lookups directly against root servers — no third-party upstream DNS.
 1. Add an entry to `templates/pihole/custom.list.j2`
 2. Run the edge deploy playbook:
    ```bash
-   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags pihole --vault-password-file .vault_pass
+   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags pihole
    ```
 
 ### External — Cloudflare
@@ -210,11 +210,11 @@ than a blanket subnet route allow rule.
 
 ### Key Rotation
 
-Tailscale auth keys are stored in `secrets/vault.yml`. On expiry, generate a new reusable key from the Tailscale admin 
+Tailscale auth keys are stored in `inventories/group_vars/all/vault.yml`. On expiry, generate a new reusable key from the Tailscale admin 
 console and update the vault:
 
 ```bash
-ansible-vault edit secrets/vault.yml --vault-password-file .vault_pass
+ansible-vault edit inventories/group_vars/all/vault.yml
 ```
 
 Then re-run the relevant deploy playbook to apply the new key.

@@ -33,8 +33,6 @@ Common issues, diagnostic commands, and recovery procedures. Organised by area.
     * [PostgreSQL not starting](#postgresql-not-starting)
     * [Restoring a PostgreSQL backup](#restoring-a-postgresql-backup)
     * [Elasticsearch heap pressure](#elasticsearch-heap-pressure)
-  * [Automated Deploys (Phase 4)](#automated-deploys-phase-4)
-    * [Deploy not triggering after a push to main](#deploy-not-triggering-after-a-push-to-main)
     * [Manual deploy fallback](#manual-deploy-fallback)
   * [Disaster Recovery](#disaster-recovery)
     * [Edge node SD card failure](#edge-node-sd-card-failure)
@@ -73,7 +71,7 @@ journalctl -n 100 --no-pager
 Run the healthcheck playbook for a full sweep:
 
 ```bash
-ansible-playbook -i inventories/prod.ini playbooks/healthcheck.yml --vault-password-file .vault_pass
+ansible-playbook -i inventories/prod.ini playbooks/healthcheck.yml
 ```
 
 ---
@@ -129,14 +127,13 @@ Common causes: wrong IP in `host_vars/`, SSH key not deployed to the node, firew
 Ansible is idempotent — re-running a playbook is always safe. Fix the underlying issue and re-run:
 
 ```bash
-ansible-playbook -i inventories/prod.ini playbooks/<playbook>.yml --vault-password-file .vault_pass
+ansible-playbook -i inventories/prod.ini playbooks/<playbook>.yml
 ```
 
 To resume from a specific task after a failure:
 
 ```bash
 ansible-playbook -i inventories/prod.ini playbooks/<playbook>.yml \
-  --vault-password-file .vault_pass \
   --start-at-task "Task name here"
 ```
 
@@ -150,23 +147,18 @@ Cause: wrong `.vault_pass` file or the vault was created with a different passwo
 
 ```bash
 # Test vault access
-ansible-vault view secrets/vault.yml --vault-password-file .vault_pass
+ansible-vault view inventories/group_vars/all/vault.yml
 ```
 
-If access fails, the password is wrong. If the vault file itself is corrupted, restore it from Git:
-
-```bash
-git checkout HEAD -- secrets/vault.yml
-```
+If access fails, the password is wrong. If the vault file is lost or corrupted, recreate it from `inventories/group_vars/all/vault.yml.example` — the vault is gitignored and cannot be restored from git.
 
 ### "sudo: a password is required" during bootstrap
 
-The `--ask-become-pass` flag is required for bootstrap playbooks (before the `homelab` user is created):
+The bootstrap playbook uses the `admin` user whose sudo password is read from the vault (`vault_admin_become_password`). If that variable is missing or wrong, add it to the vault and retry:
 
 ```bash
-ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
-  --vault-password-file .vault_pass \
-  --ask-become-pass
+ansible-vault edit inventories/group_vars/all/vault.yml
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
 ```
 
 After bootstrap, subsequent playbooks use the `homelab` user with passwordless sudo.
@@ -238,8 +230,7 @@ Do not use `docker compose up` manually — Ansible manages Compose files. To re
 
 ```bash
 ansible-playbook -i inventories/prod.ini playbooks/deploy_<node>.yml \
-  --tags <service-tag> \
-  --vault-password-file .vault_pass
+  --tags <service-tag>
 ```
 
 ---
@@ -289,7 +280,7 @@ Hostnames are defined in `templates/pihole/custom.list.j2`. If a hostname is mis
 1. Add it to the template
 2. Redeploy:
    ```bash
-   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags pihole --vault-password-file .vault_pass
+   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags pihole
    ```
 
 ---
@@ -309,7 +300,7 @@ Common cause: auth key expired. Re-authenticate:
 sudo tailscale up --authkey=<new-key>
 ```
 
-Update the key in `secrets/vault.yml` and re-run the deploy playbook to keep it in sync.
+Update the key in `inventories/group_vars/all/vault.yml` and re-run the deploy playbook to keep it in sync.
 
 ### Cannot reach a node over Tailscale
 
@@ -332,7 +323,7 @@ journalctl -u tailscaled --no-pager -n 50
 sudo tailscale up --authkey=<new-key>
 ```
 
-Update the key in `secrets/vault.yml` and re-run the node's deploy playbook to keep it in sync.
+Update the key in `inventories/group_vars/all/vault.yml` and re-run the node's deploy playbook to keep it in sync.
 
 **Check 3 — ACL blocking the connection?**
 
@@ -367,7 +358,7 @@ Re-authenticate the tunnel:
 2. Update the credentials file path in `host_vars/homelab-edge.yml`
 3. Redeploy:
    ```bash
-   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags cloudflared --vault-password-file .vault_pass
+   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags cloudflared
    ```
 
 **Check 3 — Hostname not configured in tunnel**
@@ -393,7 +384,7 @@ Open `http://prometheus.homelab.local:9090/targets` — all targets should show 
 Fix: ensure the node is running `node-exporter` and port 9100 is open in its firewall:
 
 ```bash
-ansible-playbook -i inventories/prod.ini playbooks/deploy_<node>.yml --tags node-exporter --vault-password-file .vault_pass
+ansible-playbook -i inventories/prod.ini playbooks/deploy_<node>.yml --tags node-exporter
 ```
 
 **Check 3 — Are Alloy agents shipping logs?**
@@ -416,11 +407,11 @@ ssh admin@homelab-observe
 docker logs alertmanager --tail 50
 ```
 
-Common cause: incorrect Slack webhook URL or API key in `secrets/vault.yml`. Update the vault and redeploy:
+Common cause: incorrect Slack webhook URL or API key in `inventories/group_vars/all/vault.yml`. Update the vault and redeploy:
 
 ```bash
-ansible-vault edit secrets/vault.yml --vault-password-file .vault_pass
-ansible-playbook -i inventories/prod.ini playbooks/deploy_observe.yml --tags alertmanager --vault-password-file .vault_pass
+ansible-vault edit inventories/group_vars/all/vault.yml
+ansible-playbook -i inventories/prod.ini playbooks/deploy_observe.yml --tags alertmanager
 ```
 
 ---
@@ -479,7 +470,7 @@ elasticsearch_heap: "2g"   # Increase if RAM allows; do not exceed 50% of availa
 
 Redeploy:
 ```bash
-ansible-playbook -i inventories/prod.ini playbooks/deploy_svc.yml --tags camunda --vault-password-file .vault_pass
+ansible-playbook -i inventories/prod.ini playbooks/deploy_svc.yml --tags camunda
 ```
 
 ---
@@ -535,13 +526,11 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
 2. Boot the edge node and find its IP (check router DHCP)
 3. From your PC, run the bootstrap playbook (see `BOOTSTRAP.md` Phase 1):
    ```bash
-   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
-     --vault-password-file .vault_pass \
-     --ask-become-pass
+   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
    ```
 4. Run Phase 2 to restore edge services:
    ```bash
-   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --vault-password-file .vault_pass
+   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml
    ```
 5. Re-authenticate Cloudflare Tunnel if credentials have expired
 6. Pi-hole `custom.list` and all config restore from the Git repo automatically
@@ -554,7 +543,7 @@ Since the edge node is intact, recovery is straightforward:
 2. From the edge node, bootstrap and redeploy:
    ```bash
    ansible-playbook -i inventories/prod.ini playbooks/bootstrap_node.yml --limit <node> --ask-pass --ask-become-pass
-   ansible-playbook -i inventories/prod.ini playbooks/deploy_<role>.yml --vault-password-file .vault_pass
+   ansible-playbook -i inventories/prod.ini playbooks/deploy_<role>.yml
    ```
 3. Restore databases if needed (see [Databases](#databases) above)
 

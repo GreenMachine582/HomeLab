@@ -188,7 +188,7 @@ rate-limits and filters before traffic reaches the homelab
 5. **Tailscale VPN** — per-node ACLs restrict inter-node communication; admin access requires Tailscale login with MFA
 6. **Monitoring** — Alertmanager notifies on failed SSH attempts; Uptime Kuma alerts on service downtime
 
-Secrets are stored in `secrets/vault.yml`. See `secrets/vault.yml.example` for required variable names.
+Secrets are stored in `inventories/group_vars/all/vault.yml`. See `inventories/group_vars/all/vault.yml.example` for required variable names.
 
 ---
 
@@ -205,7 +205,7 @@ Secrets are stored in `secrets/vault.yml`. See `secrets/vault.yml.example` for r
 Run backups on demand:
 
 ```bash
-ansible-playbook playbooks/backup.yml --vault-password-file .vault_pass
+ansible-playbook playbooks/backup.yml
 ```
 
 For disaster recovery procedures see [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md#disaster-recovery).

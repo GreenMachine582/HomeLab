@@ -8,9 +8,11 @@ Per-node hardware specifications and deployed services.
     * [Host-Level Services](#host-level-services)
     * [Dockerized Services](#dockerized-services)
   * [🟨 `homelab-observe` — RPi 4 Model B](#-homelab-observe--rpi-4-model-b)
+    * [Host-Level Services](#host-level-services-1)
     * [Dockerized Services](#dockerized-services-1)
     * [Metrics Scope](#metrics-scope)
   * [🟥 `homelab-svc-01` — RPi 5 Model B](#-homelab-svc-01--rpi-5-model-b)
+    * [Host-Level Services](#host-level-services-2)
     * [Dockerized Services](#dockerized-services-2)
     * [Resource Allocation (Guidance)](#resource-allocation-guidance)
     * [Deployment Notes](#deployment-notes)
@@ -234,7 +236,7 @@ Tailscale runs directly on this node — reachable over VPN even if `homelab-edg
 Configuration lives in `host_vars/homelab-svc-02.yml`; secrets in Ansible Vault.
 
 ```bash
-ansible-playbook playbooks/deploy_svc.yml --tags greentechhub --vault-password-file .vault_pass
+ansible-playbook playbooks/deploy_svc.yml --tags greentechhub
 ```
 
 ---

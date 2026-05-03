@@ -23,7 +23,7 @@ steps are kept to the absolute minimum.
     * [1.4 Generate SSH Keys](#14-generate-ssh-keys)
     * [1.5 Add GitHub Deploy Key](#15-add-github-deploy-key)
     * [1.6 Copy SSH Key to Edge Node](#16-copy-ssh-key-to-edge-node)
-    * [1.7 Verify SSH Access](#17-verify-ssh-access)
+    * [1.7 Load SSH Key into Agent](#17-load-ssh-key-into-agent)
     * [1.8 Create Ansible Vault](#18-create-ansible-vault)
     * [1.9 Configure Bootstrap Inventory](#19-configure-bootstrap-inventory)
     * [1.10 Run the Bootstrap Playbook](#110-run-the-bootstrap-playbook)
@@ -263,20 +263,27 @@ This allows the edge node to clone and pull the repo without a personal access t
 ssh-copy-id -i .ssh/homelab-edge.pub admin@homelab-edge.local
 ```
 
-Enter the default `admin` password when prompted. This is the only time a password is used for SSH.
+Enter the `admin` password when prompted. This is the only time a password is used for SSH.
 
 ---
 
-### 1.7 Verify SSH Access
+### 1.7 Load SSH Key into Agent
+
+Load the key into `ssh-agent` once so Ansible doesn't prompt for the passphrase on every task:
 
 ```bash
 eval "$(ssh-agent -s)"
 ssh-add .ssh/homelab-edge
+```
+
+Verify the connection:
+
+```bash
 ssh admin@homelab-edge.local
 exit
 ```
 
-If the connection succeeds without a password prompt (other than the key passphrase), the key is installed correctly.
+If the connection succeeds without a password prompt, the key is installed correctly. The agent stays active for the rest of your terminal session.
 
 ---
 
@@ -292,28 +299,16 @@ chmod 600 .vault_pass
 Create the vault:
 
 ```bash
-ansible-vault create secrets/vault.yml --vault-password-file .vault_pass
+EDITOR=nano ansible-vault create inventories/group_vars/all/vault.yml
 ```
 
-Populate it using `secrets/vault.yml.example` as a reference. Save and exit (`:wq` in Vim).
-
-> Keep `.vault_pass` out of version control. It is listed in `.gitignore` by default.
+Populate it using `inventories/group_vars/all/vault.yml.example` as a reference. Save and exit (`:wq` in Vim).
 
 ---
 
 ### 1.9 Configure Bootstrap Inventory
 
-Edit `inventories/bootstrap.ini`:
-
-```ini
-[edge_bootstrap]
-homelab-edge ansible_host=192.168.1.x ansible_user=admin ansible_ssh_private_key_file=~/.ssh/homelab-edge
-
-[edge_bootstrap:vars]
-ansible_python_interpreter=/usr/bin/python3
-```
-
-Replace `192.168.1.x` with the IP found in step 1.3.
+Edit `inventories/bootstrap.ini` and replace `192.168.1.x` with the DHCP IP found in step 1.3
 
 Verify Ansible can reach the node:
 
@@ -334,14 +329,14 @@ homelab-edge | SUCCESS => {
 
 ### 1.10 Run the Bootstrap Playbook
 
+Make sure the SSH key is loaded in `ssh-agent` (step 1.7) before running.
+
 ```bash
 ansible-playbook -i inventories/bootstrap.ini \
-  playbooks/bootstrap_edge.yml \
-  --vault-password-file .vault_pass \
-  --ask-become-pass
+  playbooks/bootstrap_edge.yml
 ```
 
-Enter the `admin` sudo password when prompted. This is the last manual password entry.
+No password prompts — the SSH key passphrase is handled by `ssh-agent` and the `admin` sudo password is read from the vault (`vault_admin_become_password`).
 
 **Expected duration:** 10–15 minutes.
 
@@ -388,8 +383,7 @@ cd /opt/homelab
 
 ansible-playbook -i inventories/prod.ini \
   playbooks/deploy_edge.yml \
-  --limit homelab-edge \
-  --vault-password-file .vault_pass
+  --limit homelab-edge
 ```
 
 **What `deploy_edge.yml` does:**
@@ -436,8 +430,7 @@ ansible-playbook -i inventories/prod.ini \
 
 # Deploy the monitoring stack
 ansible-playbook -i inventories/prod.ini \
-  playbooks/deploy_observe.yml \
-  --vault-password-file .vault_pass
+  playbooks/deploy_observe.yml
 ```
 
 **What gets deployed:**
@@ -466,8 +459,7 @@ ansible-playbook -i inventories/prod.ini \
 # Deploy the Camunda stack
 ansible-playbook -i inventories/prod.ini \
   playbooks/deploy_svc.yml \
-  --tags camunda \
-  --vault-password-file .vault_pass
+  --tags camunda
 ```
 
 For `svc-02` (when provisioned):
@@ -479,8 +471,7 @@ ansible-playbook -i inventories/prod.ini \
 
 ansible-playbook -i inventories/prod.ini \
   playbooks/deploy_svc.yml \
-  --tags greentechhub \
-  --vault-password-file .vault_pass
+  --tags greentechhub
 ```
 
 > Use Docker Compose profiles on `svc-01` to bring up databases before dependent services:
