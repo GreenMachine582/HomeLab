@@ -9,9 +9,9 @@ name: Deploy
 #   DEPLOY_SECRET        — shared secret; validated by n8n/Camunda before executing
 
 on:
-  push:
-    branches:
-      - master
+#  push:
+#    branches:
+#      - master
   workflow_dispatch:
 
 concurrency:
