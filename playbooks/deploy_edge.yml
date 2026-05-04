@@ -2,15 +2,15 @@
 # playbooks/deploy_edge.yml
 #
 # Phase 2 — Deploys all edge services on homelab-edge.
-# Run from homelab-edge itself (or from PC targeting the edge via prod.ini).
+# Run from homelab-edge itself (or from PC targeting the edge via prod.yml).
 # Idempotent — safe to re-run on every deployment.
 #
 # Usage:
-#   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml \
+#   ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml \
 #     --limit homelab-edge --vault-password-file .vault_pass
 #
 # Tags:
-#   --tags hardening   Base OS hardening only
+#   --tags hardening   Base OS hardening only (Play 1)
 #   --tags firewall    UFW rules only
 #   --tags fail2ban    fail2ban only
 #   --tags tailscale   Tailscale only
@@ -21,26 +21,16 @@
 # Requires: roles/base_hardening, roles/users, roles/firewall,
 #           roles/fail2ban, roles/tailscale, roles/edge_services, roles/alloy
 
-- name: "Deploy | Edge | Host hardening and core services"
+# ── Play 1: Hardening ─────────────────────────────────────────────────────────
+# Runs first and in isolation. If hardening fails (e.g. sshd won't bind to
+# ssh_port, kernel params rejected) the play stops here — services are never
+# touched and the failure is unambiguous.
+- name: "Harden | Edge | Base OS hardening"
   hosts: edge
   become: true
   gather_facts: true
 
-  vars:
-    play_description: >
-      Deploys the full edge node service stack:
-      base hardening, firewall, fail2ban, Tailscale (subnet-router),
-      Pi-hole + Unbound (internal DNS), cloudflared (Cloudflare Tunnel),
-      Caddy (reverse proxy), node-exporter, and Grafana Alloy (log shipper).
-
-    compose_file: "docker-compose.edge.yml"
-    compose_dir: "{{ homelab_repo_path }}"
-
   pre_tasks:
-    - name: "Meta | Show play description"
-      ansible.builtin.debug:
-        msg: "{{ play_description }}"
-
     - name: "Meta | Update repo to latest"
       ansible.builtin.git:
         repo: "git@github.com:{{ vault_github_org }}/homelab.git"
@@ -56,6 +46,19 @@
     - role: base_hardening
       tags: [hardening]
 
+# ── Play 2: Firewall and services ─────────────────────────────────────────────
+# Runs only after hardening completes cleanly. SSH is confirmed on ssh_port
+# (enforced by wait_for in base_hardening) before any firewall rules are applied.
+- name: "Deploy | Edge | Firewall, fail2ban, and services"
+  hosts: edge
+  become: true
+  gather_facts: true
+
+  vars:
+    compose_file: "docker-compose.edge.yml"
+    compose_dir: "{{ homelab_repo_path }}"
+
+  roles:
     - role: firewall
       tags: [firewall]
       vars:

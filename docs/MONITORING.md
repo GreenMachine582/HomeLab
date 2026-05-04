@@ -75,7 +75,7 @@ Configured in `templates/prometheus/prometheus.yml.j2`. Targets are scraped ever
 1. Add the target to `templates/prometheus/prometheus.yml.j2` under `scrape_configs`
 2. Re-run the observe deploy:
    ```bash
-   ansible-playbook -i inventories/prod.ini playbooks/deploy_observe.yml --tags prometheus
+   ansible-playbook -i inventories/prod.yml playbooks/deploy_observe.yml --tags prometheus
    ```
 
 ### Retention
@@ -180,7 +180,7 @@ Both use Docker internal networking — no host port exposure required between c
 3. Place JSON in `templates/grafana/dashboards/`
 4. Re-run observe deploy:
    ```bash
-   ansible-playbook -i inventories/prod.ini playbooks/deploy_observe.yml --tags grafana
+   ansible-playbook -i inventories/prod.yml playbooks/deploy_observe.yml --tags grafana
    ```
 
 ### Credentials
@@ -208,7 +208,7 @@ Alerts are routed by severity:
 Channel credentials are stored in `inventories/group_vars/all/vault.yml`. Add or change channels in `templates/alertmanager/alertmanager.yml.j2`, then redeploy:
 
 ```bash
-ansible-playbook -i inventories/prod.ini playbooks/deploy_observe.yml --tags alertmanager
+ansible-playbook -i inventories/prod.yml playbooks/deploy_observe.yml --tags alertmanager
 ```
 
 Supported receivers (add as needed): Slack, email, PagerDuty, Gotify, Discord (via webhook), Pushover.
@@ -281,13 +281,13 @@ docker ps
 Full redeploy (safe to run at any time — idempotent):
 
 ```bash
-ansible-playbook -i inventories/prod.ini playbooks/deploy_observe.yml
+ansible-playbook -i inventories/prod.yml playbooks/deploy_observe.yml
 ```
 
 Tag-specific redeploy (faster):
 
 ```bash
-ansible-playbook -i inventories/prod.ini playbooks/deploy_observe.yml --tags grafana
+ansible-playbook -i inventories/prod.yml playbooks/deploy_observe.yml --tags grafana
 ```
 
 Available tags: `prometheus`, `loki`, `grafana`, `alertmanager`, `uptime-kuma`, `portainer`.

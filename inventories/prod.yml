@@ -1,0 +1,37 @@
+---
+# prod.yml
+# Production inventory — used from homelab-edge for all Phase 2+ deployments.
+# The homelab user (passwordless sudo) is used for all automation.
+#
+# ansible_host and ansible_port reference group_vars/all/main.yml variables —
+# update IPs or ssh_port in one place (main.yml) and they propagate automatically.
+# No manual sync required.
+
+all:
+  vars:
+    ansible_user: homelab
+    ansible_ssh_private_key_file: ~/.ssh/homelab
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_port: "{{ ssh_port }}"
+
+  children:
+    homelab:
+      children:
+        edge:
+          hosts:
+            homelab-edge:
+              ansible_host: "{{ ip_edge }}"
+
+        observe:
+          hosts:
+            homelab-observe:
+              ansible_host: "{{ ip_observe }}"
+
+        svc:
+          hosts:
+            homelab-svc-01:
+              ansible_host: "{{ ip_svc_01 }}"
+            # homelab-svc-02:
+            #   ansible_host: "{{ ip_svc_02 }}"   # Uncomment when provisioned
+            # homelab-svc-03:
+            #   ansible_host: "{{ ip_svc_03 }}"   # Uncomment when provisioned

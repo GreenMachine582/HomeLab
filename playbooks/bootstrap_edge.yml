@@ -61,11 +61,6 @@
         tailscale_up: false   # Tailscale started in Phase 2 (deploy_edge.yml)
 
   tasks:
-    # Restart sshd before UFW default-deny.
-    # Existing SSH session stays alive, avoiding lockout.
-    - name: "SSH | Restart sshd on new port before UFW default-deny"
-      meta: flush_handlers
-
     - name: "Ansible | Install Ansible on edge (control node)"
       ansible.builtin.apt:
         name:
@@ -119,10 +114,6 @@
         recurse: true
       tags: [repo]
 
-    # base_hardening (above) moves sshd to ssh_port before this task runs.
-    # The existing Ansible connection on port 22 persists through the sshd
-    # restart, so we open ssh_port here — not 22 — so the node is reachable
-    # on the correct port for all Phase 2+ connections.
     - name: "Firewall | Allow SSH on ssh_port from any"
       community.general.ufw:
         rule: allow
@@ -152,5 +143,5 @@
         msg: >
           homelab-edge bootstrap complete.
           SSH to the node as 'homelab' and run Phase 2:
-          ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml
+          ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml
           --limit homelab-edge --vault-password-file .vault_pass

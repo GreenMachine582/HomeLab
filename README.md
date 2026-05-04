@@ -57,7 +57,7 @@ homelab/
 
   inventories/
     bootstrap.ini             # Phase 1: bootstrap edge from PC
-    prod.ini                  # All nodes, production groups
+    prod.yml                  # All nodes, production groups
 
   group_vars/
     all/
@@ -153,7 +153,7 @@ IP assignments, firewall rules, DNS, Tailscale ACLs, and traffic flow diagrams a
 | `homelab-svc-02`  | `ip_svc_02`   | 100.x.x.4    |
 | `homelab-svc-03`  | `ip_svc_03`   | 100.x.x.5    |
 
-> IP values are defined in `inventories/group_vars/all/main.yml` (Network section). When changing IPs, also update the matching `ansible_host` entries in `inventories/prod.ini` — that file cannot use Jinja2 variables.
+> IP values are defined in `inventories/group_vars/all/main.yml` (Network section).
 
 - Internal DNS served by Pi-hole on `homelab-edge` (LAN only, port 53 firewalled)
 - External traffic enters via Cloudflare Tunnel — no router port forwards required

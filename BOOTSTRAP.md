@@ -381,7 +381,7 @@ SSH into the edge node, or run from the PC targeting the edge via the production
 ```bash
 cd /opt/homelab
 
-ansible-playbook -i inventories/prod.ini \
+ansible-playbook -i inventories/prod.yml \
   playbooks/deploy_edge.yml \
   --limit homelab-edge
 ```
@@ -423,13 +423,13 @@ Prerequisites: `homelab-observe` has the base OS installed and is reachable via 
 
 ```bash
 # Bootstrap the observe node
-ansible-playbook -i inventories/prod.ini \
+ansible-playbook -i inventories/prod.yml \
   playbooks/bootstrap_node.yml \
   --limit homelab-observe \
   --ask-pass --ask-become-pass
 
 # Deploy the monitoring stack
-ansible-playbook -i inventories/prod.ini \
+ansible-playbook -i inventories/prod.yml \
   playbooks/deploy_observe.yml
 ```
 
@@ -452,12 +452,12 @@ ansible-playbook -i inventories/prod.ini \
 
 ```bash
 # Bootstrap svc-01
-ansible-playbook -i inventories/prod.ini \
+ansible-playbook -i inventories/prod.yml \
   playbooks/bootstrap_node.yml \
   --limit homelab-svc-01
 
 # Deploy the Camunda stack
-ansible-playbook -i inventories/prod.ini \
+ansible-playbook -i inventories/prod.yml \
   playbooks/deploy_svc.yml \
   --tags camunda
 ```
@@ -465,11 +465,11 @@ ansible-playbook -i inventories/prod.ini \
 For `svc-02` (when provisioned):
 
 ```bash
-ansible-playbook -i inventories/prod.ini \
+ansible-playbook -i inventories/prod.yml \
   playbooks/bootstrap_node.yml \
   --limit homelab-svc-02
 
-ansible-playbook -i inventories/prod.ini \
+ansible-playbook -i inventories/prod.yml \
   playbooks/deploy_svc.yml \
   --tags greentechhub
 ```

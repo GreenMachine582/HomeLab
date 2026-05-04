@@ -44,7 +44,7 @@ Reference for IP assignments, firewall rules, DNS configuration, Tailscale ACLs,
 | `homelab-svc-02`  | `ip_svc_02`   | GreenTechHub                   |
 | `homelab-svc-03`  | `ip_svc_03`   | Jellyfin                       |
 
-IP values and `lan_subnet` are defined in `inventories/group_vars/all/main.yml` (Network section) — the single source of truth for all Ansible templates. When IPs change, update that file **and** the matching `ansible_host` entries in `inventories/prod.ini` (INI format cannot use Jinja2). Also configure static DHCP reservations on your router by MAC address.
+IP values and `lan_subnet` are defined in `inventories/group_vars/all/main.yml` (Network section) — the single source of truth for all Ansible templates. When IPs change, update `main.yml` only. Also configure static DHCP reservations on your router by MAC address.
 
 ### Tailscale (100.x.x.x)
 
@@ -125,7 +125,7 @@ Firewall rules are managed by Ansible. Do not apply `ufw` changes manually — t
 deploy. Instead, edit `group_vars/<node>.yml` or the `firewall` role and re-run the relevant playbook:
 
 ```bash
-ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags firewall
+ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml --tags firewall
 ```
 
 ---
@@ -161,7 +161,7 @@ lookups directly against root servers — no third-party upstream DNS.
 1. Add an entry to `pihole_custom_dns` in `group_vars/edge.yml`
 2. Run the edge deploy playbook:
    ```bash
-   ansible-playbook -i inventories/prod.ini playbooks/deploy_edge.yml --tags pihole
+   ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml --tags pihole
    ```
 
 ### External — Cloudflare

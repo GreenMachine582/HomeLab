@@ -64,6 +64,17 @@
   notify: Restart ssh
   tags: [ssh, security]
 
+- name: "Security | Flush handlers to restart sshd immediately"
+  meta: flush_handlers
+  tags: [ssh, security]
+
+- name: "Security | Verify sshd is listening on {{ ssh_port }}"
+  ansible.builtin.wait_for:
+    port: "{{ ssh_port }}"
+    host: 127.0.0.1
+    timeout: 30
+  tags: [ssh, security]
+
 - name: "Security | Apply kernel hardening sysctls"
   ansible.posix.sysctl:
     name: "{{ item.name }}"
