@@ -10,45 +10,19 @@
 #     --limit homelab-edge
 #
 # Tags:
-#   --tags hardening   Base OS hardening only (Play 1)
+#   --tags repo        Git pull only
 #   --tags firewall    UFW rules only
 #   --tags fail2ban    fail2ban only
 #   --tags tailscale   Tailscale only
 #   --tags docker      Docker Compose stack only
 #   --tags pihole      Pi-hole + Unbound only
+#   --tags caddy       Caddy reverse proxy config only
 #   --tags alloy       Grafana Alloy log shipper only
 #
-# Requires: roles/base_hardening, roles/users, roles/firewall,
-#           roles/fail2ban, roles/tailscale, roles/edge_services, roles/alloy
+# Requires: roles/firewall, roles/fail2ban, roles/tailscale, roles/edge_services, roles/alloy
+# Note: base_hardening runs in bootstrap_edge.yml (Phase 1) only.
+#       Run playbooks/update_all.yml for OS package upgrades.
 
-# ── Play 1: Hardening ─────────────────────────────────────────────────────────
-# Runs first and in isolation. If hardening fails (e.g. sshd won't bind to
-# ssh_port, kernel params rejected) the play stops here — services are never
-# touched and the failure is unambiguous.
-- name: "Harden | Edge | Base OS hardening"
-  hosts: edge
-  become: true
-  gather_facts: true
-
-  pre_tasks:
-    - name: "Meta | Update repo to latest"
-      ansible.builtin.git:
-        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
-        dest: "{{ homelab_repo_path }}"
-        version: "{{ homelab_repo_branch }}"
-        accept_hostkey: true
-        key_file: /home/homelab/.ssh/github
-        force: false
-      become_user: homelab
-      tags: [repo]
-
-  roles:
-    - role: base_hardening
-      tags: [hardening]
-
-# ── Play 2: Firewall and services ─────────────────────────────────────────────
-# Runs only after hardening completes cleanly. SSH is confirmed on ssh_port
-# (enforced by wait_for in base_hardening) before any firewall rules are applied.
 - name: "Deploy | Edge | Firewall, fail2ban, and services"
   hosts: edge
   become: true
@@ -59,6 +33,17 @@
     compose_dir: "{{ homelab_repo_path }}"
 
   pre_tasks:
+    - name: "Repo | Update to latest"
+      ansible.builtin.git:
+        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        dest: "{{ homelab_repo_path }}"
+        version: "{{ homelab_repo_branch }}"
+        accept_hostkey: true
+        key_file: /home/homelab/.ssh/github
+        force: false
+      become_user: homelab
+      tags: [repo]
+
     - name: "Preflight | Assert required secrets are defined"
       ansible.builtin.assert:
         that:
