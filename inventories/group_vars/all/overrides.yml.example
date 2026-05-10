@@ -1,11 +1,11 @@
 ---
-# inventories/group_vars/all/local.yml.example
-# Template for local.yml — copy and fill in real values before running Ansible.
+# inventories/group_vars/all/overrides.yml.example
+# Template for overrides.yml — copy and fill in real values before running Ansible.
 #
-#   cp inventories/group_vars/all/local.yml.example \
-#      inventories/group_vars/all/local.yml
+#   cp inventories/group_vars/all/overrides.yml.example \
+#      inventories/group_vars/all/overrides.yml
 #
-# local.yml is gitignored. This example file is committed as a reference.
+# overrides.yml is gitignored. This example file is committed as a reference.
 
 lan_subnet: "EDIT_BEFORE_USE"   # e.g. 192.168.1.0/24
 

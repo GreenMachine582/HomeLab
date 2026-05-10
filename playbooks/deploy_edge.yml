@@ -11,7 +11,6 @@
 #
 # Tags:
 #   --tags repo        Git pull only
-#   --tags firewall    UFW rules only
 #   --tags fail2ban    fail2ban only
 #   --tags tailscale   Tailscale only
 #   --tags docker      Docker Compose stack only
@@ -19,7 +18,7 @@
 #   --tags caddy       Caddy reverse proxy config only
 #   --tags alloy       Grafana Alloy log shipper only
 #
-# Requires: roles/firewall, roles/fail2ban, roles/tailscale, roles/edge_services, roles/alloy
+# Requires: roles/fail2ban, roles/tailscale, roles/edge_services, roles/alloy
 # Note: base_hardening runs in bootstrap_edge.yml (Phase 1) only.
 #       Run playbooks/update_all.yml for OS package upgrades.
 
@@ -66,11 +65,6 @@
       tags: [always]
 
   roles:
-    - role: firewall
-      tags: [firewall]
-      vars:
-        firewall_rules: "{{ ufw_rules }}"
-
     - role: fail2ban
       tags: [fail2ban]
 

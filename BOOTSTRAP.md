@@ -24,7 +24,7 @@ steps are kept to the absolute minimum.
     * [1.5 Add GitHub Deploy Key](#15-add-github-deploy-key)
     * [1.6 Copy SSH Key to Edge Node](#16-copy-ssh-key-to-edge-node)
     * [1.7 Load SSH Key into Agent](#17-load-ssh-key-into-agent)
-    * [1.8 Create Ansible Vault](#18-create-ansible-vault)
+    * [1.8 Create Ansible Vault and Override Config](#18-create-ansible-vault-and-override-config)
     * [1.9 Configure Bootstrap Inventory](#19-configure-bootstrap-inventory)
     * [1.10 Run the Bootstrap Playbook](#110-run-the-bootstrap-playbook)
     * [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does)
@@ -287,7 +287,7 @@ If the connection succeeds without a password prompt, the key is installed corre
 
 ---
 
-### 1.8 Create Ansible Vault
+### 1.8 Create Ansible Vault and Override Config
 
 Create a vault password file:
 
@@ -303,6 +303,15 @@ EDITOR=nano ansible-vault create inventories/group_vars/all/vault.yml
 ```
 
 Populate it using `inventories/group_vars/all/vault.yml.example` as a reference. Save and exit (`:wq` in Vim).
+
+Create the local config:
+
+```bash
+cp inventories/group_vars/all/overrides.yml.example \
+   inventories/group_vars/all/overrides.yml
+```
+
+Edit `overrides.yml` and fill in your actual IPs and `lan_subnet`. These override the `EDIT_BEFORE_USE` placeholders in `main.yml` and are automatically copied to the edge node by the bootstrap playbook.
 
 ---
 
@@ -345,7 +354,7 @@ ansible-playbook -i inventories/bootstrap.ini \
 No password prompts — the SSH key passphrase is handled by `ssh-agent` and the `admin` sudo password is read from the vault (`vault_admin_become_password`).
 
 **Pre-flight checks run before anything touches the node:**
-- Verifies `.ssh/homelab-github` exists locally (fails fast with a clear message if missing)
+- Verifies all required local files exist: `.ssh/homelab-github`, `.ssh/homelab`, `.vault_pass`, `vault.yml`, `overrides.yml`
 - Asserts all required variables are defined (`ssh_port`, `vault_github_org`, `homelab_repo_path`, etc.)
 
 **Post-firewall validation:**
@@ -368,8 +377,10 @@ The `bootstrap_edge.yml` playbook fully configures the edge node:
 | Install Ansible            | Edge becomes a control node                |
 | Install Git                |                                            |
 | Clone repo                 | `/opt/homelab`, owned by `homelab`         |
+| Copy secrets to node       | `vault.yml`, `overrides.yml`, `.vault_pass`, `homelab` SSH key pair — edge can run Phase 2+ without manual file transfer |
+| Register SSH host key      | Edge's own key added to `/home/homelab/.ssh/known_hosts` — required for Phase 2 self-deploy |
 | Harden SSH                 | Key-only auth, no root login, port changed to `ssh_port` via async restart; subsequent tasks reconnect on new port automatically |
-| Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp and 53/any (LAN only); SSH reachability verified before play completes |
+| Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp, 80/tcp (Caddy), 53/any (LAN); SSH reachability verified before play completes |
 | Enable unattended upgrades |                                            |
 | Install Tailscale          | Not started yet; configured in Phase 2     |
 
@@ -401,33 +412,33 @@ sudo su - homelab
 
 ```bash
 cd /opt/homelab
-
-ansible-playbook -i inventories/prod.yml \
-  playbooks/deploy_edge.yml \
-  --limit homelab-edge
+ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 ```
+
+> `ansible.cfg` sets the default inventory (`prod.yml`) and vault password file — no `-i` or `--vault-password-file` flags needed.
 
 **What `deploy_edge.yml` does:**
 
-- Applies `base_hardening` role
-- Configures firewall rules
-- Deploys fail2ban
+- Pulls latest repo from GitHub
+- Deploys fail2ban (SSH and Pi-hole jails)
 - Starts Tailscale in subnet-router mode
-- Deploys Docker Compose stack:
-  - `cloudflared` (Cloudflare Tunnel)
-  - Pi-hole + Unbound (DNS)
-  - `node-exporter` (metrics)
-  - Grafana Alloy (logs → Loki, will forward once Loki is up in Phase 3)
-- Populates Pi-hole `custom.list` with `.homelab.local` DNS entries
-- Sets up log rotation and health checks
+- Ships logs via Grafana Alloy (→ Loki once Phase 3 is up)
+- Renders edge service configs (cloudflared, Pi-hole custom DNS, Caddy reverse proxy)
+- Pulls and starts Docker Compose stack:
+  - `cloudflared` (Cloudflare Tunnel — external ingress)
+  - Pi-hole + Unbound (DNS with DNSSEC)
+  - Caddy (LAN reverse proxy for `*.homelab.local`)
+  - `node-exporter` and `pihole-exporter` (metrics)
+  - Portainer Agent
+
+> **Firewall note:** UFW rules are applied by `bootstrap_edge.yml` (Phase 1) and persist. To update rules after adding new services run: `ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge`
 
 **Verify the deployment:**
 
 ```bash
 docker ps
 systemctl status tailscaled
-dig @localhost example.com          # Test DNS resolution
-dig @localhost grafana.homelab.local # Test internal hostname resolution
+nslookup grafana.homelab.local 127.0.0.1   # Test Pi-hole DNS resolution
 ```
 
 ---
@@ -444,14 +455,12 @@ Prerequisites: `homelab-observe` has the base OS installed and is reachable via 
 
 ```bash
 # Bootstrap the observe node
-ansible-playbook -i inventories/prod.yml \
-  playbooks/bootstrap_node.yml \
+ansible-playbook playbooks/bootstrap_node.yml \
   --limit homelab-observe \
   --ask-pass --ask-become-pass
 
 # Deploy the monitoring stack
-ansible-playbook -i inventories/prod.yml \
-  playbooks/deploy_observe.yml
+ansible-playbook playbooks/deploy_observe.yml
 ```
 
 **What gets deployed:**
@@ -473,26 +482,22 @@ ansible-playbook -i inventories/prod.yml \
 
 ```bash
 # Bootstrap svc-01
-ansible-playbook -i inventories/prod.yml \
-  playbooks/bootstrap_node.yml \
-  --limit homelab-svc-01
+ansible-playbook playbooks/bootstrap_node.yml \
+  --limit homelab-svc-01 \
+  --ask-pass --ask-become-pass
 
 # Deploy the Camunda stack
-ansible-playbook -i inventories/prod.yml \
-  playbooks/deploy_svc.yml \
-  --tags camunda
+ansible-playbook playbooks/deploy_svc.yml --tags camunda
 ```
 
 For `svc-02` (when provisioned):
 
 ```bash
-ansible-playbook -i inventories/prod.yml \
-  playbooks/bootstrap_node.yml \
-  --limit homelab-svc-02
+ansible-playbook playbooks/bootstrap_node.yml \
+  --limit homelab-svc-02 \
+  --ask-pass --ask-become-pass
 
-ansible-playbook -i inventories/prod.yml \
-  playbooks/deploy_svc.yml \
-  --tags greentechhub
+ansible-playbook playbooks/deploy_svc.yml --tags greentechhub
 ```
 
 > Use Docker Compose profiles on `svc-01` to bring up databases before dependent services:

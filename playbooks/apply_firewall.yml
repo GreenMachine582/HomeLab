@@ -1,0 +1,21 @@
+---
+# playbooks/apply_firewall.yml
+#
+# Applies UFW rules to one or more nodes without running a full deploy.
+# Run this when firewall rules change (new services, updated IPs, etc.)
+#
+# Usage:
+#   ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge
+#   ansible-playbook playbooks/apply_firewall.yml --limit homelab-observe
+
+- name: "Firewall | Apply rules"
+  hosts: "{{ target | default('homelab') }}"
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Firewall | Apply group rules"
+      ansible.builtin.include_role:
+        name: firewall
+      vars:
+        firewall_rules: "{{ ufw_rules | default(ufw_rules_base | default([])) }}"

@@ -7,7 +7,7 @@
 inventories/group_vars/all/vault.yml
 
 # Local variables
-inventories/group_vars/all/local.yml
+inventories/group_vars/all/overrides.yml
 
 # IDE
 .idea/

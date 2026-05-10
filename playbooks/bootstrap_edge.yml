@@ -33,7 +33,7 @@
         - "{{ playbook_dir }}/../.ssh/homelab.pub"
         - "{{ playbook_dir }}/../.vault_pass"
         - "{{ playbook_dir }}/../inventories/group_vars/all/vault.yml"
-        - "{{ playbook_dir }}/../inventories/group_vars/all/local.yml"
+        - "{{ playbook_dir }}/../inventories/group_vars/all/overrides.yml"
       delegate_to: localhost
       become: false
 
@@ -55,7 +55,7 @@
           - homelab_repo_path is defined
           - homelab_repo_branch is defined
           - lan_subnet is defined
-        fail_msg: "Required variable undefined — check group_vars/all/main.yml, vault.yml and local.yml"
+        fail_msg: "Required variable undefined — check group_vars/all/main.yml, vault.yml and overrides.yml"
       delegate_to: localhost
       become: false
 
@@ -178,8 +178,8 @@
 
     - name: "Secrets | Copy local network variables"
       ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../inventories/group_vars/all/local.yml"
-        dest: "{{ homelab_repo_path }}/inventories/group_vars/all/local.yml"
+        src: "{{ playbook_dir }}/../inventories/group_vars/all/overrides.yml"
+        dest: "{{ homelab_repo_path }}/inventories/group_vars/all/overrides.yml"
         owner: homelab
         group: homelab
         mode: "0644"
