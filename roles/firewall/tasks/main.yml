@@ -1,11 +1,13 @@
 ---
 # roles/firewall/tasks/main.yml
 # Applies UFW rules additively — no reset, so existing SSH access is never interrupted.
-# firewall_rules is set per group in group_vars/ and passed from the playbook.
+# firewall_rules is passed from the playbook (e.g. firewall_rules: "{{ ufw_rules }}").
 
 - name: "Firewall | Install ufw and at"
   ansible.builtin.apt:
-    name: [ufw, at]
+    name:
+      - ufw
+      - at
     state: present
   tags: [firewall]
 
@@ -16,12 +18,19 @@
     state: started
   tags: [firewall]
 
-# Safety net: if subsequent tasks lock us out, UFW auto-disables in 5 minutes.
-# Cancel with: atrm $(atq | awk '{print $1}')
-# Re-enable UFW with: ufw enable  (after confirming SSH access on new port)
-- name: "Firewall | Schedule UFW rollback (auto-disable in 5 minutes)"
-  ansible.builtin.shell: echo "ufw disable" | at now + 5 minutes
+# Safety rollback: auto-disables UFW in 5 min if we lose SSH access.
+# Cancelled automatically after SSH verification succeeds (see end of this file).
+- name: "Firewall | Schedule UFW rollback"
+  ansible.builtin.shell: |
+    echo "ufw disable" | at now + 5 minutes 2>&1
+  register: ufw_rollback
   changed_when: false
+  tags: [firewall]
+
+- name: "Firewall | Capture rollback job ID"
+  ansible.builtin.set_fact:
+    ufw_rollback_job_id: "{{ ufw_rollback.stdout | regex_search('job ([0-9]+)', '\\1') | first }}"
+  when: ufw_rollback.stdout is search('job [0-9]+')
   tags: [firewall]
 
 - name: "Firewall | Default deny inbound"
@@ -43,17 +52,17 @@
     direction: in
   tags: [firewall]
 
-# Keep port 22 open during transition so a failed port change doesn't lock you out.
-# Remove this task once the new SSH port is confirmed working on all nodes.
+# Keep port 22 open during transition — remove once new SSH port confirmed on all nodes.
 - name: "Firewall | Keep legacy SSH port 22 open (transition safety)"
   community.general.ufw:
     rule: allow
     port: "22"
     proto: tcp
-    comment: "SSH legacy – remove after new port confirmed"
+    comment: "SSH legacy - remove after new port confirmed"
+  when: ssh_port | int != 22
   tags: [firewall]
 
-- name: "Firewall | Allow new SSH port"
+- name: "Firewall | Allow SSH port"
   community.general.ufw:
     rule: allow
     port: "{{ ssh_port | string }}"
@@ -76,4 +85,20 @@
 - name: "Firewall | Enable ufw"
   community.general.ufw:
     state: enabled
+  tags: [firewall]
+
+- name: "Firewall | Verify SSH reachable on {{ ssh_port }}"
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host | default(inventory_hostname) }}"
+    port: "{{ ssh_port }}"
+    state: started
+    timeout: 60
+  delegate_to: localhost
+  become: false
+  tags: [firewall]
+
+- name: "Firewall | Cancel UFW rollback"
+  ansible.builtin.command: "atrm {{ ufw_rollback_job_id }}"
+  changed_when: false
+  when: ufw_rollback_job_id is defined
   tags: [firewall]

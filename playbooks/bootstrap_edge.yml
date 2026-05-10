@@ -140,37 +140,13 @@
         recurse: true
       tags: [repo]
 
-    - name: "Firewall | Allow SSH on ssh_port from any"
-      community.general.ufw:
-        rule: allow
-        port: "{{ ssh_port }}"
-        proto: tcp
-        comment: "SSH admin"
-      tags: [firewall]
-
-    - name: "Firewall | Allow DNS from LAN (Pi-hole)"
-      community.general.ufw:
-        rule: allow
-        port: "53"
-        src: "{{ lan_subnet }}"
-        comment: "Pi-hole DNS (LAN only)"
-      tags: [firewall]
-
-    - name: "Firewall | Enable ufw default-deny"
-      community.general.ufw:
-        state: enabled
-        policy: deny
-        direction: incoming
-      tags: [firewall]
-
-    - name: "Firewall | Verify SSH reachable on {{ ssh_port }} after UFW enable"
-      ansible.builtin.wait_for:
-        host: "{{ ansible_host | default(inventory_hostname) }}"
-        port: "{{ ssh_port }}"
-        state: started
-        timeout: 30
-      delegate_to: localhost
-      become: false
+    - name: "Firewall | Configure and enable"
+      ansible.builtin.include_role:
+        name: firewall
+      vars:
+        firewall_rules:
+          - { port: 53, proto: udp, src: "{{ lan_subnet }}", comment: "Pi-hole DNS UDP (LAN only)" }
+          - { port: 53, proto: tcp, src: "{{ lan_subnet }}", comment: "Pi-hole DNS TCP (LAN only)" }
       tags: [firewall]
 
   post_tasks:
