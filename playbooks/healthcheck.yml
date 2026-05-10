@@ -1,0 +1,219 @@
+---
+# playbooks/healthcheck.yml
+#
+# Verifies all services are healthy across all nodes.
+# Non-destructive — read-only checks only. Uses ignore_errors so all checks
+# run to completion even if some fail.
+#
+# Usage:
+#   ansible-playbook playbooks/healthcheck.yml
+#
+#   # Single node
+#   ansible-playbook playbooks/healthcheck.yml --limit homelab-edge
+#
+# Tags:
+#   --tags docker     Docker container status checks
+#   --tags http       HTTP endpoint health checks
+#   --tags dns        DNS resolution checks
+#   --tags tailscale  Tailscale connectivity checks
+
+# ── Play 1: Docker container status (all nodes) ───────────────────────────────
+- name: "Healthcheck | All nodes | Docker and Tailscale"
+  hosts: homelab
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Health | Docker | List non-running containers"
+      ansible.builtin.shell:
+        cmd: >
+          docker ps --filter "status=exited" --filter "status=dead"
+          --filter "status=created"
+          --format "{{ '{{' }}.Names{{ '}}' }}: {{ '{{' }}.Status{{ '}}' }}"
+      register: unhealthy_containers
+      changed_when: false
+      tags: [docker]
+
+    - name: "Health | Docker | Report unhealthy containers"
+      ansible.builtin.debug:
+        msg: "UNHEALTHY on {{ inventory_hostname }}: {{ unhealthy_containers.stdout_lines }}"
+      when: unhealthy_containers.stdout != ""
+      tags: [docker]
+
+    - name: "Health | Docker | All containers healthy"
+      ansible.builtin.debug:
+        msg: "All containers running on {{ inventory_hostname }}"
+      when: unhealthy_containers.stdout == ""
+      tags: [docker]
+
+    - name: "Health | Tailscale | Check status"
+      ansible.builtin.command:
+        cmd: tailscale status --peers=false
+      register: tailscale_status
+      changed_when: false
+      ignore_errors: true
+      tags: [tailscale]
+
+    - name: "Health | Tailscale | Report"
+      ansible.builtin.debug:
+        msg: "Tailscale on {{ inventory_hostname }}: {{ tailscale_status.stdout_lines[0] | default('FAILED') }}"
+      tags: [tailscale]
+
+# ── Play 2: Edge node checks ──────────────────────────────────────────────────
+- name: "Healthcheck | Edge | DNS and Cloudflare Tunnel"
+  hosts: edge
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Health | DNS | Resolve internal hostname via Pi-hole"
+      ansible.builtin.command:
+        cmd: nslookup grafana.homelab.local 127.0.0.1
+      register: dns_result
+      changed_when: false
+      ignore_errors: true
+      tags: [dns]
+
+    - name: "Health | DNS | Report resolution result"
+      ansible.builtin.debug:
+        msg: "{{ 'Pi-hole DNS: OK' if dns_result.rc == 0 else 'Pi-hole DNS: FAILED — ' + dns_result.stderr }}"
+      tags: [dns]
+
+    - name: "Health | Cloudflare | Check tunnel container"
+      ansible.builtin.command:
+        cmd: docker inspect --format="{{ '{{' }}.State.Status{{ '}}' }}" cloudflared
+      register: tunnel_status
+      changed_when: false
+      ignore_errors: true
+      tags: [http]
+
+    - name: "Health | Cloudflare | Report tunnel status"
+      ansible.builtin.debug:
+        msg: "Cloudflare Tunnel: {{ tunnel_status.stdout | default('FAILED') }}"
+      tags: [http]
+
+    - name: "Health | Cloudflare | Fail if tunnel not running"
+      ansible.builtin.fail:
+        msg: "Cloudflare Tunnel container is not running"
+      when: tunnel_status.stdout is defined and tunnel_status.stdout != "running"
+      tags: [http]
+
+# ── Play 3: Observe node HTTP checks ─────────────────────────────────────────
+- name: "Healthcheck | Observe | HTTP endpoints"
+  hosts: observe
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Health | HTTP | Grafana"
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ grafana_port }}/api/health"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: r_grafana
+      ignore_errors: true
+      tags: [http]
+
+    - name: "Health | HTTP | Grafana result"
+      ansible.builtin.debug:
+        msg: "Grafana: {{ 'OK' if r_grafana.status == 200 else 'FAILED (HTTP ' + (r_grafana.status | string) + ')' }}"
+      tags: [http]
+
+    - name: "Health | HTTP | Prometheus"
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ prometheus_port }}/-/healthy"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: r_prometheus
+      ignore_errors: true
+      tags: [http]
+
+    - name: "Health | HTTP | Prometheus result"
+      ansible.builtin.debug:
+        msg: "Prometheus: {{ 'OK' if r_prometheus.status == 200 else 'FAILED (HTTP ' + (r_prometheus.status | string) + ')' }}"
+      tags: [http]
+
+    - name: "Health | HTTP | Alertmanager"
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ alertmanager_port }}/-/healthy"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: r_alertmanager
+      ignore_errors: true
+      tags: [http]
+
+    - name: "Health | HTTP | Alertmanager result"
+      ansible.builtin.debug:
+        msg: "Alertmanager: {{ 'OK' if r_alertmanager.status == 200 else 'FAILED (HTTP ' + (r_alertmanager.status | string) + ')' }}"
+      tags: [http]
+
+    - name: "Health | HTTP | Uptime Kuma"
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ uptime_kuma_port }}"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: r_uptime_kuma
+      ignore_errors: true
+      tags: [http]
+
+    - name: "Health | HTTP | Uptime Kuma result"
+      ansible.builtin.debug:
+        msg: "Uptime Kuma: {{ 'OK' if r_uptime_kuma.status == 200 else 'FAILED (HTTP ' + (r_uptime_kuma.status | string) + ')' }}"
+      tags: [http]
+
+    - name: "Health | HTTP | Portainer"
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ portainer_port }}"
+        method: GET
+        status_code: [200, 302]
+        timeout: 10
+      register: r_portainer
+      ignore_errors: true
+      tags: [http]
+
+    - name: "Health | HTTP | Portainer result"
+      ansible.builtin.debug:
+        msg: "Portainer: {{ 'OK' if r_portainer.status in [200, 302] else 'FAILED (HTTP ' + (r_portainer.status | string) + ')' }}"
+      tags: [http]
+
+# ── Play 4: Svc-01 HTTP checks ────────────────────────────────────────────────
+- name: "Healthcheck | Svc-01 | HTTP endpoints"
+  hosts: homelab-svc-01
+  become: false
+  gather_facts: false
+
+  tasks:
+    # camunda_port and elasticsearch_port must be defined in host_vars/homelab-svc-01.yml
+    - name: "Health | HTTP | Camunda"
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ camunda_port }}"
+        method: GET
+        status_code: [200, 302]
+        timeout: 15
+      register: r_camunda
+      ignore_errors: true
+      tags: [http]
+
+    - name: "Health | HTTP | Camunda result"
+      ansible.builtin.debug:
+        msg: "Camunda: {{ 'OK' if r_camunda.status in [200, 302] else 'FAILED (HTTP ' + (r_camunda.status | string) + ')' }}"
+      tags: [http]
+
+    - name: "Health | HTTP | Elasticsearch"
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ elasticsearch_port }}/_cluster/health"
+        method: GET
+        status_code: 200
+        timeout: 15
+      register: r_elasticsearch
+      ignore_errors: true
+      tags: [http]
+
+    - name: "Health | HTTP | Elasticsearch result"
+      ansible.builtin.debug:
+        msg: "Elasticsearch: {{ 'OK' if r_elasticsearch.status == 200 else 'FAILED (HTTP ' + (r_elasticsearch.status | string) + ')' }}"
+      tags: [http]
