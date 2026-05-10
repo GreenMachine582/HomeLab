@@ -44,7 +44,7 @@ Reference for IP assignments, firewall rules, DNS configuration, Tailscale ACLs,
 | `homelab-svc-02`  | `ip_svc_02`   | GreenTechHub                   |
 | `homelab-svc-03`  | `ip_svc_03`   | Jellyfin                       |
 
-IP values and `lan_subnet` are defined in `inventories/group_vars/all/main.yml` (Network section) — the single source of truth for all Ansible templates. When IPs change, update `main.yml` only. Also configure static DHCP reservations on your router by MAC address.
+IP values and `lan_subnet` are defined in `inventories/group_vars/all/overrides.yml`. `main.yml` holds `EDIT_BEFORE_USE` placeholders; `overrides.yml` overrides them with real values. When IPs change, update `overrides.yml` only. Also configure static DHCP reservations on your router by MAC address.
 
 ### Tailscale (100.x.x.x)
 
@@ -56,7 +56,7 @@ IP values and `lan_subnet` are defined in `inventories/group_vars/all/main.yml` 
 | `homelab-svc-02`  | 100.x.x.4     |
 | `homelab-svc-03`  | 100.x.x.5     |
 
-Tailscale IPs are assigned by the coordination server and stable per device. Update `group_vars/all/main.yml` if they change.
+Tailscale IPs are assigned by the coordination server and stable per device. Update `group_vars/all/overrides.yml` if they change.
 
 ### Service Ports
 
@@ -122,10 +122,10 @@ No public exposure. Accessible via Tailscale from admin devices.
 ### Updating Rules
 
 Firewall rules are managed by Ansible. Do not apply `ufw` changes manually — they will be overwritten on the next 
-deploy. Instead, edit `group_vars/<node>.yml` or the `firewall` role and re-run the relevant playbook:
+deploy. Instead, edit `ufw_rules` in `group_vars/<node>.yml` and run:
 
 ```bash
-ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml --tags firewall
+ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge
 ```
 
 ---
@@ -158,10 +158,10 @@ lookups directly against root servers — no third-party upstream DNS.
 
 ### Adding a New Internal Hostname
 
-1. Add an entry to `pihole_custom_dns` in `group_vars/edge.yml`
+1. Add an entry to both `pihole_custom_dns` and `caddy_routes` in `group_vars/edge.yml` (DNS resolves to `ip_edge`; Caddy proxies to the backend)
 2. Run the edge deploy playbook:
    ```bash
-   ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml --tags pihole
+   ansible-playbook playbooks/deploy_edge.yml --tags pihole,caddy
    ```
 
 ### External — Cloudflare

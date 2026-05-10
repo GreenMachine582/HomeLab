@@ -50,7 +50,7 @@ Quick health check across all nodes:
 
 ```bash
 # From homelab-edge
-ansible -i inventories/prod.yml all -m ping
+ansible all -m ping
 
 # Check all Docker services on a node
 ssh admin@<node>
@@ -73,7 +73,7 @@ journalctl -n 100 --no-pager
 Run the healthcheck playbook for a full sweep:
 
 ```bash
-ansible-playbook -i inventories/prod.yml playbooks/healthcheck.yml
+ansible-playbook playbooks/healthcheck.yml
 ```
 
 ---
@@ -112,10 +112,10 @@ ssh -i .ssh/homelab-edge admin@homelab-edge.local
 
 ```bash
 # Test connectivity
-ansible -i inventories/prod.yml <node> -m ping
+ansible <node> -m ping
 
 # Run with verbose output
-ansible-playbook -i inventories/prod.yml playbooks/healthcheck.yml -vvv
+ansible-playbook playbooks/healthcheck.yml -vvv
 ```
 
 Common causes: wrong IP in `host_vars/`, SSH key not deployed to the node, firewall blocking `ssh_port` from edge.
@@ -129,13 +129,13 @@ Common causes: wrong IP in `host_vars/`, SSH key not deployed to the node, firew
 Ansible is idempotent — re-running a playbook is always safe. Fix the underlying issue and re-run:
 
 ```bash
-ansible-playbook -i inventories/prod.yml playbooks/<playbook>.yml
+ansible-playbook playbooks/<playbook>.yml
 ```
 
 To resume from a specific task after a failure:
 
 ```bash
-ansible-playbook -i inventories/prod.yml playbooks/<playbook>.yml \
+ansible-playbook playbooks/<playbook>.yml \
   --start-at-task "Task name here"
 ```
 
@@ -231,7 +231,7 @@ If SD card errors appear, the card may be failing. Follow the edge node disaster
 Do not use `docker compose up` manually — Ansible manages Compose files. To redeploy a single service:
 
 ```bash
-ansible-playbook -i inventories/prod.yml playbooks/deploy_<node>.yml \
+ansible-playbook playbooks/deploy_<node>.yml \
   --tags <service-tag>
 ```
 
@@ -282,7 +282,7 @@ Hostnames are defined in `templates/pihole/custom.list.j2`. If a hostname is mis
 1. Add it to the template
 2. Redeploy:
    ```bash
-   ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml --tags pihole
+   ansible-playbook playbooks/deploy_edge.yml --tags pihole
    ```
 
 ---
@@ -360,7 +360,7 @@ Re-authenticate the tunnel:
 2. Update the credentials file path in `host_vars/homelab-edge.yml`
 3. Redeploy:
    ```bash
-   ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml --tags cloudflared
+   ansible-playbook playbooks/deploy_edge.yml --tags cloudflared
    ```
 
 **Check 3 — Hostname not configured in tunnel**
@@ -386,7 +386,7 @@ Open `http://prometheus.homelab.local:9090/targets` — all targets should show 
 Fix: ensure the node is running `node-exporter` and port 9100 is open in its firewall:
 
 ```bash
-ansible-playbook -i inventories/prod.yml playbooks/deploy_<node>.yml --tags node-exporter
+ansible-playbook playbooks/deploy_<node>.yml --tags node-exporter
 ```
 
 **Check 3 — Are Alloy agents shipping logs?**
@@ -413,7 +413,7 @@ Common cause: incorrect Slack webhook URL or API key in `inventories/group_vars/
 
 ```bash
 ansible-vault edit inventories/group_vars/all/vault.yml
-ansible-playbook -i inventories/prod.yml playbooks/deploy_observe.yml --tags alertmanager
+ansible-playbook playbooks/deploy_observe.yml --tags alertmanager
 ```
 
 ---
@@ -472,7 +472,7 @@ elasticsearch_heap: "2g"   # Increase if RAM allows; do not exceed 50% of availa
 
 Redeploy:
 ```bash
-ansible-playbook -i inventories/prod.yml playbooks/deploy_svc.yml --tags camunda
+ansible-playbook playbooks/deploy_svc.yml --tags camunda
 ```
 
 ---
@@ -505,8 +505,11 @@ tail -n 100 /opt/homelab/logs/ansible.log
 If the automated pipeline is broken, deploy manually at any time:
 
 ```bash
-ssh deploy@homelab-edge
-/opt/homelab/scripts/deploy.sh
+ssh -p <ssh_port> deploy@homelab-edge
+cd /opt/homelab
+sudo ansible-playbook playbooks/deploy_edge.yml
+sudo ansible-playbook playbooks/deploy_observe.yml
+sudo ansible-playbook playbooks/deploy_svc.yml
 ```
 
 ---
@@ -532,7 +535,7 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
    ```
 4. Run Phase 2 to restore edge services:
    ```bash
-   ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml
+   ansible-playbook playbooks/deploy_edge.yml
    ```
 5. Re-authenticate Cloudflare Tunnel if credentials have expired
 6. Pi-hole `custom.list` and all config restore from the Git repo automatically
@@ -544,8 +547,8 @@ Since the edge node is intact, recovery is straightforward:
 1. Flash a new SD card / reinstall OS on the failed node
 2. From the edge node, bootstrap and redeploy:
    ```bash
-   ansible-playbook -i inventories/prod.yml playbooks/bootstrap_node.yml --limit <node> --ask-pass --ask-become-pass
-   ansible-playbook -i inventories/prod.yml playbooks/deploy_<role>.yml
+   ansible-playbook playbooks/bootstrap_node.yml --limit <node> --ask-pass --ask-become-pass
+   ansible-playbook playbooks/deploy_<role>.yml
    ```
 3. Restore databases if needed (see [Databases](#databases) above)
 

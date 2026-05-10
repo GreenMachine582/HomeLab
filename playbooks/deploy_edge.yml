@@ -6,7 +6,7 @@
 # Idempotent — safe to re-run on every deployment.
 #
 # Usage:
-#   ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml \
+#   ansible-playbook playbooks/deploy_edge.yml \
 #     --limit homelab-edge
 #
 # Tags:

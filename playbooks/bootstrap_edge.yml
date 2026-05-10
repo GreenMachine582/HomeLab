@@ -226,5 +226,5 @@
         msg: >
           homelab-edge bootstrap complete.
           SSH to the node as 'homelab' and run Phase 2:
-          ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml
+          ansible-playbook playbooks/deploy_edge.yml
           --limit homelab-edge
