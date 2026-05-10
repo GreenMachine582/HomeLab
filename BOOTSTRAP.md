@@ -194,7 +194,7 @@ pwd
 ping homelab-edge.local
 ```
 
-If mDNS is not available, check your router's DHCP lease table or use a network scanner. You'll need this IP in step 1.8.
+If mDNS is not available, check your router's DHCP lease table or use a network scanner. You'll need this IP in [step 1.9](#19-configure-bootstrap-inventory).
 
 ---
 
@@ -308,7 +308,13 @@ Populate it using `inventories/group_vars/all/vault.yml.example` as a reference.
 
 ### 1.9 Configure Bootstrap Inventory
 
-Edit `inventories/bootstrap.ini` and replace `192.168.1.x` with the DHCP IP found in step 1.3
+Edit `inventories/bootstrap.ini` and replace `EDIT_BEFORE_USE` with the DHCP IP found in step 1.3:
+
+```ini
+homelab-edge ansible_host=192.168.x.x ansible_user=admin ...
+```
+
+> **Re-running after bootstrap:** If the node has already been bootstrapped and SSH is on the non-standard port, add `ansible_port=2189` (or your `ssh_port` value) to the host line before running.
 
 Verify Ansible can reach the node:
 
@@ -338,6 +344,13 @@ ansible-playbook -i inventories/bootstrap.ini \
 
 No password prompts — the SSH key passphrase is handled by `ssh-agent` and the `admin` sudo password is read from the vault (`vault_admin_become_password`).
 
+**Pre-flight checks run before anything touches the node:**
+- Verifies `.ssh/homelab-github` exists locally (fails fast with a clear message if missing)
+- Asserts all required variables are defined (`ssh_port`, `vault_github_org`, `homelab_repo_path`, etc.)
+
+**Post-firewall validation:**
+After UFW is enabled, the playbook probes `ssh_port` from your PC (via `wait_for`) and fails immediately if SSH is unreachable — so a misconfigured firewall is caught before the play reports success.
+
 **Expected duration:** 10–15 minutes.
 
 ---
@@ -355,8 +368,8 @@ The `bootstrap_edge.yml` playbook fully configures the edge node:
 | Install Ansible            | Edge becomes a control node                |
 | Install Git                |                                            |
 | Clone repo                 | `/opt/homelab`, owned by `homelab`         |
-| Harden SSH                 | Key-only auth, no root login               |
-| Configure firewall         | ufw default-deny; allow `ssh_port` (any), 53 (LAN) |
+| Harden SSH                 | Key-only auth, no root login, port changed to `ssh_port` via async restart; subsequent tasks reconnect on new port automatically |
+| Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp and 53/any (LAN only); SSH reachability verified before play completes |
 | Enable unattended upgrades |                                            |
 | Install Tailscale          | Not started yet; configured in Phase 2     |
 
