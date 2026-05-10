@@ -8,7 +8,7 @@
 #   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
 #     --ask-become-pass
 #
-# Requires: roles/base_hardening, roles/users, roles/docker, roles/tailscale
+# Requires: roles/users, roles/base_hardening, roles/docker, roles/tailscale, roles/firewall
 # See: BOOTSTRAP.md § Phase 1
 
 - name: "Bootstrap | Edge | Base system, users, and access"
@@ -72,11 +72,11 @@
         state: present
 
   roles:
-    - role: base_hardening
-      tags: [base, hardening]
-
     - role: users
       tags: [base, users]
+
+    - role: base_hardening
+      tags: [base, hardening]
 
     - role: docker
       tags: [docker]
