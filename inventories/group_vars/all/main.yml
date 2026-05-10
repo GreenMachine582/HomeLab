@@ -36,7 +36,6 @@ homelab_users:
       - /usr/bin/ansible-playbook
 
 # ── SSH hardening ─────────────────────────────────────────────────────────────
-ssh_port: 2189
 ssh_permit_root_login: "no"
 ssh_password_authentication: "no"
 ssh_pubkey_authentication: "yes"
