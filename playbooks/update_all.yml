@@ -1,0 +1,134 @@
+---
+# playbooks/update_all.yml
+#
+# OS package upgrades and Docker image pulls across all nodes.
+# Container restarts are opt-in — services keep running old images until
+# --tags restart is explicitly passed.
+#
+# Usage:
+#   # OS updates + image pulls only (default, no restarts)
+#   ansible-playbook playbooks/update_all.yml
+#
+#   # Pull and restart containers
+#   ansible-playbook playbooks/update_all.yml --tags docker,restart
+#
+#   # Single node
+#   ansible-playbook playbooks/update_all.yml --limit homelab-edge
+#
+# Tags:
+#   --tags os       OS package updates only
+#   --tags docker   Docker image pulls only
+#   --tags restart  Restart containers after pull (opt-in, combine with --tags docker)
+
+- name: "Update | All nodes | OS packages and Docker images"
+  hosts: homelab
+  become: true
+  gather_facts: true
+  serial: 1   # One node at a time — avoids simultaneous reboots
+
+  tasks:
+    # ── Repo ──────────────────────────────────────────────────────────────────
+    - name: "Repo | Pull latest"
+      ansible.builtin.git:
+        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        dest: "{{ homelab_repo_path }}"
+        version: "{{ homelab_repo_branch }}"
+        accept_hostkey: true
+        key_file: /home/homelab/.ssh/github
+        force: false
+      become_user: homelab
+      tags: [repo, docker]
+
+    # ── OS ────────────────────────────────────────────────────────────────────
+    - name: "OS | Update apt cache"
+      ansible.builtin.apt:
+        update_cache: true
+      tags: [os]
+
+    - name: "OS | Upgrade all packages"
+      ansible.builtin.apt:
+        upgrade: dist
+        autoremove: true
+        autoclean: true
+      register: apt_upgrade
+      tags: [os]
+
+    - name: "OS | Check if reboot required"
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+      tags: [os]
+
+    - name: "OS | Warn if reboot required"
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} requires a reboot — schedule a maintenance window."
+      when: reboot_required.stat.exists
+      tags: [os]
+
+    # ── Docker image pulls ────────────────────────────────────────────────────
+    - name: "Docker | Pull latest images (edge)"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.edge.yml pull
+        chdir: "{{ homelab_repo_path }}"
+      when: "'edge' in group_names"
+      changed_when: true
+      tags: [docker]
+
+    - name: "Docker | Pull latest images (observe)"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.observe.yml pull
+        chdir: "{{ homelab_repo_path }}"
+      when: "'observe' in group_names"
+      changed_when: true
+      tags: [docker]
+
+    - name: "Docker | Pull latest images (svc-01)"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.svc01.yml pull
+        chdir: "{{ homelab_repo_path }}"
+      when: "'svc' in group_names and inventory_hostname == 'homelab-svc-01'"
+      changed_when: true
+      tags: [docker]
+
+    # Uncomment when svc-02 and svc-03 are provisioned:
+    # - name: "Docker | Pull latest images (svc-02)"
+    #   ansible.builtin.command:
+    #     cmd: docker compose -f docker-compose.svc02.yml pull
+    #     chdir: "{{ homelab_repo_path }}"
+    #   when: "'svc' in group_names and inventory_hostname == 'homelab-svc-02'"
+    #   changed_when: true
+    #   tags: [docker]
+
+    # ── Container restarts (opt-in) ───────────────────────────────────────────
+    # These tasks only run when --tags restart is explicitly passed.
+
+    - name: "Docker | Restart containers (edge)"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.edge.yml up -d --remove-orphans
+        chdir: "{{ homelab_repo_path }}"
+      when: "'edge' in group_names"
+      changed_when: true
+      tags: [never, restart]
+
+    - name: "Docker | Restart containers (observe)"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.observe.yml up -d --remove-orphans
+        chdir: "{{ homelab_repo_path }}"
+      when: "'observe' in group_names"
+      changed_when: true
+      tags: [never, restart]
+
+    - name: "Docker | Restart containers (svc-01)"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.svc01.yml up -d --remove-orphans
+        chdir: "{{ homelab_repo_path }}"
+      when: "'svc' in group_names and inventory_hostname == 'homelab-svc-01'"
+      changed_when: true
+      tags: [never, restart]
+
+    # ── Cleanup ───────────────────────────────────────────────────────────────
+    - name: "Docker | Prune unused images"
+      ansible.builtin.command:
+        cmd: docker image prune -f
+      changed_when: true
+      tags: [docker]
