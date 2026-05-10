@@ -132,7 +132,7 @@
 
     - name: "Ansible | Add own host keys to homelab known_hosts"
       ansible.builtin.known_hosts:
-        name: "{{ ansible_host }}"
+        name: "[{{ ansible_host }}]:{{ ssh_port }}"
         key: "{{ item }}"
         path: /home/homelab/.ssh/known_hosts
         state: present
