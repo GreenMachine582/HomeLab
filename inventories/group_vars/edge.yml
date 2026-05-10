@@ -7,7 +7,7 @@
 # Cloudflare Tunnel connects outbound — no external exposure required.
 ufw_rules:
   - { port: "{{ ssh_port }}", proto: tcp,     src: any,               comment: "SSH admin" }
-  - { port: 53,               proto: tcp/udp, src: "{{ lan_subnet }}", comment: "Pi-hole DNS (LAN only)" }
+  - { port: 53,               proto: any,     src: "{{ lan_subnet }}", comment: "Pi-hole DNS (LAN only)" }
   - { port: 8080,             proto: tcp,     src: "{{ lan_subnet }}", comment: "Pi-hole admin UI (LAN only; port 80 used by Caddy)" }
   - { port: 9001,             proto: tcp,     src: "{{ ip_observe }}", comment: "Portainer Agent (from observe)" }
   - { port: 9100,             proto: tcp,     src: "{{ lan_subnet }}", comment: "node-exporter (Prometheus scrape)" }
