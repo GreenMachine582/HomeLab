@@ -96,12 +96,12 @@ homelab/
     cadvisor/                 # Container metrics (svc nodes)
     alloy/                    # Grafana Alloy (logs → Loki)
     users/                    # System user creation (admin, homelab, deploy)
-    edge_services/            # cloudflared, Pi-hole, Unbound, Caddy
+    edge_services/            # cloudflared, Caddy (LAN reverse proxy), Pi-hole, Unbound
     observe_services/         # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma
     camunda/                  # Camunda 8 + n8n + discord-gateway env rendering
 
   # Docker Compose stacks (at repo root, deployed per-node)
-  docker-compose.edge.yml     # cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter
+  docker-compose.edge.yml     # cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter, portainer-agent
   docker-compose.observe.yml  # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer
   docker-compose.svc01.yml    # Camunda 8, Elasticsearch, n8n, discord-gateway, Portainer Agent
 

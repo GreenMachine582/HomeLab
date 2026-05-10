@@ -3,14 +3,15 @@
 # Applied to the [edge] group (homelab-edge only).
 
 # ── Firewall ──────────────────────────────────────────────────────────────────
-# Port 80 is LAN-only for Pi-hole admin. No ports are forwarded from the router.
-# Cloudflare Tunnel connects outbound — no external exposure required.
+# No ports are forwarded from the router — Cloudflare Tunnel handles all external ingress.
+# Port 80 is Caddy (LAN reverse proxy). Port 8080 is Pi-hole direct access (fallback).
 ufw_rules:
-  - { port: "{{ ssh_port }}", proto: tcp,     src: any,               comment: "SSH admin" }
-  - { port: 53,               proto: any,     src: "{{ lan_subnet }}", comment: "Pi-hole DNS (LAN only)" }
-  - { port: 8080,             proto: tcp,     src: "{{ lan_subnet }}", comment: "Pi-hole admin UI (LAN only; port 80 used by Caddy)" }
-  - { port: 9001,             proto: tcp,     src: "{{ ip_observe }}", comment: "Portainer Agent (from observe)" }
-  - { port: 9100,             proto: tcp,     src: "{{ lan_subnet }}", comment: "node-exporter (Prometheus scrape)" }
+  - { port: "{{ ssh_port }}", proto: tcp, src: any,               comment: "SSH admin" }
+  - { port: 80,               proto: tcp, src: "{{ lan_subnet }}", comment: "Caddy LAN reverse proxy" }
+  - { port: 53,               proto: any, src: "{{ lan_subnet }}", comment: "Pi-hole DNS (LAN only)" }
+  - { port: 8080,             proto: tcp, src: "{{ lan_subnet }}", comment: "Pi-hole admin direct (fallback if Caddy is down)" }
+  - { port: 9001,             proto: tcp, src: "{{ ip_observe }}", comment: "Portainer Agent (from observe)" }
+  - { port: 9100,             proto: tcp, src: "{{ lan_subnet }}", comment: "node-exporter (Prometheus scrape)" }
 
 # ── fail2ban ──────────────────────────────────────────────────────────────────
 fail2ban_jails:
@@ -45,15 +46,34 @@ pihole_interface: eth0
 pihole_dnssec: true
 pihole_rev_server: false
 
+# All .homelab.local hostnames resolve to ip_edge — Caddy receives and proxies
+# to the correct backend. See caddy_routes below.
 pihole_custom_dns:
-  - { hostname: "grafana.homelab.local",      ip: "{{ ip_observe }}" }
-  - { hostname: "prometheus.homelab.local",   ip: "{{ ip_observe }}" }
-  - { hostname: "alertmanager.homelab.local", ip: "{{ ip_observe }}" }
-  - { hostname: "uptime.homelab.local",       ip: "{{ ip_observe }}" }
-  - { hostname: "portainer.homelab.local",    ip: "{{ ip_observe }}" }
-  - { hostname: "camunda.homelab.local",      ip: "{{ ip_svc_01 }}" }
-  - { hostname: "greentechhub.homelab.local", ip: "{{ ip_svc_02 }}" }
-  - { hostname: "jellyfin.homelab.local",     ip: "{{ ip_svc_03 }}" }
+  - { hostname: "pihole.homelab.local",       ip: "{{ ip_edge }}" }
+  - { hostname: "grafana.homelab.local",       ip: "{{ ip_edge }}" }
+  - { hostname: "prometheus.homelab.local",    ip: "{{ ip_edge }}" }
+  - { hostname: "alertmanager.homelab.local",  ip: "{{ ip_edge }}" }
+  - { hostname: "uptime.homelab.local",        ip: "{{ ip_edge }}" }
+  - { hostname: "portainer.homelab.local",     ip: "{{ ip_edge }}" }
+  - { hostname: "n8n.homelab.local",           ip: "{{ ip_edge }}" }
+  - { hostname: "camunda.homelab.local",       ip: "{{ ip_edge }}" }
+  - { hostname: "greentechhub.homelab.local",  ip: "{{ ip_edge }}" }
+  - { hostname: "jellyfin.homelab.local",      ip: "{{ ip_edge }}" }
+
+# ── Caddy (LAN reverse proxy) ─────────────────────────────────────────────────
+# Maps each .homelab.local hostname to its backend service.
+# Pi-hole DNS resolves all entries above to ip_edge; Caddy routes by Host header.
+caddy_routes:
+  - { hostname: "pihole.homelab.local",       upstream: "pihole:80" }
+  - { hostname: "grafana.homelab.local",       upstream: "{{ ip_observe }}:3000" }
+  - { hostname: "prometheus.homelab.local",    upstream: "{{ ip_observe }}:9090" }
+  - { hostname: "alertmanager.homelab.local",  upstream: "{{ ip_observe }}:9093" }
+  - { hostname: "uptime.homelab.local",        upstream: "{{ ip_observe }}:3001" }
+  - { hostname: "portainer.homelab.local",     upstream: "{{ ip_observe }}:9000" }
+  - { hostname: "n8n.homelab.local",           upstream: "{{ ip_svc_01 }}:5678" }
+  - { hostname: "camunda.homelab.local",       upstream: "{{ ip_svc_01 }}:8080" }
+  - { hostname: "greentechhub.homelab.local",  upstream: "{{ ip_svc_02 }}:8000" }
+  - { hostname: "jellyfin.homelab.local",      upstream: "{{ ip_svc_03 }}:8096" }
 
 # ── Unbound ───────────────────────────────────────────────────────────────────
 unbound_port: 5335

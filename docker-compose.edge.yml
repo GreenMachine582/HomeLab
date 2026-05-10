@@ -72,9 +72,7 @@ services:
     ports:
       - "53:53/tcp"
       - "53:53/udp"
-      # Caddy owns port 80 — Pi-hole admin exposed on 8080 (LAN: http://192.168.1.10:8080/admin)
-      # UFW rule for port 80 in group_vars/edge.yml should be updated to 8080 if direct access is desired,
-      # or Caddy can proxy pihole.homelab.local → pihole:80 on edge_net.
+      # Caddy owns port 80 — Pi-hole admin on 8080 (LAN: http://ip_edge:8080/admin)
       - "8080:80"
     volumes:
       - pihole_data:/etc/pihole
