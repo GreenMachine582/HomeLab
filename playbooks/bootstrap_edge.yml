@@ -23,17 +23,27 @@
       hardens SSH, and configures the firewall. Safe to re-run.
 
   pre_tasks:
-    - name: "Preflight | Verify GitHub deploy key exists locally"
+    - name: "Preflight | Check required local files exist"
       ansible.builtin.stat:
-        path: "{{ playbook_dir }}/../.ssh/homelab-github"
-      register: _github_key
+        path: "{{ item }}"
+      register: _required_files
+      loop:
+        - "{{ playbook_dir }}/../.ssh/homelab-github"
+        - "{{ playbook_dir }}/../.ssh/homelab"
+        - "{{ playbook_dir }}/../.ssh/homelab.pub"
+        - "{{ playbook_dir }}/../.vault_pass"
+        - "{{ playbook_dir }}/../inventories/group_vars/all/vault.yml"
+        - "{{ playbook_dir }}/../inventories/group_vars/all/local.yml"
       delegate_to: localhost
       become: false
 
-    - name: "Preflight | Abort if GitHub deploy key is missing"
+    - name: "Preflight | Abort if any required file is missing"
       ansible.builtin.fail:
-        msg: ".ssh/homelab-github not found — complete keygen steps in BOOTSTRAP.md before running Phase 1"
-      when: not _github_key.stat.exists
+        msg: "Required file missing: {{ item.item | basename }} — see BOOTSTRAP.md"
+      when: not item.stat.exists
+      loop: "{{ _required_files.results }}"
+      loop_control:
+        label: "{{ item.item | basename }}"
       delegate_to: localhost
       become: false
 
@@ -45,7 +55,7 @@
           - homelab_repo_path is defined
           - homelab_repo_branch is defined
           - lan_subnet is defined
-        fail_msg: "Required variable undefined — check group_vars/all/main.yml and vault.yml"
+        fail_msg: "Required variable undefined — check group_vars/all/main.yml, vault.yml and local.yml"
       delegate_to: localhost
       become: false
 
@@ -131,6 +141,51 @@
         key_file: /home/homelab/.ssh/github
       become_user: homelab
       tags: [repo]
+
+    - name: "Secrets | Copy vault password file"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../.vault_pass"
+        dest: "{{ homelab_repo_path }}/.vault_pass"
+        owner: homelab
+        group: homelab
+        mode: "0600"
+      tags: [secrets]
+
+    - name: "Secrets | Copy Ansible Vault"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../inventories/group_vars/all/vault.yml"
+        dest: "{{ homelab_repo_path }}/inventories/group_vars/all/vault.yml"
+        owner: homelab
+        group: homelab
+        mode: "0600"
+      tags: [secrets]
+
+    - name: "Secrets | Copy local network variables"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../inventories/group_vars/all/local.yml"
+        dest: "{{ homelab_repo_path }}/inventories/group_vars/all/local.yml"
+        owner: homelab
+        group: homelab
+        mode: "0644"
+      tags: [secrets]
+
+    - name: "Secrets | Copy homelab SSH private key"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../.ssh/homelab"
+        dest: /home/homelab/.ssh/homelab
+        owner: homelab
+        group: homelab
+        mode: "0600"
+      tags: [secrets]
+
+    - name: "Secrets | Copy homelab SSH public key"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../.ssh/homelab.pub"
+        dest: /home/homelab/.ssh/homelab.pub
+        owner: homelab
+        group: homelab
+        mode: "0644"
+      tags: [secrets]
 
     - name: "Repo | Set repo ownership"
       ansible.builtin.file:
