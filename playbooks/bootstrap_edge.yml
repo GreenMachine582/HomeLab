@@ -23,6 +23,32 @@
       hardens SSH, and configures the firewall. Safe to re-run.
 
   pre_tasks:
+    - name: "Preflight | Verify GitHub deploy key exists locally"
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../.ssh/homelab-github"
+      register: _github_key
+      delegate_to: localhost
+      become: false
+
+    - name: "Preflight | Abort if GitHub deploy key is missing"
+      ansible.builtin.fail:
+        msg: ".ssh/homelab-github not found — complete keygen steps in BOOTSTRAP.md before running Phase 1"
+      when: not _github_key.stat.exists
+      delegate_to: localhost
+      become: false
+
+    - name: "Preflight | Assert required variables are defined"
+      ansible.builtin.assert:
+        that:
+          - ssh_port is defined
+          - vault_github_org is defined
+          - homelab_repo_path is defined
+          - homelab_repo_branch is defined
+          - lan_subnet is defined
+        fail_msg: "Required variable undefined — check group_vars/all/main.yml and vault.yml"
+      delegate_to: localhost
+      become: false
+
     - name: "Meta | Show play description"
       ansible.builtin.debug:
         msg: "{{ play_description }}"
@@ -135,6 +161,16 @@
         state: enabled
         policy: deny
         direction: incoming
+      tags: [firewall]
+
+    - name: "Firewall | Verify SSH reachable on {{ ssh_port }} after UFW enable"
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host | default(inventory_hostname) }}"
+        port: "{{ ssh_port }}"
+        state: started
+        timeout: 30
+      delegate_to: localhost
+      become: false
       tags: [firewall]
 
   post_tasks:
