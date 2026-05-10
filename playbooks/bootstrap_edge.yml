@@ -123,6 +123,22 @@
         mode: "0700"
       tags: [repo]
 
+    - name: "Ansible | Scan own SSH host keys"
+      ansible.builtin.shell:
+        cmd: ssh-keyscan -p {{ ssh_port }} {{ ansible_host }} 2>/dev/null
+      register: _own_host_keys
+      changed_when: false
+      tags: [ansible]
+
+    - name: "Ansible | Add own host keys to homelab known_hosts"
+      ansible.builtin.known_hosts:
+        name: "{{ ansible_host }}"
+        key: "{{ item }}"
+        path: /home/homelab/.ssh/known_hosts
+        state: present
+      loop: "{{ _own_host_keys.stdout_lines | select('match', '^[^#]') | list }}"
+      tags: [ansible]
+
     - name: "Repo | Deploy GitHub deploy key"
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../.ssh/homelab-github"
