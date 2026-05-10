@@ -80,6 +80,7 @@
   loop: "{{ firewall_rules | default([]) }}"
   loop_control:
     label: "{{ item.comment | default(item.port) }}"
+  when: (item.src | default('any')) != 'EDIT_BEFORE_USE'
   tags: [firewall]
 
 - name: "Firewall | Enable ufw"
