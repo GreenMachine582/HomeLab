@@ -58,6 +58,28 @@
     compose_file: "docker-compose.edge.yml"
     compose_dir: "{{ homelab_repo_path }}"
 
+  pre_tasks:
+    - name: "Preflight | Assert required secrets are defined"
+      ansible.builtin.assert:
+        that:
+          - vault_cloudflare_tunnel_token is defined
+          - vault_pihole_web_password is defined
+          - vault_github_org is defined
+        fail_msg: "Required secret undefined — check vault.yml"
+      tags: [always]
+
+    - name: "Preflight | Verify compose file exists on node"
+      ansible.builtin.stat:
+        path: "{{ compose_dir }}/{{ compose_file }}"
+      register: _compose_file
+      tags: [always]
+
+    - name: "Preflight | Abort if compose file missing"
+      ansible.builtin.fail:
+        msg: "{{ compose_file }} not found in {{ compose_dir }} — repo may not have cloned correctly"
+      when: not _compose_file.stat.exists
+      tags: [always]
+
   roles:
     - role: firewall
       tags: [firewall]
@@ -66,27 +88,19 @@
 
     - role: fail2ban
       tags: [fail2ban]
-      vars:
-        fail2ban_jails: "{{ fail2ban_jails }}"
 
     - role: tailscale
       tags: [tailscale]
       vars:
         tailscale_up: true
-        tailscale_advertise_routes: "{{ tailscale_advertise_routes }}"
-        tailscale_accept_routes: "{{ tailscale_accept_routes }}"
 
     - role: alloy
       tags: [alloy]
-      vars:
-        alloy_loki_endpoint: "{{ alloy_loki_endpoint }}"
-        alloy_scrape_systemd_units: "{{ alloy_scrape_systemd_units }}"
 
     - role: edge_services
       tags: [docker, pihole]
       vars:
         pihole_web_password: "{{ vault_pihole_web_password }}"
-        pihole_custom_dns: "{{ pihole_custom_dns }}"
         cloudflared_tunnel_token: "{{ vault_cloudflare_tunnel_token }}"
 
   post_tasks:
