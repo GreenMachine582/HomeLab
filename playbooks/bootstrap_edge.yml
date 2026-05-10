@@ -6,7 +6,7 @@
 #
 # Usage:
 #   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
-#     --vault-password-file .vault_pass --ask-become-pass
+#     --ask-become-pass
 #
 # Requires: roles/base_hardening, roles/users, roles/docker, roles/tailscale
 # See: BOOTSTRAP.md § Phase 1
@@ -144,4 +144,4 @@
           homelab-edge bootstrap complete.
           SSH to the node as 'homelab' and run Phase 2:
           ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml
-          --limit homelab-edge --vault-password-file .vault_pass
+          --limit homelab-edge

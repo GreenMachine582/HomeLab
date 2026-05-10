@@ -7,7 +7,7 @@
 #
 # Usage:
 #   ansible-playbook -i inventories/prod.yml playbooks/deploy_edge.yml \
-#     --limit homelab-edge --vault-password-file .vault_pass
+#     --limit homelab-edge
 #
 # Tags:
 #   --tags hardening   Base OS hardening only (Play 1)

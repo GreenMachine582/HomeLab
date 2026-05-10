@@ -61,18 +61,39 @@
     - { regexp: '^#?MaxAuthTries',                 line: "MaxAuthTries {{ ssh_max_auth_tries }}" }
     - { regexp: '^#?ClientAliveInterval',          line: "ClientAliveInterval {{ ssh_client_alive_interval }}" }
     - { regexp: '^#?ClientAliveCountMax',          line: "ClientAliveCountMax {{ ssh_client_alive_count_max }}" }
-  notify: Restart ssh
+  register: sshd_config
   tags: [ssh, security]
 
-- name: "Security | Flush handlers to restart sshd immediately"
-  meta: flush_handlers
+# Restart sshd in the background over the current SSH session.
+# Avoids reconnecting before sshd starts listening on the new port.
+- name: "Security | Restart sshd to apply new port (async, non-blocking)"
+  ansible.builtin.systemd:
+    name: ssh
+    state: restarted
+  async: 30
+  poll: 0
+  when: sshd_config.changed
   tags: [ssh, security]
 
-- name: "Security | Verify sshd is listening on {{ ssh_port }}"
+# Check from the controller that sshd is listening on the new port.
+- name: "Security | Wait for sshd on {{ ssh_port }}"
   ansible.builtin.wait_for:
     port: "{{ ssh_port }}"
-    host: 127.0.0.1
-    timeout: 30
+    host: "{{ ansible_host | default(inventory_hostname) }}"
+    state: started
+    delay: 5
+    timeout: 60
+  delegate_to: localhost
+  become: false
+  when: sshd_config.changed
+  tags: [ssh, security]
+
+# Update Ansible to use the new SSH port for remaining tasks.
+- name: "Security | Persist new SSH port for subsequent Ansible connections"
+  ansible.builtin.set_fact:
+    ansible_port: "{{ ssh_port }}"
+  vars:
+    ansible_port: "{{ ssh_port }}"
   tags: [ssh, security]
 
 - name: "Security | Apply kernel hardening sysctls"

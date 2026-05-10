@@ -1,0 +1,79 @@
+---
+# roles/firewall/tasks/main.yml
+# Applies UFW rules additively — no reset, so existing SSH access is never interrupted.
+# firewall_rules is set per group in group_vars/ and passed from the playbook.
+
+- name: "Firewall | Install ufw and at"
+  ansible.builtin.apt:
+    name: [ufw, at]
+    state: present
+  tags: [firewall]
+
+- name: "Firewall | Enable atd service"
+  ansible.builtin.systemd:
+    name: atd
+    enabled: true
+    state: started
+  tags: [firewall]
+
+# Safety net: if subsequent tasks lock us out, UFW auto-disables in 5 minutes.
+# Cancel with: atrm $(atq | awk '{print $1}')
+# Re-enable UFW with: ufw enable  (after confirming SSH access on new port)
+- name: "Firewall | Schedule UFW rollback (auto-disable in 5 minutes)"
+  ansible.builtin.shell: echo "ufw disable" | at now + 5 minutes
+  changed_when: false
+  tags: [firewall]
+
+- name: "Firewall | Default deny inbound"
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+  tags: [firewall]
+
+- name: "Firewall | Default allow outbound"
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+  tags: [firewall]
+
+- name: "Firewall | Allow loopback"
+  community.general.ufw:
+    rule: allow
+    interface: lo
+    direction: in
+  tags: [firewall]
+
+# Keep port 22 open during transition so a failed port change doesn't lock you out.
+# Remove this task once the new SSH port is confirmed working on all nodes.
+- name: "Firewall | Keep legacy SSH port 22 open (transition safety)"
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    comment: "SSH legacy – remove after new port confirmed"
+  tags: [firewall]
+
+- name: "Firewall | Allow new SSH port"
+  community.general.ufw:
+    rule: allow
+    port: "{{ ssh_port | string }}"
+    proto: tcp
+    comment: "SSH"
+  tags: [firewall]
+
+- name: "Firewall | Apply rules"
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port | string }}"
+    proto: "{{ item.proto | default('tcp') }}"
+    src: "{{ item.src | default('any') }}"
+    comment: "{{ item.comment | default('') }}"
+  loop: "{{ firewall_rules | default([]) }}"
+  loop_control:
+    label: "{{ item.comment | default(item.port) }}"
+  tags: [firewall]
+
+- name: "Firewall | Enable ufw"
+  community.general.ufw:
+    state: enabled
+  tags: [firewall]
