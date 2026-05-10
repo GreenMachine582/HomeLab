@@ -4,15 +4,6 @@
 # Secrets live alongside this file in vault.yml (Ansible Vault encrypted).
 # Node-specific overrides live in host_vars/<node>.yml
 
-# ── Network ───────────────────────────────────────────────────────────────────
-lan_subnet: "192.168.1.0/24"
-
-ip_edge:    "192.168.1.10"
-ip_observe: "192.168.1.11"
-ip_svc_01:  "192.168.1.20"
-ip_svc_02:  "192.168.1.21"
-ip_svc_03:  "192.168.1.22"
-
 # ── System ────────────────────────────────────────────────────────────────────
 timezone: "Australia/Sydney"
 locale: "en_AU.UTF-8"

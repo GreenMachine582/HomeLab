@@ -1,0 +1,17 @@
+---
+# inventories/group_vars/all/local.yml.example
+# Template for local.yml — copy and fill in real values before running Ansible.
+#
+#   cp inventories/group_vars/all/local.yml.example \
+#      inventories/group_vars/all/local.yml
+#
+# local.yml is gitignored. This example file is committed as a reference.
+# These values override the EDIT_BEFORE_USE placeholders in main.yml.
+
+lan_subnet: "EDIT_BEFORE_USE"   # e.g. 192.168.1.0/24
+
+ip_edge:    "EDIT_BEFORE_USE"   # homelab-edge static DHCP IP
+ip_observe: "EDIT_BEFORE_USE"   # homelab-observe static DHCP IP
+ip_svc_01:  "EDIT_BEFORE_USE"   # homelab-svc-01 static DHCP IP
+ip_svc_02:  "EDIT_BEFORE_USE"   # homelab-svc-02 static DHCP IP
+ip_svc_03:  "EDIT_BEFORE_USE"   # homelab-svc-03 static DHCP IP
