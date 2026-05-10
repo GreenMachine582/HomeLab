@@ -1,0 +1,60 @@
+// roles/alloy/templates/config.alloy.j2
+// Grafana Alloy config — ships logs to Loki and scrapes node metrics.
+
+// ── Log collection: systemd journal ──────────────────────────────────────────
+loki.source.journal "systemd" {
+  forward_to = [loki.write.default.receiver]
+  labels = {
+    node = "{{ inventory_hostname }}",
+    job  = "systemd",
+  }
+  relabel_rules = loki.relabel.systemd.rules
+}
+
+loki.relabel "systemd" {
+  forward_to = []
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+}
+
+{% if alloy_scrape_systemd_units is defined and alloy_scrape_systemd_units %}
+// ── Log collection: specific systemd units ────────────────────────────────────
+loki.source.journal "units" {
+  forward_to = [loki.write.default.receiver]
+  labels = {
+    node = "{{ inventory_hostname }}",
+    job  = "systemd-units",
+  }
+  matches = "_SYSTEMD_UNIT={{ alloy_scrape_systemd_units | join(' + _SYSTEMD_UNIT=') }}"
+}
+{% endif %}
+
+{% if alloy_scrape_ansible_log | default(false) %}
+// ── Log collection: Ansible log file ─────────────────────────────────────────
+local.file_match "ansible_log" {
+  path_targets = [{"__path__" = "{{ alloy_ansible_log_path | default('/opt/homelab/logs/ansible.log') }}"}]
+  sync_period = "15s"
+}
+
+loki.source.file "ansible_log" {
+  targets    = local.file_match.ansible_log.targets
+  forward_to = [loki.write.default.receiver]
+  labels = {
+    node = "{{ inventory_hostname }}",
+    job  = "ansible",
+  }
+}
+{% endif %}
+
+// ── Loki remote write ─────────────────────────────────────────────────────────
+loki.write "default" {
+  endpoint {
+    url = "{{ alloy_loki_endpoint }}"
+  }
+}
+
+// ── Prometheus remote write (node metrics via node-exporter) ──────────────────
+// node-exporter runs as a container on each node; Prometheus scrapes it directly.
+// Alloy does not scrape node-exporter — this section is intentionally empty.

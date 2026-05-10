@@ -1,0 +1,52 @@
+---
+# roles/alloy/tasks/main.yml
+# Installs Grafana Alloy and configures log shipping to Loki.
+
+- name: "Alloy | Add Grafana apt key"
+  ansible.builtin.shell:
+    cmd: |
+      curl -fsSL https://apt.grafana.com/gpg.key \
+        | gpg --dearmor -o /usr/share/keyrings/grafana.gpg
+    creates: /usr/share/keyrings/grafana.gpg
+  tags: [alloy, install]
+
+- name: "Alloy | Add Grafana apt repository"
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main"
+    filename: grafana
+    state: present
+  tags: [alloy, install]
+
+- name: "Alloy | Install"
+  ansible.builtin.apt:
+    name: alloy
+    state: present
+    update_cache: true
+  tags: [alloy, install]
+
+- name: "Alloy | Ensure config directory exists"
+  ansible.builtin.file:
+    path: "{{ alloy_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [alloy]
+
+- name: "Alloy | Write config"
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: "{{ alloy_config_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart alloy
+  tags: [alloy, config]
+
+- name: "Alloy | Enable and start"
+  ansible.builtin.systemd:
+    name: alloy
+    enabled: true
+    state: started
+    daemon_reload: true
+  tags: [alloy]

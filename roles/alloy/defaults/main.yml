@@ -1,0 +1,10 @@
+---
+# roles/alloy/defaults/main.yml
+
+alloy_version: latest
+alloy_loki_endpoint: "http://{{ ip_observe }}:3100/loki/api/v1/push"
+alloy_scrape_systemd_units: []
+alloy_scrape_ansible_log: false
+alloy_ansible_log_path: "/opt/homelab/logs/ansible.log"
+alloy_config_dir: /etc/alloy
+alloy_config_file: /etc/alloy/config.alloy
