@@ -1,0 +1,12 @@
+# fail2ban jail: {{ item.name }}
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/fail2ban/templates/jail.conf.j2
+
+[{{ item.name }}]
+enabled  = true
+port     = {{ item.port }}
+logpath  = {{ item.logpath }}
+backend  = {{ item.backend | default('auto') }}
+maxretry = {{ item.max_retry | default(3) }}
+bantime  = {{ item.ban_time | default(3600) }}
+findtime = {{ item.find_time | default(600) }}

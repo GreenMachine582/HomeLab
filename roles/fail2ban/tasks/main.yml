@@ -1,0 +1,28 @@
+---
+# roles/fail2ban/tasks/main.yml
+
+- name: "fail2ban | Install"
+  ansible.builtin.apt:
+    name: fail2ban
+    state: present
+  tags: [fail2ban]
+
+- name: "fail2ban | Write jail configs"
+  ansible.builtin.template:
+    src: jail.conf.j2
+    dest: "/etc/fail2ban/jail.d/{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ fail2ban_jails }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Restart fail2ban
+  tags: [fail2ban]
+
+- name: "fail2ban | Enable and start"
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+  tags: [fail2ban]

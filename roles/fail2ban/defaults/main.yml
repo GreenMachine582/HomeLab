@@ -1,0 +1,8 @@
+---
+# roles/fail2ban/defaults/main.yml
+
+fail2ban_jails:
+  - name: sshd
+    max_retry: 3
+    ban_time: 3600
+    find_time: 600
