@@ -1,0 +1,6 @@
+---
+# roles/unbound/defaults/main.yml
+
+unbound_port: 5335
+unbound_config_dir: /etc/unbound/unbound.conf.d
+unbound_root_hints: /var/lib/unbound/root.hints

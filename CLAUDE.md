@@ -59,7 +59,8 @@ Services are split across four compose files by concern:
 | `alloy` | Grafana Alloy log shipper (systemd journal → Loki) | all nodes |
 | `node_exporter` | Prometheus node exporter (port 9100) | all nodes |
 | `cadvisor` | Container metrics exporter (port 8080) | svc nodes |
-| `edge_services` | cloudflared, Caddy, Pi-hole, Unbound (rendered config templates) | edge |
+| `unbound` | Unbound recursive resolver as host systemd service (port 5335); Pi-hole upstream | edge |
+| `edge_services` | cloudflared, Caddy, Pi-hole config templates | edge |
 | `observe_services` | Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma | observe |
 | `camunda` | Camunda 8, Elasticsearch, n8n, discord-gateway (env templates) | svc-01 |
 | `greentechhub` | GreenTechHub Django app, Redis, Celery | svc-02 |

@@ -17,8 +17,9 @@
 #   --tags pihole      Pi-hole + Unbound only
 #   --tags caddy       Caddy reverse proxy config only
 #   --tags alloy       Grafana Alloy log shipper only
+#   --tags unbound     Unbound recursive resolver (host service) only
 #
-# Requires: roles/fail2ban, roles/tailscale, roles/edge_services, roles/alloy
+# Requires: roles/fail2ban, roles/tailscale, roles/alloy, roles/unbound, roles/edge_services
 # Note: base_hardening runs in bootstrap_edge.yml (Phase 1) only.
 #       Run playbooks/update_all.yml for OS package upgrades.
 
@@ -75,6 +76,9 @@
 
     - role: alloy
       tags: [alloy]
+
+    - role: unbound
+      tags: [unbound]
 
     - role: edge_services
       tags: [docker, pihole]

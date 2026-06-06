@@ -1,0 +1,44 @@
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/unbound/templates/unbound.conf.j2
+#
+# Unbound acting as a recursive DNSSEC-validating resolver for Pi-hole.
+# Listens on port {{ unbound_port }} only — Pi-hole handles port 53 (LAN DNS).
+# Access restricted to localhost and Docker bridge networks.
+
+server:
+    verbosity: 0
+
+    interface: 0.0.0.0@{{ unbound_port }}
+    do-ip4: yes
+    do-udp: yes
+    do-tcp: yes
+    do-ip6: no
+    prefer-ip6: no
+
+    # Only Pi-hole (via Docker bridge) and localhost may query this resolver.
+    # Refuse all other sources — this is not a public resolver.
+    access-control: 0.0.0.0/0 refuse
+    access-control: 127.0.0.0/8 allow
+    access-control: 172.16.0.0/12 allow   # Docker bridge networks
+
+    root-hints: {{ unbound_root_hints }}
+
+    harden-glue: yes
+    harden-dnssec-stripped: yes
+    harden-below-nxdomain: yes
+    harden-referral-path: no
+    use-caps-for-id: no
+
+    edns-buffer-size: 1472
+    prefetch: yes
+    prefetch-key: yes
+    num-threads: 1
+    so-rcvbuf: 1m
+
+    # Block RFC1918 addresses from being returned in public DNS responses
+    private-address: 10.0.0.0/8
+    private-address: 169.254.0.0/16
+    private-address: 172.16.0.0/12
+    private-address: 192.168.0.0/16
+    private-address: fd00::/8
+    private-address: fe80::/10

@@ -464,11 +464,12 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 - Pulls latest repo from GitHub
 - Deploys fail2ban (SSH and Pi-hole jails)
 - Starts Tailscale in subnet-router mode
+- Installs and configures Unbound as a host systemd service (port 5335, DNSSEC-validating recursive resolver)
 - Ships logs via Grafana Alloy (→ Loki once Phase 3 is up)
 - Renders edge service configs (cloudflared, Pi-hole custom DNS, Caddy reverse proxy)
 - Pulls and starts Docker Compose stack:
   - `cloudflared` (Cloudflare Tunnel — external ingress)
-  - Pi-hole + Unbound (DNS with DNSSEC)
+  - Pi-hole (DNS, port 53 — upstream is Unbound on the host via `host.docker.internal#5335`)
   - Caddy (LAN reverse proxy for `*.homelab.local`)
   - `node-exporter` and `pihole-exporter` (metrics)
   - Portainer Agent

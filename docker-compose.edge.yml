@@ -50,25 +50,19 @@ services:
 #    networks:
 #      - edge_net
 
-  unbound:
-    image: mvance/unbound:latest
-    container_name: unbound
-    restart: unless-stopped
-    networks:
-      pihole_net:
-        ipv4_address: 172.20.0.2
-
   pihole:
     image: pihole/pihole:latest
     container_name: pihole
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       TZ: "${TZ:-Australia/Sydney}"
       WEBPASSWORD: "${PIHOLE_WEB_PASSWORD}"
-      PIHOLE_DNS_1: "172.20.0.2#5335"   # Unbound container
-      PIHOLE_DNS_2: "no"                 # No fallback — Unbound is the only upstream
+      PIHOLE_DNS_1: "host.docker.internal#5335"   # Unbound on host (systemd service)
+      PIHOLE_DNS_2: "no"                           # No fallback — Unbound is the only upstream
       DNSSEC: "true"
       INTERFACE: "eth0"
     ports:
@@ -80,11 +74,7 @@ services:
       - pihole_data:/etc/pihole
       - pihole_dnsmasq:/etc/dnsmasq.d
     networks:
-      pihole_net:
-        ipv4_address: 172.20.0.3
-      edge_net: {}
-    depends_on:
-      - unbound
+      - edge_net
 
   pihole-exporter:
     image: ekofr/pihole-exporter:latest
@@ -116,11 +106,6 @@ services:
 networks:
   edge_net:
     driver: bridge
-  pihole_net:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/29
 
 volumes:
   caddy_data: {}
