@@ -325,3 +325,18 @@ Validation and remediation tasks identified by cross-referencing all documentati
     `roles/camunda/templates/discord_gateway/`, remove `vault_discord_public_key`
     and `vault_n8n_webhook_secret` from vault.yml
   If retained, review integration with the curl/ntfy outbound notification architecture.
+
+- [ ] **#35 — Add deploy start/end notifications to n8n Phase 4 workflow**
+  Playbooks should not own notification logic — n8n already has full deploy context (git SHA,
+  triggering commit, branch). Implement in the n8n workflow that handles the GitHub Actions webhook:
+  - **Start node**: POST to ntfy (primary) || Discord webhook (fallback) before SSHing to edge
+  - **Success branch**: notify with commit SHA and elapsed time on clean playbook exit
+  - **Failure branch**: notify with exit code / last task on non-zero exit; use higher priority
+  
+  Message format suggestion:
+  - Start:   `🚀 Deploy started — master@abc1234`
+  - Success: `✅ Deploy complete — master@abc1234 (42s)`
+  - Failure: `❌ Deploy failed — master@abc1234 — check Ansible output`
+
+  ntfy topic and Discord webhook already available (`vault_ntfy_token`, `vault_discord_alerts_webhook`).
+  **Prerequisite:** Phase 3 (ntfy on homelab-observe) and Phase 4 (n8n webhook wired) must be live.
