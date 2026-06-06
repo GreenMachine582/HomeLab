@@ -1,0 +1,30 @@
+---
+# roles/greentechhub/tasks/main.yml
+# Prepares svc-02 for the GreenTechHub Django stack.
+# Status: Planned — node not yet provisioned.
+
+- name: "GreenTechHub | Ensure data directories exist"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ postgres_data_dir   | default('/var/lib/docker/volumes/postgres_data') }}"
+    - "{{ postgres_backup_dir | default('/var/backups/postgres') }}"
+  tags: [dirs]
+
+- name: "GreenTechHub | Write Django secrets env file"
+  ansible.builtin.copy:
+    dest: "{{ homelab_repo_path }}/greentechhub/.env.secrets"
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      DJANGO_SECRET_KEY={{ django_secret_key }}
+      DATABASE_URL=postgresql://{{ greentechhub_db_user }}:{{ greentechhub_db_password }}@postgres:5432/greentechhub
+      REDIS_URL=redis://redis:6379/0
+      CELERY_BROKER_URL=redis://redis:6379/1
+  no_log: true
+  tags: [secrets]

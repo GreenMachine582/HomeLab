@@ -1,0 +1,36 @@
+---
+# roles/jellyfin/tasks/main.yml
+# Prepares svc-03 for the Jellyfin media server.
+# Status: Future — node not yet provisioned.
+
+- name: "Jellyfin | Ensure media mount point exists"
+  ansible.builtin.file:
+    path: "{{ jellyfin_media_dir | default('/mnt/media') }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [dirs, storage]
+
+- name: "Jellyfin | Check media mount is active"
+  ansible.builtin.command:
+    cmd: mountpoint -q {{ jellyfin_media_dir | default('/mnt/media') }}
+  register: media_mounted
+  changed_when: false
+  failed_when: false
+  tags: [storage]
+
+- name: "Jellyfin | Warn if media drive not mounted"
+  ansible.builtin.debug:
+    msg: "⚠️  {{ jellyfin_media_dir | default('/mnt/media') }} is not mounted. Mount the media drive before starting Jellyfin."
+  when: media_mounted.rc != 0
+  tags: [storage]
+
+- name: "Jellyfin | Ensure config directory exists"
+  ansible.builtin.file:
+    path: "{{ homelab_repo_path }}/jellyfin/config"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [dirs]

@@ -1,0 +1,21 @@
+---
+# roles/node_exporter/tasks/main.yml
+# Deploys node-exporter as a Docker container.
+
+- name: "node-exporter | Deploy container"
+  community.docker.docker_container:
+    name: node-exporter
+    image: prom/node-exporter:latest
+    restart_policy: unless-stopped
+    pid_mode: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+    state: started
+    pull: true
+  tags: [node-exporter, observability]

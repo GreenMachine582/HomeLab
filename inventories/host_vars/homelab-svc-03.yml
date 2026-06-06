@@ -1,0 +1,34 @@
+---
+# host_vars/homelab-svc-03.yml
+# Node-specific config for homelab-svc-03 (Jellyfin media server).
+# Status: Future — uncomment in inventories/prod.yml when provisioned.
+# Group-level config is in group_vars/svc.yml and group_vars/all.yml.
+
+# ── Network ───────────────────────────────────────────────────────────────────
+node_lan_ip: "{{ ip_svc_03 }}"
+node_interface: eth0
+node_hostname: homelab-svc-03
+
+# ── Firewall (extends group_vars/svc.yml ufw_rules_base) ─────────────────────
+ufw_rules_extra:
+  - { port: 8096, proto: tcp, src: "{{ lan_subnet }}", comment: "Jellyfin HTTP" }
+  - { port: 8920, proto: tcp, src: "{{ lan_subnet }}", comment: "Jellyfin HTTPS (optional)" }
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+docker_data_dir: /var/lib/docker
+jellyfin_media_dir: /mnt/media      # Mount point for external drive / NAS share
+
+# ── Jellyfin ──────────────────────────────────────────────────────────────────
+jellyfin_port: 8096
+jellyfin_https_port: 8920
+
+# Hardware transcoding — set based on actual hardware:
+#   RPi 5:  v4l2        (Video4Linux2)
+#   x86:    vaapi       (Intel/AMD) or nvenc (NVIDIA)
+jellyfin_hw_accel: v4l2            # Options: v4l2, vaapi, nvenc, none
+
+# Device passthrough for hardware acceleration (adjust to match actual device path)
+jellyfin_devices:
+  - /dev/video10
+  - /dev/video11
+  - /dev/video12

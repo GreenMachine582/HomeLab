@@ -1,0 +1,149 @@
+---
+# roles/camunda/tasks/main.yml
+# Prepares the svc-01 node for the Camunda 8 stack.
+# Handles NVMe mount, directory layout, and secret env files.
+# The actual `docker compose up` is run in the playbook post_tasks.
+
+# ── NVMe storage ──────────────────────────────────────────────────────────────
+- name: "Camunda | NVMe | Ensure mount point exists"
+  ansible.builtin.file:
+    path: "{{ nvme_mount | default('/mnt/nvme') }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: nvme_mount is defined
+  tags: [storage]
+
+- name: "Camunda | NVMe | Check mount is active"
+  ansible.builtin.command:
+    cmd: mountpoint -q {{ nvme_mount }}
+  register: nvme_mounted
+  changed_when: false
+  failed_when: false
+  when: nvme_mount is defined
+  tags: [storage]
+
+- name: "Camunda | NVMe | Warn if not mounted"
+  ansible.builtin.debug:
+    msg: "⚠️  {{ nvme_mount }} is not mounted. Mount the NVMe drive before deploying Camunda."
+  when:
+    - nvme_mount is defined
+    - nvme_mounted.rc != 0
+  tags: [storage]
+
+# ── Data directories ──────────────────────────────────────────────────────────
+- name: "Camunda | Ensure data directories exist"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ elasticsearch_data_dir | default('/mnt/nvme/elasticsearch') }}"
+    - "{{ postgres_data_dir      | default('/mnt/nvme/postgres') }}"
+    - "{{ postgres_backup_dir    | default('/mnt/nvme/backups') }}"
+    - "{{ zeebe_data_dir         | default('/mnt/nvme/zeebe') }}"
+  tags: [storage, dirs]
+
+# ── Env file directories ──────────────────────────────────────────────────────
+- name: "Camunda | Ensure env file dirs exist"
+  ansible.builtin.file:
+    path: "{{ homelab_repo_path }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - camunda
+    - n8n
+    - discord-gateway
+  tags: [secrets, env]
+
+# ── Non-secret env files (mode 0644) ─────────────────────────────────────────
+- name: "Camunda | Write Camunda .env"
+  ansible.builtin.template:
+    src: camunda/env.j2
+    dest: "{{ homelab_repo_path }}/camunda/.env"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [env, camunda]
+
+- name: "Camunda | Write n8n .env"
+  ansible.builtin.template:
+    src: n8n/env.j2
+    dest: "{{ homelab_repo_path }}/n8n/.env"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [env, n8n]
+
+- name: "Camunda | Write discord-gateway .env"
+  ansible.builtin.template:
+    src: discord_gateway/env.j2
+    dest: "{{ homelab_repo_path }}/discord-gateway/.env"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [env, discord_gateway]
+
+# ── Secret env files (mode 0640, no_log) ─────────────────────────────────────
+- name: "Camunda | Write Camunda .env.secrets"
+  ansible.builtin.template:
+    src: camunda/env.secrets.j2
+    dest: "{{ homelab_repo_path }}/camunda/.env.secrets"
+    owner: root
+    group: root
+    mode: "0640"
+  no_log: true
+  tags: [secrets, camunda]
+
+- name: "Camunda | Write n8n .env.secrets"
+  ansible.builtin.template:
+    src: n8n/env.secrets.j2
+    dest: "{{ homelab_repo_path }}/n8n/.env.secrets"
+    owner: root
+    group: root
+    mode: "0640"
+  no_log: true
+  tags: [secrets, n8n]
+
+- name: "Camunda | Write discord-gateway .env.secrets"
+  ansible.builtin.template:
+    src: discord_gateway/env.secrets.j2
+    dest: "{{ homelab_repo_path }}/discord-gateway/.env.secrets"
+    owner: root
+    group: root
+    mode: "0640"
+  no_log: true
+  tags: [secrets, discord_gateway]
+
+# ── Config file rendering ─────────────────────────────────────────────────────
+- name: "Camunda | Elasticsearch | Write elasticsearch.yml"
+  ansible.builtin.template:
+    src: elasticsearch/elasticsearch.yml.j2
+    dest: "{{ homelab_repo_path }}/elasticsearch/elasticsearch.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [elasticsearch]
+
+- name: "Camunda | PostgreSQL | Write postgresql.conf"
+  ansible.builtin.template:
+    src: postgres/postgresql.conf.j2
+    dest: "{{ homelab_repo_path }}/postgres/postgresql.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [postgres]
+
+# ── Elasticsearch config ──────────────────────────────────────────────────────
+- name: "Camunda | Elasticsearch | Set vm.max_map_count"
+  ansible.posix.sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    state: present
+    reload: true
+  tags: [elasticsearch]
