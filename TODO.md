@@ -151,8 +151,18 @@ Validation and remediation tasks identified by cross-referencing all documentati
   `inventories/group_vars/all/vault.yml`, `inventories/group_vars/all/overrides.yml`, `.idea/`, `.claudeignore`,
   `logs/`, `*.log`, `n8n-recovery-codes.txt`. All Python/Django/Scrapy/Celery boilerplate removed.
 
-- [ ] **#19 — Validate `inventories/group_vars/all/vault.yml.example` is complete**
-  Cross-check all `{{ vault_* }}` references across `group_vars/` and `host_vars/` against the variables listed in `vault.yml.example`. Ensure the actual `inventories/group_vars/all/vault.yml` was populated with all required values.
+- [x] **#19 — Validate `inventories/group_vars/all/vault.yml.example` is complete**
+  Audited all `vault_*` references across all branches against vault.yml.example. Changes made:
+  - Added `vault_ntfy_token` (was missing; needed by notification scripts TODO #21)
+  - Kept `vault_shoutrrr_discord_alerts` — shoutrrr on edge node is Discord fallback when
+    homelab-observe is unreachable; scripts try ntfy first, fall back to shoutrrr
+  - Removed `vault_github_ssh_key_passphrase` (no passphrase-protected key in current setup)
+  - Added inline comments clarifying `vault_cloudflare_api_token` (future use, not yet wired)
+    and `vault_deploy_webhook_secret` (used by n8n directly, not Ansible)
+  - Added note that `vault_admin_become_password` is wired via `bootstrap.ini`
+  Branch sync note: `wip/observe` and `wip/svc` still carry `vault_tailscale_auth_key` in their
+  copies of `main.yml` and `vault.yml.example` (pre-#24). Resolve when rebasing those branches
+  onto master after wip/edge merges.
 
 ---
 
@@ -194,11 +204,13 @@ Validation and remediation tasks identified by cross-referencing all documentati
   - `on-shutdown.sh` + `on-shutdown.service` — notifies on shutdown
   - `on-ssh-success.sh` + `on-ssh-success.service` — PAM hook notifies on SSH login
   Source: `old homelab/scripts/on-boot.sh`, `on-shutdown.sh`, `on-ssh-success.sh` and their `.service.tmpl` counterparts.
-  **Notification target: ntfy on `homelab-observe`** (not Discord directly — Alertmanager owns that path).
-  Scripts POST to `http://{{ ip_observe }}:{{ ntfy_port }}/<topic>` (LAN IP, not the internal Docker URL).
-  Auth: `-H "Authorization: Bearer {{ vault_ntfy_token }}"` — add `vault_ntfy_token` to `vault.yml` and `vault.yml.example`.
-  Variables to parameterise: `ip_observe`, `ntfy_port`, `vault_ntfy_token`, `inventory_hostname`, script deploy path.
-  Note: if `homelab-observe` is down at boot time the notification is silently lost — acceptable for homelab use.
+  **Notification: ntfy primary, shoutrrr→Discord fallback.**
+  Scripts attempt ntfy first (`http://{{ ip_observe }}:{{ ntfy_port }}/<topic>` with Bearer token);
+  if the curl fails (observe down at boot time) they fall back to shoutrrr on the edge node, which
+  posts directly to Discord — no dependency on homelab-observe for the fallback path.
+  Shoutrrr is a single static binary; deploy it to all nodes via the role.
+  Variables to parameterise: `ip_observe`, `ntfy_port`, `vault_ntfy_token`,
+  `vault_shoutrrr_discord_alerts`, `inventory_hostname`, script deploy path.
 
 - [x] **#22 — Add fail2ban jail template to `roles/fail2ban/`**
   Created `roles/fail2ban/templates/jail.conf.j2` rendering port, logpath, backend, maxretry, bantime,

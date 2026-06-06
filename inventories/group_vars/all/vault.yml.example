@@ -11,10 +11,12 @@
 
 # ── Bootstrap credentials ─────────────────────────────────────────────────────
 # admin sudo password — set in RPi Imager (BOOTSTRAP.md § 0.3); used only during Phase 1
+# Wired via bootstrap.ini: ansible_become_password={{ vault_admin_become_password }}
 vault_admin_become_password: "changeme"
 
 # ── SSH public keys ───────────────────────────────────────────────────────────
-# Contents of the corresponding .pub files generated in BOOTSTRAP.md § 1.4
+# Contents of the corresponding .pub files generated in BOOTSTRAP.md § 1.4.
+# Keys are never committed — these vault entries are how Ansible deploys them to nodes.
 vault_admin_ssh_pubkey: "ssh-ed25519 AAAA... admin"
 vault_homelab_ssh_pubkey: "ssh-ed25519 AAAA... homelab"
 vault_deploy_ssh_pubkey: "ssh-ed25519 AAAA... deploy"
@@ -33,10 +35,11 @@ vault_tailscale_oauth_client_id: "..."
 vault_tailscale_oauth_client_secret: "tskey-secret-..."
 
 # ── Cloudflare ────────────────────────────────────────────────────────────────
-# Tunnel token: Cloudflare Zero Trust → Tunnels → your tunnel
+# Tunnel token: Cloudflare Zero Trust → Tunnels → your tunnel → Overview
 vault_cloudflare_tunnel_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 vault_cloudflare_tunnel_token: "eyJ..."
 # API token: Cloudflare dashboard → My Profile → API Tokens
+# Not currently used by any Ansible role — reserved for future DNS/cert automation.
 vault_cloudflare_api_token: "changeme"
 
 # ── Pi-hole ───────────────────────────────────────────────────────────────────
@@ -47,16 +50,23 @@ vault_grafana_admin_password: "changeme"
 
 # ── Discord webhook URLs ──────────────────────────────────────────────────────
 # Create webhooks in Discord → Server Settings → Integrations → Webhooks
+# Used by Alertmanager for metric/alert notifications (severity-routed).
 vault_discord_webhook_critical: "https://discord.com/api/webhooks/..."
 vault_discord_webhook_warning: "https://discord.com/api/webhooks/..."
 vault_discord_webhook_info: "https://discord.com/api/webhooks/..."
-# Shoutrrr-format URL for scripts/systemd notification units (on-boot, on-shutdown, on-ssh-success)
-# Format: discord://token@channel_id  (derive from the webhook URL)
-vault_shoutrrr_discord_alerts: "discord://token@channel_id"
 
-# ── GitHub SSH ────────────────────────────────────────────────────────────────
-# Passphrase for the GitHub deploy SSH key (homelab-github keypair)
-vault_github_ssh_key_passphrase: "changeme"
+# ── ntfy ─────────────────────────────────────────────────────────────────────
+# Auth token for the ntfy server on homelab-observe (port 8085).
+# Primary notification target for on-boot/shutdown/SSH scripts (TODO #21).
+# Create with: ntfy token add <username>  (after ntfy user add <username>)
+vault_ntfy_token: "tk_..."
+
+# ── Shoutrrr (Discord fallback) ───────────────────────────────────────────────
+# Shoutrrr runs on homelab-edge as a lightweight Discord fallback.
+# Notification scripts try ntfy first; if homelab-observe is unreachable they
+# fall back to shoutrrr → Discord directly (no dependency on the observe node).
+# Format: discord://token@channel_id  (derive from the Discord webhook URL)
+vault_shoutrrr_discord_alerts: "discord://token@channel_id"
 
 # ── PostgreSQL — Camunda (svc-01) ─────────────────────────────────────────────
 vault_camunda_db_user: "camunda"
@@ -76,7 +86,7 @@ vault_n8n_owner_password: "changeme"
 vault_n8n_encryption_key: "changeme"
 
 # ── discord-gateway ───────────────────────────────────────────────────────────
-# DISCORD_PUBLIC_KEY: found in Discord Developer Portal → your app → General Information
+# DISCORD_PUBLIC_KEY: Discord Developer Portal → your app → General Information
 vault_discord_public_key: "changeme"
 # Shared secret validated by discord-gateway when n8n calls back
 vault_n8n_webhook_secret: "changeme"
@@ -89,6 +99,8 @@ vault_greentechhub_db_password: "changeme"
 # Generate with: python3 -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 vault_django_secret_key: "changeme"
 
-# ── Deploy endpoint ───────────────────────────────────────────────────────────
-# Shared secret validated by n8n/Camunda when receiving the GitHub webhook POST.
+# ── Deploy webhook ────────────────────────────────────────────────────────────
+# Shared secret sent by GitHub Actions in the X-Deploy-Secret header.
+# Validated by n8n/Camunda before SSHing to the edge — not used by Ansible directly.
+# Must match the DEPLOY_SECRET GitHub Actions secret.
 vault_deploy_webhook_secret: "changeme"
