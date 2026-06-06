@@ -120,8 +120,9 @@ Validation and remediation tasks identified by cross-referencing all documentati
 - [x] **#13 — Fix repo path (`/opt/homelab` vs `/root/homelab`)**
   `group_vars/all.yml` sets `homelab_repo_path: /opt/homelab` (owned by `homelab` user — correct per BOOTSTRAP.md). `deploy_homelab.sh` hard-codes `/root/homelab` and runs as root. Fixed `deploy_homelab.sh`: all `/root/homelab` → `/opt/homelab`; also corrected SSH key path `/root/.ssh/github` → `/home/homelab/.ssh/github`.
 
-- [ ] **#14 — Generate missing `deploy` SSH key pair**
-  BOOTSTRAP.md § 1.4 specifies four keys; `.ssh/` has only three (homelab, homelab-edge, homelab-github). The `deploy` private key and `deploy.pub` are missing. Generate and add the public key to `inventories/group_vars/all/vault.yml` as `vault_deploy_ssh_pubkey`.
+- [N/A] **#14 — Generate missing `deploy` SSH key pair**
+  Removed. SSH keys are generated on the operator's PC during Phase 1 (BOOTSTRAP.md § 1.4) and
+  never stored in the repo — tracking this here would encourage committing key material.
 
 - [x] **#15 — Remove `.env-github`**
   Old GitHub Actions direct-SSH credentials (CF Access client ID/secret, Discord bot token, old SERVER_PRIVATE_KEY
@@ -175,13 +176,17 @@ Validation and remediation tasks identified by cross-referencing all documentati
 - [x] **#27 — Single source of truth for IP addresses (prod.ini → prod.yml)**
   `inventories/prod.ini` duplicated the IP addresses already defined in `group_vars/all/main.yml` and had to be kept in sync manually (INI format does not support Jinja2). Replaced with `inventories/prod.yml` (YAML inventory format). `ansible_host: "{{ ip_edge }}"` and `ansible_port: "{{ ssh_port }}"` resolve from group_vars at connection time — no manual sync. Updated all references across playbooks, scripts, and docs. `prod.ini` confirmed deleted.
 
-- [ ] **#24 — Automate Tailscale auth key renewal**
-  Tailscale auth keys expire (default 90 days). When a key expires, new nodes cannot join the tailnet and existing nodes cannot re-authenticate after a reimage. Automate renewal so the homelab never silently loses Tailscale connectivity.
-  - Generate a Tailscale OAuth client (not an API key) in the Tailscale admin console — OAuth clients don't expire and can mint new auth keys programmatically
-  - Store `vault_tailscale_oauth_client_id` and `vault_tailscale_oauth_client_secret` in `inventories/group_vars/all/vault.yml`
-  - Add an Ansible task (or n8n scheduled workflow) that calls the Tailscale API to rotate the auth key and write the new value back to `vault_tailscale_auth_key` in `inventories/group_vars/all/vault.yml` before expiry
-  - Alternatively: set `reusable: true` + `expiry: 0` when generating the OAuth-derived key so it never expires (acceptable for a private homelab)
-  - Ensure `roles/tailscale/tasks/main.yml` uses `vault_tailscale_auth_key` and that the key is always present before `bootstrap_node.yml` runs
+- [x] **#24 — Automate Tailscale auth key renewal**
+  Replaced static `vault_tailscale_auth_key` with OAuth client credentials that never expire.
+  The tailscale role now mints a fresh auth key at deploy time via the Tailscale API — no static
+  tskey-auth-* stored anywhere. Key is skipped entirely if the node is already connected.
+  - `roles/tailscale/tasks/main.yml`: added status check → OAuth API call → `tailscale up` sequence;
+    API call and `tailscale up` are skipped when `tailscale status` returns 0 (already connected)
+  - `inventories/group_vars/all/main.yml`: removed `tailscale_auth_key` mapping (no longer needed)
+  - `inventories/group_vars/all/vault.yml.example`: replaced `vault_tailscale_auth_key` with
+    `vault_tailscale_oauth_client_id` + `vault_tailscale_oauth_client_secret`
+  - OAuth client scope required: **Devices → Auth Keys (write)**
+  - Minted keys: `reusable: true`, `preauthorized: true`, `expirySeconds: 0`
 
 - [ ] **#21 — Add notification scripts to `roles/base_hardening/`**
   Boot/shutdown/SSH login notification scripts exist in `old homelab/scripts/` but are absent from the new role structure. Add as Jinja2 templates + task entries so Ansible deploys and manages the systemd units:
