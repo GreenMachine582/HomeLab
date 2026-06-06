@@ -1,0 +1,6 @@
+---
+# roles/cadvisor/defaults/main.yml
+# Lowest-precedence defaults — override via group_vars/svc.yml or host_vars.
+
+cadvisor_port: 8080
+cadvisor_allow_privileged: true

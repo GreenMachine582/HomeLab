@@ -1,0 +1,4 @@
+---
+# roles/node_exporter/defaults/main.yml
+# This role has no configurable variables — it deploys node-exporter with
+# fixed bind mounts (/proc, /sys, /rootfs). No defaults required.
