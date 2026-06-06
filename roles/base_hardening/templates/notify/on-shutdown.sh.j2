@@ -7,5 +7,7 @@ HOST="{{ inventory_hostname }}"
 TIME=$(date "+%Y-%m-%d %H:%M:%S")
 MSG="$HOST is shutting down at $TIME"
 
-shoutrrr send --url "{{ notify_ntfy_shoutrrr_url }}" --message "$MSG" \
-|| shoutrrr send --url "{{ notify_discord_shoutrrr_url }}" --message "[Shutdown] $MSG"
+NTFY_URL="{{ notify_ntfy_shoutrrr_url }}?title={{ inventory_hostname }}+shutting+down&priority=high&tags=warning"
+
+shoutrrr send --url "$NTFY_URL" --message "$MSG" \
+|| shoutrrr send --url "{{ notify_discord_shoutrrr_url }}" --message "⚠️ [Shutdown] $MSG"
