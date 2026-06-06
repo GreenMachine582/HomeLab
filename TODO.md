@@ -233,14 +233,9 @@ Validation and remediation tasks identified by cross-referencing all documentati
 
 ## Repo Hygiene (identified 2026-06-06)
 
-- [ ] **#28 — Commit the work backlog**
-  Nearly all work from previous sessions is uncommitted. Untracked: `CLAUDE.md`, `TODO.md`,
-  `inventories/group_vars/observe.yml`, `inventories/group_vars/svc.yml`, all five `host_vars/` files,
-  `playbooks/backup.yml`, `playbooks/bootstrap_node.yml`, `playbooks/deploy_observe.yml`,
-  `playbooks/deploy_svc.yml`, `playbooks/rollback.yml`, `roles/cadvisor/`, `roles/camunda/`,
-  `roles/greentechhub/`, `roles/jellyfin/`, `roles/node_exporter/`, `roles/observe_services/`, `scripts/`.
-  Also staged but not committed: `roles/docker_compose/tasks/main.yml`.
-  A re-clone of the repo would lose everything above. Commit in logical chunks by concern.
+- [x] **#28 — Commit the work backlog**
+  Working tree is clean on wip/edge — all files committed across prior sessions via per-concern
+  commits on wip/edge, wip/observe, and wip/svc branches. Nothing lost.
 
 - [x] **#29 — Clean up orphaned git index entry**
   `ansible/bootstrap/edge-deploy.yml` no longer present in index on any branch — cleared as part of
@@ -251,12 +246,14 @@ Validation and remediation tasks identified by cross-referencing all documentati
   `host_vars/` files but no compose files. Per #2, Portainer Agent also needs adding to both when provisioned.
   Mirror the structure of `docker-compose.svc01.yml`: named network, volumes, Portainer Agent on port 9001.
 
-- [ ] **#31 — Add `defaults/main.yml` to roles missing it**
-  Ansible best practice: every role declares its variables and defaults in `defaults/main.yml` (lowest
-  precedence — safely overridden by group_vars/host_vars). The following have only `tasks/main.yml` and
-  rely entirely on upstream vars with no self-documentation or safe fallbacks:
-  `roles/firewall/`, `roles/users/`, `roles/edge_services/`, `roles/observe_services/`, `roles/camunda/`,
-  `roles/greentechhub/`, `roles/jellyfin/`, `roles/node_exporter/`, `roles/cadvisor/`.
+- [x] **#31 — Add `defaults/main.yml` to roles missing it**
+  Created `defaults/main.yml` for all five edge-relevant roles that were missing it:
+  `roles/firewall/` (firewall_rules, ssh_port), `roles/users/` (homelab_users),
+  `roles/docker_compose/` (no vars — documented as intentional), `roles/edge_services/`
+  (cloudflared_ingress, pihole_custom_dns, caddy_routes, homelab_repo_path),
+  `roles/base_hardening/` (packages, SSH vars, timezone, shoutrrr_version, notify_script_dir).
+  Remaining roles (`observe_services`, `camunda`, `greentechhub`, `jellyfin`, `node_exporter`,
+  `cadvisor`) are on wip/observe or wip/svc — defaults for those belong on those branches.
 
 - [x] **#32 — Document `roles/users/` and `roles/docker_compose/` in CLAUDE.md**
   Added full roles table to CLAUDE.md Ansible Structure section covering all 15 roles with scope

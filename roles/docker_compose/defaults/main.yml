@@ -1,0 +1,4 @@
+---
+# roles/docker_compose/defaults/main.yml
+# This role has no configurable variables — it installs the docker-compose-plugin
+# package and verifies the installation. No defaults required.

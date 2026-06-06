@@ -1,0 +1,38 @@
+---
+# roles/base_hardening/defaults/main.yml
+# Lowest-precedence defaults — override via group_vars/all/main.yml.
+
+# ── Packages ──────────────────────────────────────────────────────────────────
+base_packages:
+  - curl
+  - git
+  - htop
+  - vim
+  - python3
+  - python3-pip
+  - unattended-upgrades
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+unattended_upgrades_enabled: true
+
+# ── Time / Locale ─────────────────────────────────────────────────────────────
+timezone: "UTC"
+locale: "en_US.UTF-8"
+
+# ── SSH hardening ─────────────────────────────────────────────────────────────
+ssh_port: 22
+ssh_permit_root_login: "no"
+ssh_password_authentication: "no"
+ssh_pubkey_authentication: "yes"
+ssh_max_auth_tries: 3
+ssh_client_alive_interval: 300
+ssh_client_alive_count_max: 2
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+shoutrrr_version: "0.8.0"
+notify_script_dir: /usr/local/lib/homelab/notify
+# notify_ntfy_shoutrrr_url and notify_discord_shoutrrr_url have no safe defaults
+# (they require vault vars and ip_observe) — must be set in group_vars/all/main.yml.
