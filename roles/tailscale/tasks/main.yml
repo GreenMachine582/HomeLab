@@ -54,6 +54,7 @@
             reusable: true
             ephemeral: false
             preauthorized: true
+            tags: "{{ tailscale_tags }}"
       expirySeconds: 0
     status_code: 200
   register: ts_key_result
