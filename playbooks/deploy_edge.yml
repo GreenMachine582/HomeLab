@@ -95,6 +95,7 @@
         TUNNEL_TOKEN: "{{ vault_cloudflare_tunnel_token }}"
         PIHOLE_WEB_PASSWORD: "{{ vault_pihole_web_password }}"
         TZ: "{{ timezone }}"
+      become: false
       no_log: true
       tags: [docker]
       changed_when: true
@@ -107,6 +108,7 @@
         TUNNEL_TOKEN: "{{ vault_cloudflare_tunnel_token }}"
         PIHOLE_WEB_PASSWORD: "{{ vault_pihole_web_password }}"
         TZ: "{{ timezone }}"
+      become: false
       no_log: true
       tags: [docker]
       changed_when: true
@@ -114,6 +116,7 @@
     - name: "Docker | Prune unused images"
       ansible.builtin.command:
         cmd: docker image prune -f
+      become: false
       tags: [docker]
       changed_when: true
 
