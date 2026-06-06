@@ -204,12 +204,13 @@ Validation and remediation tasks identified by cross-referencing all documentati
   - `on-boot.sh` / `on-boot.service` — oneshot at boot (After=network-online.target)
   - `on-shutdown.sh` / `on-shutdown.service` — oneshot at shutdown (Before=shutdown.target)
   - `on-ssh-success.sh` / `on-ssh-success.service` — persistent daemon watching journalctl -fu ssh
-  - ntfy primary: `curl` to `http://{{ ip_observe }}:8085/homelab` with Bearer token
-  - shoutrrr fallback: fires only if ntfy curl fails (non-zero exit)
+  - shoutrrr (client binary) used for both channels — one tool, consistent interface:
+    `shoutrrr → ntfy+http (self-hosted, primary) || shoutrrr → discord (fallback)`
+  - ntfy URL constructed in main.yml: `ntfy+http://token@ip_observe:8085/homelab`
   - shoutrrr binary installed to `/usr/local/bin/shoutrrr` via `get_url` (ARM64/amd64 auto-detected)
   - Scripts deploy to `{{ notify_script_dir }}` (`/usr/local/lib/homelab/notify/`), mode 0700
-  - New vars in `group_vars/all/main.yml`: `notify_script_dir`, `notify_ntfy_url`,
-    `notify_ntfy_token`, `notify_shoutrrr_url`, `shoutrrr_version`
+  - New vars in `group_vars/all/main.yml`: `notify_script_dir`, `notify_ntfy_shoutrrr_url`,
+    `notify_discord_shoutrrr_url`, `shoutrrr_version`
   - `Reload systemd` handler added to `roles/base_hardening/handlers/main.yml`
 
 - [x] **#22 — Add fail2ban jail template to `roles/fail2ban/`**

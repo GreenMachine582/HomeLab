@@ -81,12 +81,11 @@ node_exporter_port: 9100
 alloy_loki_endpoint: "http://{{ ip_observe }}:3100/loki/api/v1/push"
 
 # ── Notifications ────────────────────────────────────────────────────────────
-# Scripts are deployed to all nodes by roles/base_hardening.
-# ntfy is primary (requires homelab-observe up); shoutrrr → Discord is the fallback.
+# Primary:  shoutrrr → self-hosted ntfy on homelab-observe
+# Fallback: shoutrrr → Discord (fires only if ntfy send fails)
 notify_script_dir: /usr/local/lib/homelab/notify
-notify_ntfy_url: "http://{{ ip_observe }}:8085/homelab"
-notify_ntfy_token: "{{ vault_ntfy_token }}"
-notify_shoutrrr_url: "{{ vault_shoutrrr_discord_alerts }}"
+notify_ntfy_shoutrrr_url: "ntfy+http://{{ vault_ntfy_token }}@{{ ip_observe }}:8085/homelab"
+notify_discord_shoutrrr_url: "{{ vault_shoutrrr_discord_alerts }}"
 shoutrrr_version: "0.8.0"
 
 # ── Tailscale (common) ───────────────────────────────────────────────────────

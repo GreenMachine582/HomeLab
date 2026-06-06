@@ -8,19 +8,10 @@ HOST="{{ inventory_hostname }}"
 
 notify() {
     local user="$1" ip="$2" time="$3"
-    local title="SSH Login: $HOST"
-    local msg="$user logged in from $ip at $time"
+    local msg="$user logged in to $HOST from $ip at $time"
 
-    if curl -sf \
-        -H "Authorization: Bearer {{ vault_ntfy_token }}" \
-        -H "Title: $title" \
-        -H "Tags: rotating_light" \
-        -d "$msg" \
-        "{{ notify_ntfy_url }}"; then
-        return 0
-    fi
-
-    shoutrrr send --url "{{ vault_shoutrrr_discord_alerts }}" --message "[$title] $msg"
+    shoutrrr send --url "{{ notify_ntfy_shoutrrr_url }}" --message "$msg" \
+    || shoutrrr send --url "{{ notify_discord_shoutrrr_url }}" --message "[SSH Login] $msg"
 }
 
 journalctl -fu ssh --output=cat | while read -r line; do
