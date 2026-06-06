@@ -127,7 +127,8 @@ Validation and remediation tasks identified by cross-referencing all documentati
 - [x] **#15 — Remove `.env-github`**
   Old GitHub Actions direct-SSH credentials (CF Access client ID/secret, Discord bot token, old SERVER_PRIVATE_KEY
   path). Superseded by n8n webhook approach — GitHub never SSHes directly anymore. Vault keys migrated:
-  vault_cloudflare_api_token, vault_shoutrrr_discord_alerts, vault_github_ssh_key_passphrase — all in vault.yml.example.
+  vault_cloudflare_api_token, vault_github_ssh_key_passphrase — migrated to vault.yml.example.
+  Note: vault_shoutrrr_discord_alerts later replaced by vault_discord_alerts_webhook (plain webhook URL) when shoutrrr was removed.
   File confirmed deleted (gitignored by `.env*` pattern; not present on disk).
 
 ---
@@ -154,8 +155,8 @@ Validation and remediation tasks identified by cross-referencing all documentati
 - [x] **#19 — Validate `inventories/group_vars/all/vault.yml.example` is complete**
   Audited all `vault_*` references across all branches against vault.yml.example. Changes made:
   - Added `vault_ntfy_token` (was missing; needed by notification scripts TODO #21)
-  - Kept `vault_shoutrrr_discord_alerts` — shoutrrr on edge node is Discord fallback when
-    homelab-observe is unreachable; scripts try ntfy first, fall back to shoutrrr
+  - Added `vault_discord_alerts_webhook` (plain Discord webhook URL for curl-based fallback;
+    replaced vault_shoutrrr_discord_alerts when shoutrrr was removed — no binary available for ARM)
   - Removed `vault_github_ssh_key_passphrase` (no passphrase-protected key in current setup)
   - Added inline comments clarifying `vault_cloudflare_api_token` (future use, not yet wired)
     and `vault_deploy_webhook_secret` (used by n8n directly, not Ansible)
@@ -199,18 +200,16 @@ Validation and remediation tasks identified by cross-referencing all documentati
   - Minted keys: `reusable: true`, `preauthorized: true`, `expirySeconds: 0`
 
 - [x] **#21 — Add notification scripts to `roles/base_hardening/`**
-  All three scripts and systemd units implemented as Jinja2 templates; shoutrrr installed on every
-  node as the Discord fallback when homelab-observe is unreachable.
+  All three scripts and systemd units implemented as Jinja2 templates; curl used for both
+  channels (shoutrrr removed — no ARM binary available).
   - `on-boot.sh` / `on-boot.service` — oneshot at boot (After=network-online.target)
   - `on-shutdown.sh` / `on-shutdown.service` — oneshot at shutdown (Before=shutdown.target)
   - `on-ssh-success.sh` / `on-ssh-success.service` — persistent daemon watching journalctl -fu ssh
-  - shoutrrr (client binary) used for both channels — one tool, consistent interface:
-    `shoutrrr → ntfy+http (self-hosted, primary) || shoutrrr → discord (fallback)`
-  - ntfy URL constructed in main.yml: `ntfy+http://token@ip_observe:8085/homelab`
-  - shoutrrr binary installed to `/usr/local/bin/shoutrrr` via `get_url` (ARM64/amd64 auto-detected)
+  - curl → ntfy (primary, with Title/Priority/Tags headers) || curl → Discord webhook (fallback)
+  - `|| true` prevents service failure when both channels unavailable (e.g. pre-Phase 3)
   - Scripts deploy to `{{ notify_script_dir }}` (`/usr/local/lib/homelab/notify/`), mode 0700
-  - New vars in `group_vars/all/main.yml`: `notify_script_dir`, `notify_ntfy_shoutrrr_url`,
-    `notify_discord_shoutrrr_url`, `shoutrrr_version`
+  - Vars in `group_vars/all/main.yml`: `notify_script_dir`, `notify_ntfy_url`,
+    `notify_ntfy_token`, `notify_discord_webhook`
   - `Reload systemd` handler added to `roles/base_hardening/handlers/main.yml`
 
 - [x] **#22 — Add fail2ban jail template to `roles/fail2ban/`**
@@ -251,7 +250,7 @@ Validation and remediation tasks identified by cross-referencing all documentati
   `roles/firewall/` (firewall_rules, ssh_port), `roles/users/` (homelab_users),
   `roles/docker_compose/` (no vars — documented as intentional), `roles/edge_services/`
   (cloudflared_ingress, pihole_custom_dns, caddy_routes, homelab_repo_path),
-  `roles/base_hardening/` (packages, SSH vars, timezone, shoutrrr_version, notify_script_dir).
+  `roles/base_hardening/` (packages, SSH vars, timezone, notify_script_dir).
   Remaining roles (`observe_services`, `camunda`, `greentechhub`, `jellyfin`, `node_exporter`,
   `cadvisor`) are on wip/observe or wip/svc — defaults for those belong on those branches.
 
@@ -319,11 +318,10 @@ Validation and remediation tasks identified by cross-referencing all documentati
 
 - [ ] **#34 — Review discord-gateway after Phase 3 is deployed**
   discord-gateway handles INBOUND Discord slash commands routed to n8n — a different
-  concern from shoutrrr/ntfy (which are outbound notifications). Retained for now.
+  concern from curl/ntfy (which are outbound notifications). Retained for now.
   After Phase 3 (svc-01 running), decide:
   - Keep: if slash-command automation (e.g. `/deploy`, `/status`) is wanted
   - Remove: drop `discord-gateway` from `docker-compose.svc01.yml`, delete
     `roles/camunda/templates/discord_gateway/`, remove `vault_discord_public_key`
     and `vault_n8n_webhook_secret` from vault.yml
-  Refactor may also be needed to better integrate with the shoutrrr/ntfy notification
-  architecture if retained.
+  If retained, review integration with the curl/ntfy outbound notification architecture.
