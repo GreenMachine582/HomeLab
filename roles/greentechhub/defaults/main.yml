@@ -1,0 +1,14 @@
+---
+# roles/greentechhub/defaults/main.yml
+# Lowest-precedence defaults — override via host_vars/homelab-svc-02.yml.
+# Status: Planned — node not yet provisioned.
+
+homelab_repo_path: /opt/homelab
+
+# ── Storage directories ───────────────────────────────────────────────────────
+postgres_data_dir: /var/lib/docker/volumes/postgres_data
+postgres_backup_dir: /var/backups/postgres
+
+# ── Application ───────────────────────────────────────────────────────────────
+# django_secret_key, greentechhub_db_user, greentechhub_db_password have no
+# safe defaults — must be set via vault vars in vault.yml.

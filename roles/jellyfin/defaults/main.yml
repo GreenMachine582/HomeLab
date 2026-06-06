@@ -1,0 +1,7 @@
+---
+# roles/jellyfin/defaults/main.yml
+# Lowest-precedence defaults — override via host_vars/homelab-svc-03.yml.
+# Status: Future — node not yet provisioned.
+
+homelab_repo_path: /opt/homelab
+jellyfin_media_dir: /mnt/media

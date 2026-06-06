@@ -1,0 +1,38 @@
+---
+# roles/camunda/defaults/main.yml
+# Lowest-precedence defaults — override via host_vars/homelab-svc-01.yml.
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+homelab_repo_path: /opt/homelab
+
+# NVMe mount point. Tasks gate on `nvme_mount is defined` — leave unset if
+# no NVMe is present and data dirs will fall back to their per-task defaults.
+# nvme_mount: /mnt/nvme
+
+# ── Storage directories ───────────────────────────────────────────────────────
+# Real values set in host_vars/homelab-svc-01.yml (point to NVMe).
+elasticsearch_data_dir: /var/lib/docker/volumes/elasticsearch_data
+postgres_data_dir: /var/lib/docker/volumes/postgres_data
+postgres_backup_dir: /var/backups/postgres
+zeebe_data_dir: /var/lib/docker/volumes/zeebe_data
+
+# ── Elasticsearch ─────────────────────────────────────────────────────────────
+elasticsearch_heap: "1g"
+elasticsearch_cluster_name: homelab
+
+# ── PostgreSQL ────────────────────────────────────────────────────────────────
+postgres_port: 5432
+postgres_shared_buffers: "256MB"
+postgres_max_connections: 100
+
+# ── Camunda ───────────────────────────────────────────────────────────────────
+camunda_version: "8.8.0"
+camunda_port: 8088
+camunda_orchestration_port: 8088
+
+# ── Zeebe ─────────────────────────────────────────────────────────────────────
+zeebe_heap: "1g"
+
+# ── n8n ───────────────────────────────────────────────────────────────────────
+n8n_port: 5678
+n8n_log_level: info

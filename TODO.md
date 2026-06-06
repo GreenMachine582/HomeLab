@@ -252,8 +252,11 @@ Validation and remediation tasks identified by cross-referencing all documentati
   `roles/docker_compose/` (no vars — documented as intentional), `roles/edge_services/`
   (cloudflared_ingress, pihole_custom_dns, caddy_routes, homelab_repo_path),
   `roles/base_hardening/` (packages, SSH vars, timezone, shoutrrr_version, notify_script_dir).
-  Remaining roles (`observe_services`, `camunda`, `greentechhub`, `jellyfin`, `node_exporter`,
-  `cadvisor`) are on wip/observe or wip/svc — defaults for those belong on those branches.
+  Remaining roles completed on their respective branches:
+  - wip/observe: `roles/observe_services/` (prometheus, loki, alertmanager, grafana, ntfy, uptime_kuma, portainer)
+  - wip/svc: `roles/node_exporter/` (no vars), `roles/cadvisor/` (port, privileged),
+    `roles/camunda/` (paths, heap, ports), `roles/greentechhub/` (paths),
+    `roles/jellyfin/` (media_dir, path). All vault-only vars documented as intentionally omitted.
 
 - [x] **#32 — Document `roles/users/` and `roles/docker_compose/` in CLAUDE.md**
   Added full roles table to CLAUDE.md Ansible Structure section covering all 15 roles with scope
