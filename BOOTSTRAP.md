@@ -24,9 +24,10 @@ steps are kept to the absolute minimum.
     * [1.5 Add GitHub Deploy Key](#15-add-github-deploy-key)
     * [1.6 Copy SSH Key to Edge Node](#16-copy-ssh-key-to-edge-node)
     * [1.7 Load SSH Key into Agent](#17-load-ssh-key-into-agent)
-    * [1.8 Create Ansible Vault and Override Config](#18-create-ansible-vault-and-override-config)
-    * [1.9 Configure Bootstrap Inventory](#19-configure-bootstrap-inventory)
-    * [1.10 Run the Bootstrap Playbook](#110-run-the-bootstrap-playbook)
+    * [1.8 Set Up Tailscale OAuth Client](#18-set-up-tailscale-oauth-client)
+    * [1.9 Create Ansible Vault and Override Config](#19-create-ansible-vault-and-override-config)
+    * [1.10 Configure Bootstrap Inventory](#110-configure-bootstrap-inventory)
+    * [1.11 Run the Bootstrap Playbook](#111-run-the-bootstrap-playbook)
     * [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does)
   * [Phase 2: Edge → Self-Deploy](#phase-2-edge--self-deploy)
   * [Phase 3: Edge → Other Nodes](#phase-3-edge--other-nodes)
@@ -286,7 +287,38 @@ If the connection succeeds without a password prompt, the key is installed corre
 
 ---
 
-### 1.8 Create Ansible Vault and Override Config
+### 1.8 Set Up Tailscale OAuth Client
+
+Tailscale needs three things configured in the admin console **before** you populate the vault — you'll need the OAuth credentials in the next step.
+
+**Step 1 — Create the device tag** (`login.tailscale.com/admin/acls/visual/tags`):
+
+1. Click **Add tag**
+2. Name it `homelab` (Tailscale prefixes it automatically as `tag:homelab`)
+3. Set owner to yourself or `autogroup:admin`
+4. Save
+
+**Step 2 — Create an access rule** (`login.tailscale.com/admin/acls/visual/general-access-rules`):
+
+1. Click **Add rule**
+2. Source: `autogroup:admin` and `tag:homelab`
+3. Destination: `tag:homelab` (nodes in the homelab tag can reach each other)
+4. Save
+
+**Step 3 — Create OAuth credentials** (`login.tailscale.com/admin/settings/trust-credentials`):
+
+1. Click **Add credentials**
+2. Under **Scopes**, enable **Auth Keys (write)**
+3. Under **Tags**, select `tag:homelab`
+4. Click **Create** and copy the **Client ID** and **Client secret** immediately — the secret is only shown once
+
+> Tag scopes cannot be changed after creation. If you forget to select `tag:homelab`, delete the credential and create a new one.
+
+You will need the Client ID and Client secret in §1.9.
+
+---
+
+### 1.9 Create Ansible Vault and Override Config
 
 Create a vault password file:
 
@@ -325,7 +357,7 @@ Edit `overrides.yml` and fill in your actual IPs and `lan_subnet`. These overrid
 
 ---
 
-### 1.9 Configure Bootstrap Inventory
+### 1.10 Configure Bootstrap Inventory
 
 Edit `inventories/bootstrap.ini` and replace `EDIT_BEFORE_USE` with the DHCP IP found in step 1.3:
 
@@ -352,7 +384,7 @@ homelab-edge | SUCCESS => {
 
 ---
 
-### 1.10 Run the Bootstrap Playbook
+### 1.11 Run the Bootstrap Playbook
 
 Make sure the SSH key is loaded in `ssh-agent` (step 1.7) before running.
 

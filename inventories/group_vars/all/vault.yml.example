@@ -25,12 +25,7 @@ vault_deploy_ssh_pubkey: "ssh-ed25519 AAAA... deploy"
 vault_github_org: "your-github-username-or-org"
 
 # ── Tailscale ─────────────────────────────────────────────────────────────────
-# Create an OAuth client at https://login.tailscale.com/admin/settings/oauth
-# Required scope: Keys → Auth Keys (write)
-# Required tags: Configure at least one device tag (e.g. tag:homelab) and
-# allow the OAuth client to create auth keys for that tag.
-# OAuth clients never expire. The tailscale role mints a fresh auth key at deploy
-# time via the API — no static tskey-auth-* stored anywhere.
+# See BOOTSTRAP.md § 1.8 for setup steps (ACL tag + OAuth client creation).
 vault_tailscale_oauth_client_id: "..."
 vault_tailscale_oauth_client_secret: "tskey-secret-..."
 
