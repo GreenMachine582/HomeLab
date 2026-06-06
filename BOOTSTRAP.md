@@ -303,6 +303,17 @@ EDITOR=nano ansible-vault create inventories/group_vars/all/vault.yml
 
 Populate it using `inventories/group_vars/all/vault.yml.example` as a reference. Save and exit (`:wq` in Vim).
 
+> **If you created vault.yml by copying `vault.yml.example` directly** (instead of using `ansible-vault create`), encrypt it now:
+> ```bash
+> ansible-vault encrypt inventories/group_vars/all/vault.yml
+> ```
+
+Verify the vault is encrypted before continuing — the file should start with `$ANSIBLE_VAULT;`:
+
+```bash
+head -1 inventories/group_vars/all/vault.yml
+```
+
 Create the local config:
 
 ```bash
