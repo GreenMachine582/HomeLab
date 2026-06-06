@@ -1,0 +1,97 @@
+---
+# playbooks/rollback.yml
+#
+# Rolls back Docker containers to a specific image tag on a target node.
+# Requires passing the target node and image tag as extra vars.
+#
+# Usage:
+#   # Roll back edge stack to a specific image digest or tag
+#   ansible-playbook playbooks/rollback.yml \
+#     --limit homelab-edge \
+#     -e "rollback_tag=sha256:abc123"
+#
+#   # Roll back svc-01 mgmt stack
+#   ansible-playbook playbooks/rollback.yml \
+#     --limit homelab-svc-01 \
+#     -e "rollback_tag=8.8.0"
+#
+# Extra vars:
+#   rollback_tag   Image tag or digest to roll back to (required)
+#
+# NOTE: Docker image history is required on the node for rollback to work.
+# If images have been pruned, restore from a registry or re-deploy.
+
+- name: "Rollback | Target node | Revert Docker containers"
+  hosts: "{{ target | default('all') }}"
+  become: true
+  gather_facts: true
+
+  vars:
+    rollback_tag: "{{ rollback_tag | mandatory }}"
+
+  pre_tasks:
+    - name: "Meta | Confirm rollback target"
+      ansible.builtin.debug:
+        msg: "Rolling back {{ inventory_hostname }} to tag: {{ rollback_tag }}"
+
+    - name: "Meta | Confirm with operator"
+      ansible.builtin.pause:
+        prompt: "About to roll back {{ inventory_hostname }} to '{{ rollback_tag }}'. Press Enter to continue or Ctrl+C to abort."
+
+  tasks:
+    - name: "Rollback | Edge | Stop current stack"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.edge.yml stop
+        chdir: "{{ homelab_repo_path }}"
+      when: "'edge' in group_names"
+      changed_when: true
+
+    - name: "Rollback | Observe | Stop current stack"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.observe.yml stop
+        chdir: "{{ homelab_repo_path }}"
+      when: "'observe' in group_names"
+      changed_when: true
+
+    - name: "Rollback | Svc-01 | Stop current stack"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.svc01.yml stop
+        chdir: "{{ homelab_repo_path }}"
+      when: inventory_hostname == 'homelab-svc-01'
+      changed_when: true
+
+    - name: "Rollback | Git | Check out previous commit"
+      ansible.builtin.git:
+        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        dest: "{{ homelab_repo_path }}"
+        version: "{{ rollback_tag }}"
+        accept_hostkey: true
+        key_file: /home/homelab/.ssh/github
+        force: true
+      become_user: homelab
+
+    - name: "Rollback | Edge | Restart rolled-back stack"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.edge.yml up -d --remove-orphans
+        chdir: "{{ homelab_repo_path }}"
+      when: "'edge' in group_names"
+      changed_when: true
+
+    - name: "Rollback | Observe | Restart rolled-back stack"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.observe.yml up -d --remove-orphans
+        chdir: "{{ homelab_repo_path }}"
+      when: "'observe' in group_names"
+      changed_when: true
+
+    - name: "Rollback | Svc-01 | Restart rolled-back stack"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.svc01.yml up -d --remove-orphans
+        chdir: "{{ homelab_repo_path }}"
+      when: inventory_hostname == 'homelab-svc-01'
+      changed_when: true
+
+  post_tasks:
+    - name: "Meta | Rollback complete"
+      ansible.builtin.debug:
+        msg: "Rollback to '{{ rollback_tag }}' complete on {{ inventory_hostname }}. Run healthcheck.yml to verify."

@@ -1,0 +1,22 @@
+---
+# roles/docker_compose/tasks/main.yml
+# Docker Compose V2 is bundled with modern Docker installs (docker-compose-plugin).
+# This role ensures the plugin is present and functional.
+
+- name: "Docker Compose | Install compose plugin"
+  ansible.builtin.apt:
+    name: docker-compose-plugin
+    state: present
+  tags: [docker, compose]
+
+- name: "Docker Compose | Verify installation"
+  ansible.builtin.command:
+    cmd: docker compose version
+  register: compose_version
+  changed_when: false
+  tags: [docker, compose]
+
+- name: "Docker Compose | Show version"
+  ansible.builtin.debug:
+    msg: "{{ compose_version.stdout }}"
+  tags: [docker, compose]

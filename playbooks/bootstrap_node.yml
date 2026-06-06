@@ -1,0 +1,125 @@
+---
+# playbooks/bootstrap_node.yml
+#
+# Phase 3 — Run from homelab-edge to bootstrap any new node from a fresh OS install.
+# Use --limit to target a single node. Must be run before the relevant deploy_*.yml.
+#
+# Usage:
+#   ansible-playbook playbooks/bootstrap_node.yml \
+#     --limit homelab-observe --ask-pass --ask-become-pass
+#
+# --ask-pass is required on first run (homelab SSH key not yet installed).
+# After bootstrap, subsequent runs use key-based auth via the homelab user.
+#
+# Requires: roles/base_hardening, roles/users, roles/docker, roles/tailscale
+# See: BOOTSTRAP.md § Phase 3
+
+- name: "Bootstrap | Node | Base system, users, Docker, and Tailscale"
+  hosts: "{{ target | default('all') }}"
+  become: true
+  gather_facts: true
+
+  vars:
+    play_description: >
+      Bootstraps a new homelab node from a fresh OS install.
+      Creates system users, installs Docker, hardens SSH,
+      configures the firewall, and joins Tailscale.
+      Safe to re-run.
+
+  pre_tasks:
+    - name: "Meta | Show play description"
+      ansible.builtin.debug:
+        msg: "{{ play_description }}"
+
+    - name: "Meta | Confirm target"
+      ansible.builtin.debug:
+        msg: "Bootstrapping {{ inventory_hostname }} ({{ ansible_host }})"
+
+    - name: "System | Set hostname"
+      ansible.builtin.hostname:
+        name: "{{ node_hostname }}"
+
+    - name: "System | Update apt cache"
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: "System | Install base packages"
+      ansible.builtin.apt:
+        name: "{{ base_packages }}"
+        state: present
+
+  roles:
+    - role: base_hardening
+      tags: [base, hardening]
+
+    - role: users
+      tags: [base, users]
+
+    - role: docker
+      tags: [docker]
+
+    - role: tailscale
+      tags: [tailscale]
+
+  tasks:
+    - name: "Firewall | Enable ufw default-deny"
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+      tags: [firewall]
+
+    - name: "Firewall | Apply group firewall rules"
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port | string }}"
+        proto: "{{ item.proto }}"
+        src: "{{ item.src | default('any') }}"
+        comment: "{{ item.comment }}"
+      loop: "{{ ufw_rules | default(ufw_rules_base | default([])) }}"
+      tags: [firewall]
+
+    - name: "Observability | Deploy node-exporter"
+      community.docker.docker_container:
+        name: node-exporter
+        image: prom/node-exporter:latest
+        restart_policy: unless-stopped
+        pid_mode: host
+        volumes:
+          - /proc:/host/proc:ro
+          - /sys:/host/sys:ro
+          - /:/rootfs:ro
+        command:
+          - "--path.procfs=/host/proc"
+          - "--path.sysfs=/host/sys"
+          - "--path.rootfs=/rootfs"
+        state: started
+      tags: [observability, node-exporter]
+
+  post_tasks:
+    - name: "Ansible | Scan new node SSH host keys (from edge)"
+      ansible.builtin.shell:
+        cmd: ssh-keyscan -p {{ ssh_port }} {{ ansible_host }} 2>/dev/null
+      register: _node_host_keys
+      changed_when: false
+      delegate_to: localhost
+      become: false
+
+    - name: "Ansible | Add new node host keys to edge homelab known_hosts"
+      ansible.builtin.known_hosts:
+        name: "[{{ ansible_host }}]:{{ ssh_port }}"
+        key: "{{ item }}"
+        path: /home/homelab/.ssh/known_hosts
+        state: present
+      loop: "{{ _node_host_keys.stdout_lines | select('match', '^[^#]') | list }}"
+      delegate_to: localhost
+      become: false
+
+    - name: "Meta | Bootstrap complete"
+      ansible.builtin.debug:
+        msg: >
+          {{ inventory_hostname }} bootstrap complete.
+          Run the relevant deploy playbook next:
+            deploy_observe.yml  (for homelab-observe)
+            deploy_svc.yml      (for homelab-svc-*)
