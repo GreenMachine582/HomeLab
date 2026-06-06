@@ -1,0 +1,14 @@
+# Rendered by Ansible — do not edit directly on the host.
+[Unit]
+Description=Notify on successful SSH login
+After=network-online.target ssh.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={{ notify_script_dir }}/on-ssh-success.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

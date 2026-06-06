@@ -118,3 +118,62 @@
     enabled: true
     state: started
   tags: [security, audit]
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+- name: "Notify | Install shoutrrr (Discord fallback)"
+  ansible.builtin.get_url:
+    url: "https://github.com/containrrr/shoutrrr/releases/download/v{{ shoutrrr_version }}/shoutrrr_linux_{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+    dest: /usr/local/bin/shoutrrr
+    mode: "0755"
+    owner: root
+    group: root
+  tags: [notify]
+
+- name: "Notify | Create script directory"
+  ansible.builtin.file:
+    path: "{{ notify_script_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [notify]
+
+- name: "Notify | Deploy notification scripts"
+  ansible.builtin.template:
+    src: "notify/{{ item }}.sh.j2"
+    dest: "{{ notify_script_dir }}/{{ item }}.sh"
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - on-boot
+    - on-shutdown
+    - on-ssh-success
+  tags: [notify]
+
+- name: "Notify | Deploy systemd service units"
+  ansible.builtin.template:
+    src: "notify/{{ item }}.service.j2"
+    dest: "/etc/systemd/system/{{ item }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - on-boot
+    - on-shutdown
+    - on-ssh-success
+  notify: Reload systemd
+  tags: [notify]
+
+- name: "Notify | Enable and start notification services"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - on-boot.service
+    - on-shutdown.service
+    - on-ssh-success.service
+  tags: [notify]

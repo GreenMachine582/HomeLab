@@ -1,0 +1,20 @@
+#!/bin/bash
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/base_hardening/templates/notify/on-shutdown.sh.j2
+set -euo pipefail
+
+HOST="{{ inventory_hostname }}"
+TIME=$(date "+%Y-%m-%d %H:%M:%S")
+TITLE="Shutdown: $HOST"
+MSG="$HOST is shutting down at $TIME"
+
+if curl -sf \
+    -H "Authorization: Bearer {{ vault_ntfy_token }}" \
+    -H "Title: $TITLE" \
+    -H "Tags: warning" \
+    -d "$MSG" \
+    "{{ notify_ntfy_url }}"; then
+    exit 0
+fi
+
+shoutrrr send --url "{{ vault_shoutrrr_discord_alerts }}" --message "[$TITLE] $MSG"

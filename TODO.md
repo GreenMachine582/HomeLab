@@ -198,19 +198,19 @@ Validation and remediation tasks identified by cross-referencing all documentati
   - OAuth client scope required: **Devices → Auth Keys (write)**
   - Minted keys: `reusable: true`, `preauthorized: true`, `expirySeconds: 0`
 
-- [ ] **#21 — Add notification scripts to `roles/base_hardening/`**
-  Boot/shutdown/SSH login notification scripts exist in `old homelab/scripts/` but are absent from the new role structure. Add as Jinja2 templates + task entries so Ansible deploys and manages the systemd units:
-  - `on-boot.sh` + `on-boot.service` — notifies on node boot
-  - `on-shutdown.sh` + `on-shutdown.service` — notifies on shutdown
-  - `on-ssh-success.sh` + `on-ssh-success.service` — PAM hook notifies on SSH login
-  Source: `old homelab/scripts/on-boot.sh`, `on-shutdown.sh`, `on-ssh-success.sh` and their `.service.tmpl` counterparts.
-  **Notification: ntfy primary, shoutrrr→Discord fallback.**
-  Scripts attempt ntfy first (`http://{{ ip_observe }}:{{ ntfy_port }}/<topic>` with Bearer token);
-  if the curl fails (observe down at boot time) they fall back to shoutrrr on the edge node, which
-  posts directly to Discord — no dependency on homelab-observe for the fallback path.
-  Shoutrrr is a single static binary; deploy it to all nodes via the role.
-  Variables to parameterise: `ip_observe`, `ntfy_port`, `vault_ntfy_token`,
-  `vault_shoutrrr_discord_alerts`, `inventory_hostname`, script deploy path.
+- [x] **#21 — Add notification scripts to `roles/base_hardening/`**
+  All three scripts and systemd units implemented as Jinja2 templates; shoutrrr installed on every
+  node as the Discord fallback when homelab-observe is unreachable.
+  - `on-boot.sh` / `on-boot.service` — oneshot at boot (After=network-online.target)
+  - `on-shutdown.sh` / `on-shutdown.service` — oneshot at shutdown (Before=shutdown.target)
+  - `on-ssh-success.sh` / `on-ssh-success.service` — persistent daemon watching journalctl -fu ssh
+  - ntfy primary: `curl` to `http://{{ ip_observe }}:8085/homelab` with Bearer token
+  - shoutrrr fallback: fires only if ntfy curl fails (non-zero exit)
+  - shoutrrr binary installed to `/usr/local/bin/shoutrrr` via `get_url` (ARM64/amd64 auto-detected)
+  - Scripts deploy to `{{ notify_script_dir }}` (`/usr/local/lib/homelab/notify/`), mode 0700
+  - New vars in `group_vars/all/main.yml`: `notify_script_dir`, `notify_ntfy_url`,
+    `notify_ntfy_token`, `notify_shoutrrr_url`, `shoutrrr_version`
+  - `Reload systemd` handler added to `roles/base_hardening/handlers/main.yml`
 
 - [x] **#22 — Add fail2ban jail template to `roles/fail2ban/`**
   Created `roles/fail2ban/templates/jail.conf.j2` rendering port, logpath, backend, maxretry, bantime,
