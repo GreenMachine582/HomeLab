@@ -1,13 +1,14 @@
 # Rendered by Ansible — do not edit directly on the host.
 [Unit]
 Description=Notify on system boot
-After=network-online.target
+After=network.target network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 ExecStart={{ notify_script_dir }}/on-boot.sh
 RemainAfterExit=yes
+TimeoutStartSec=120
 
 [Install]
 WantedBy=multi-user.target
