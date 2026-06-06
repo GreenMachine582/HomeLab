@@ -242,10 +242,9 @@ Validation and remediation tasks identified by cross-referencing all documentati
   Also staged but not committed: `roles/docker_compose/tasks/main.yml`.
   A re-clone of the repo would lose everything above. Commit in logical chunks by concern.
 
-- [ ] **#29 — Clean up orphaned git index entry**
-  `ansible/bootstrap/edge-deploy.yml` shows as `AD` in `git status` — it was staged but then deleted from
-  disk, at a path (`ansible/bootstrap/`) that doesn't exist in the current repo structure. Run:
-  `git rm --cached ansible/bootstrap/edge-deploy.yml` to remove it from the index.
+- [x] **#29 — Clean up orphaned git index entry**
+  `ansible/bootstrap/edge-deploy.yml` no longer present in index on any branch — cleared as part of
+  earlier wip/observe branch work. Confirmed clean on wip/edge.
 
 - [ ] **#30 — Create `docker-compose.svc02.yml` and `docker-compose.svc03.yml`**
   `homelab-svc-02` (GreenTechHub/Django/Redis/Celery) and `homelab-svc-03` (Jellyfin) have roles and
@@ -259,11 +258,10 @@ Validation and remediation tasks identified by cross-referencing all documentati
   `roles/firewall/`, `roles/users/`, `roles/edge_services/`, `roles/observe_services/`, `roles/camunda/`,
   `roles/greentechhub/`, `roles/jellyfin/`, `roles/node_exporter/`, `roles/cadvisor/`.
 
-- [ ] **#32 — Document `roles/users/` and `roles/docker_compose/` in CLAUDE.md**
-  Both roles exist in `roles/` but are absent from CLAUDE.md's role list under Task #4.
-  `roles/users/` handles the three system users (admin, homelab, deploy) — distinct from `base_hardening`.
-  `roles/docker_compose/` installs the Docker Compose plugin — distinct from `roles/docker/`.
-  Add both to the role list and clarify their scope.
+- [x] **#32 — Document `roles/users/` and `roles/docker_compose/` in CLAUDE.md**
+  Added full roles table to CLAUDE.md Ansible Structure section covering all 15 roles with scope
+  and target nodes. `roles/users/` (system users) and `roles/docker_compose/` (Compose plugin,
+  distinct from `roles/docker/`) both listed with clarified scope.
 
 ---
 

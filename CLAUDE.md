@@ -45,6 +45,26 @@ Services are split across four compose files by concern:
 - `inventories/group_vars/edge.yml`, `observe.yml`, `svc.yml` — group-specific vars
 - `inventories/host_vars/<node>.yml` — per-node overrides
 
+### Roles
+
+| Role | Scope | Runs on |
+|---|---|---|
+| `base_hardening` | SSH hardening, sysctl, kernel params, boot/SSH notifications | all nodes |
+| `users` | Creates the three system users (admin, homelab, deploy) with SSH keys and sudo rules | all nodes |
+| `docker` | Docker Engine install and daemon config (`/etc/docker/daemon.json`) | all nodes |
+| `docker_compose` | Docker Compose plugin install (separate from Docker Engine) | all nodes |
+| `firewall` | UFW rules from `ufw_rules` + `ufw_rules_extra` in group/host vars | all nodes |
+| `fail2ban` | SSH + HTTP jails rendered from `group_vars/edge.yml` jail definitions | edge |
+| `tailscale` | Tailscale install; mints auth key via OAuth client at deploy time | all nodes |
+| `alloy` | Grafana Alloy log shipper (systemd journal → Loki) | all nodes |
+| `node_exporter` | Prometheus node exporter (port 9100) | all nodes |
+| `cadvisor` | Container metrics exporter (port 8080) | svc nodes |
+| `edge_services` | cloudflared, Caddy, Pi-hole, Unbound (rendered config templates) | edge |
+| `observe_services` | Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma | observe |
+| `camunda` | Camunda 8, Elasticsearch, n8n, discord-gateway (env templates) | svc-01 |
+| `greentechhub` | GreenTechHub Django app, Redis, Celery | svc-02 |
+| `jellyfin` | Jellyfin media server | svc-03 |
+
 ### Three System Users
 
 - `admin` — manual SSH access, passworded sudo
@@ -121,7 +141,7 @@ Key templates and their data sources:
 - `roles/camunda/templates/elasticsearch/elasticsearch.yml.j2` ← `inventories/host_vars/homelab-svc-01.yml`
 - `roles/camunda/templates/postgres/postgresql.conf.j2` ← `inventories/host_vars/homelab-svc-01.yml`
 
-> Legacy `envsubst` templates (`alertmanager/alertmanager.yml.tmpl`, `fail2ban/fail2ban.conf.tmpl`) and shell scripts (`deploy_homelab.sh`, `setup.sh`) are from the old approach and will be removed once Ansible roles are complete.
+> Legacy `envsubst` templates (`alertmanager/alertmanager.yml.tmpl`, `fail2ban/fail2ban.conf.tmpl`) are from the old approach — do not edit them; they will be removed once all Ansible roles are complete.
 
 ### Adding a New Node
 
