@@ -1,0 +1,16 @@
+cluster.name: {{ elasticsearch_cluster_name | default('homelab') }}
+node.name: homelab-svc-01
+
+path.data: /usr/share/elasticsearch/data
+path.logs: /usr/share/elasticsearch/logs
+
+network.host: 0.0.0.0
+http.port: 9200
+
+discovery.type: single-node
+
+# Heap is set via ES_JAVA_OPTS in docker-compose — not here.
+# ES_JAVA_OPTS=-Xms{{ elasticsearch_heap }} -Xmx{{ elasticsearch_heap }}
+
+xpack.security.enabled: false
+xpack.monitoring.collection.enabled: false

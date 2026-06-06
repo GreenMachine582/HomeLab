@@ -1,0 +1,83 @@
+---
+# host_vars/homelab-svc-01.yml
+# Node-specific config for homelab-svc-01 (Camunda + databases).
+# Group-level config is in group_vars/svc.yml and group_vars/all.yml.
+
+# ── Network ───────────────────────────────────────────────────────────────────
+node_lan_ip: "{{ ip_svc_01 }}"
+node_interface: eth0
+node_hostname: homelab-svc-01
+
+# ── Firewall (extends group_vars/svc.yml ufw_rules_base) ─────────────────────
+ufw_rules_extra:
+  - { port: 8088, proto: tcp, src: "{{ lan_subnet }}", comment: "Camunda" }
+  - { port: 5432, proto: tcp, src: "{{ lan_subnet }}", comment: "PostgreSQL (internal)" }
+  - { port: 9200, proto: tcp, src: "{{ lan_subnet }}", comment: "Elasticsearch (internal)" }
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+nvme_mount: /mnt/nvme
+docker_data_dir: /mnt/nvme/docker
+
+# ── PostgreSQL ────────────────────────────────────────────────────────────────
+postgres_port: 5432
+postgres_data_dir: /mnt/nvme/postgres
+postgres_backup_dir: /mnt/nvme/backups
+postgres_shared_buffers: "1GB"
+postgres_max_connections: 200
+
+postgres_databases:
+  - name: camunda
+    user: "{{ vault_camunda_db_user }}"
+    password: "{{ vault_camunda_db_password }}"
+
+# ── Elasticsearch ─────────────────────────────────────────────────────────────
+elasticsearch_port: 9200
+elasticsearch_data_dir: /mnt/nvme/elasticsearch
+elasticsearch_heap: "2g"           # Do not exceed 50% of available RAM
+elasticsearch_cluster_name: homelab
+
+# ── Camunda 8 ─────────────────────────────────────────────────────────────────
+camunda_version: "8.8.0"
+camunda_orchestration_host: "camunda-orchestration"
+camunda_orchestration_port: 8088           # Also fixes #12 — compose maps 8088:8088
+camunda_port: 8088                         # Fixed from 8080 (was wrong; compose + .env confirm 8088)
+camunda_rest_endpoint: "http://camunda-orchestration:8088/v2"
+camunda_grpc_endpoint: "camunda-orchestration:26500"
+camunda_elasticsearch_url: "http://elasticsearch:9200"
+camunda_base_domain: "camunda.green-tech-hub.com"
+camunda_operate_url: "https://operate.camunda.green-tech-hub.com"
+camunda_tasklist_url: "https://tasklist.camunda.green-tech-hub.com"
+camunda_identity_url: "https://identity.camunda.green-tech-hub.com"
+camunda_api_url: "https://api.camunda.green-tech-hub.com"
+camunda_operate_port: 8081
+camunda_tasklist_port: 8082
+camunda_optimize_port: 8083
+camunda_identity_port: 8084
+camunda_webmodeler_port: 8085
+camunda_keycloak_port: 18080
+
+camunda_admin_user: "{{ vault_camunda_admin_user }}"
+camunda_admin_password: "{{ vault_camunda_admin_password }}"
+
+# Zeebe
+zeebe_port: 26500
+zeebe_gateway_port: 26500
+zeebe_heap: "2g"            # Adjust based on available RAM after ES + PG allocation
+zeebe_data_dir: /mnt/nvme/zeebe
+
+# ── n8n ───────────────────────────────────────────────────────────────────────
+n8n_port: 5678
+n8n_host: "n8n.green-tech-hub.com"
+n8n_protocol: "https"
+n8n_webhook_url: "https://n8n.green-tech-hub.com/"
+n8n_log_level: "info"
+n8n_db_sqlite_pool_size: 5
+n8n_runners_enabled: true
+n8n_block_env_access_in_node: false
+n8n_git_node_disable_bare_repos: true
+n8n_user_management_disabled: false
+
+# ── discord-gateway ───────────────────────────────────────────────────────────
+discord_gateway_n8n_url: "http://n8n:5678"
+discord_gateway_webhook_path: "discord/interactions"
+discord_gateway_webhook_map_file: "data/webhook_map.json"

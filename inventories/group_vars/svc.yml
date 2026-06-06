@@ -1,0 +1,35 @@
+---
+# group_vars/svc.yml
+# Applied to all nodes in the [svc] group (svc-01, svc-02, svc-03).
+# Node-specific service config (ports, paths, secrets) lives in host_vars/.
+
+# ── Firewall (common) ─────────────────────────────────────────────────────────
+# Base rules shared by all svc nodes. Additional rules defined in host_vars.
+ufw_rules_base:
+  - { port: "{{ ssh_port }}", proto: tcp, src: "{{ lan_subnet }}", comment: "SSH (edge only)" }
+  - { port: 9100,             proto: tcp, src: "{{ lan_subnet }}", comment: "node-exporter" }
+  - { port: 8080,             proto: tcp, src: "{{ lan_subnet }}", comment: "cAdvisor" }
+  - { port: 9001,             proto: tcp, src: "{{ ip_observe }}", comment: "Portainer Agent (from observe)" }
+
+# ── Tailscale ─────────────────────────────────────────────────────────────────
+tailscale_accept_routes: true
+tailscale_exit_node: false
+
+# ── Docker daemon ─────────────────────────────────────────────────────────────
+# Override docker_data_dir in host_vars for nodes with NVMe storage.
+docker_live_restore: true        # Containers survive Docker daemon restarts
+docker_metrics_enabled: true
+docker_metrics_addr: "127.0.0.1:9323"
+
+# ── Observability agents ──────────────────────────────────────────────────────
+cadvisor_port: 8080
+cadvisor_allow_privileged: true
+
+alloy_scrape_systemd_units:
+  - docker
+  - tailscaled
+  - ssh
+
+# ── Backup ────────────────────────────────────────────────────────────────────
+backup_enabled: true
+backup_retain_days: 7

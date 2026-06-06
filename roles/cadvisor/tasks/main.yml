@@ -1,0 +1,24 @@
+---
+# roles/cadvisor/tasks/main.yml
+# Deploys cAdvisor as a Docker container for container-level metrics.
+# Runs on svc nodes only (defined in group_vars/svc.yml).
+
+- name: "cAdvisor | Deploy container"
+  community.docker.docker_container:
+    name: cadvisor
+    image: gcr.io/cadvisor/cadvisor:latest
+    restart_policy: unless-stopped
+    privileged: "{{ cadvisor_allow_privileged | default(true) }}"
+    ports:
+      - "{{ cadvisor_port | default(8080) }}:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    state: started
+    pull: true
+  tags: [cadvisor, observability]

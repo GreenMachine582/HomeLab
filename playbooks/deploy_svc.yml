@@ -1,0 +1,138 @@
+---
+# playbooks/deploy_svc.yml
+#
+# Phase 3 — Deploys service workloads on svc nodes.
+# Use --limit to target a specific node and --tags to deploy a specific stack.
+#
+# Usage:
+#   # Deploy Camunda stack on svc-01
+#   ansible-playbook playbooks/deploy_svc.yml \
+#     --limit homelab-svc-01 --tags camunda
+#
+#   # Deploy GreenTechHub on svc-02 (when provisioned)
+#   ansible-playbook playbooks/deploy_svc.yml \
+#     --limit homelab-svc-02 --tags greentechhub
+#
+# Tags:
+#   --tags hardening     Base OS hardening only
+#   --tags firewall      UFW rules only
+#   --tags tailscale     Tailscale only
+#   --tags camunda       Camunda 8 + Elasticsearch + n8n + discord-gateway (svc-01)
+#   --tags greentechhub  Django + PostgreSQL + Redis + Celery (svc-02) [planned]
+#   --tags jellyfin      Jellyfin media server (svc-03) [future]
+#   --tags alloy         Grafana Alloy log shipper only
+#
+# Requires: roles/base_hardening, roles/firewall, roles/tailscale,
+#           roles/camunda, roles/greentechhub, roles/jellyfin, roles/alloy
+
+- name: "Deploy | Svc | Base hardening and observability agents"
+  hosts: svc
+  become: true
+  gather_facts: true
+
+  vars:
+    play_description: >
+      Applies base hardening, firewall rules, Tailscale, and observability
+      agents (node-exporter, cAdvisor, Grafana Alloy) to all svc nodes.
+      Service-specific stacks are deployed via tags (camunda, greentechhub, jellyfin).
+
+  pre_tasks:
+    - name: "Meta | Show play description"
+      ansible.builtin.debug:
+        msg: "{{ play_description }}"
+
+    - name: "Meta | Confirm target"
+      ansible.builtin.debug:
+        msg: "Deploying to {{ inventory_hostname }} ({{ ansible_host }})"
+
+    - name: "Meta | Update repo to latest"
+      ansible.builtin.git:
+        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        dest: "{{ homelab_repo_path }}"
+        version: "{{ homelab_repo_branch }}"
+        accept_hostkey: true
+        key_file: /home/homelab/.ssh/github
+        force: false
+      become_user: homelab
+      tags: [repo]
+
+  roles:
+    - role: base_hardening
+      tags: [hardening]
+
+    - role: firewall
+      tags: [firewall]
+      vars:
+        firewall_rules: "{{ ufw_rules_base | default([]) + ufw_rules_extra | default([]) }}"
+
+    - role: tailscale
+      tags: [tailscale]
+      vars:
+        tailscale_up: true
+        tailscale_accept_routes: "{{ tailscale_accept_routes }}"
+
+    - role: alloy
+      tags: [alloy]
+      vars:
+        alloy_loki_endpoint: "{{ alloy_loki_endpoint }}"
+        alloy_scrape_systemd_units: "{{ alloy_scrape_systemd_units }}"
+
+    # ── Camunda 8 stack (homelab-svc-01) ──────────────────────────────────────
+    - role: camunda
+      tags: [camunda]
+      when: "'homelab-svc-01' in inventory_hostname"
+      vars:
+        compose_file: "docker-compose.svc01.yml"
+        compose_dir: "{{ homelab_repo_path }}"
+        camunda_admin_user: "{{ vault_camunda_admin_user }}"
+        camunda_admin_password: "{{ vault_camunda_admin_password }}"
+        camunda_db_user: "{{ vault_camunda_db_user }}"
+        camunda_db_password: "{{ vault_camunda_db_password }}"
+        elasticsearch_heap: "{{ elasticsearch_heap }}"
+        nvme_mount: "{{ nvme_mount | default(omit) }}"
+
+    # ── GreenTechHub Django app (homelab-svc-02, planned) ─────────────────────
+    - role: greentechhub
+      tags: [greentechhub]
+      when: "'homelab-svc-02' in inventory_hostname"
+      vars:
+        django_secret_key: "{{ vault_django_secret_key }}"
+        greentechhub_db_user: "{{ vault_greentechhub_db_user }}"
+        greentechhub_db_password: "{{ vault_greentechhub_db_password }}"
+        greentechhub_image: "{{ greentechhub_image }}"
+
+    # ── Jellyfin media server (homelab-svc-03, future) ────────────────────────
+    - role: jellyfin
+      tags: [jellyfin]
+      when: "'homelab-svc-03' in inventory_hostname"
+      vars:
+        jellyfin_media_dir: "{{ jellyfin_media_dir }}"
+        jellyfin_hw_accel: "{{ jellyfin_hw_accel }}"
+        jellyfin_devices: "{{ jellyfin_devices }}"
+
+  post_tasks:
+    - name: "Docker | Pull latest images (camunda)"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.svc01.yml pull
+        chdir: "{{ homelab_repo_path }}"
+      when: "'homelab-svc-01' in inventory_hostname"
+      tags: [camunda, docker]
+      changed_when: true
+
+    - name: "Docker | Apply mgmt stack (camunda)"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.svc01.yml up -d --remove-orphans
+        chdir: "{{ homelab_repo_path }}"
+      when: "'homelab-svc-01' in inventory_hostname"
+      tags: [camunda, docker]
+      changed_when: true
+
+    - name: "Docker | Prune unused images"
+      ansible.builtin.command:
+        cmd: docker image prune -f
+      tags: [docker]
+      changed_when: true
+
+    - name: "Meta | Deploy complete"
+      ansible.builtin.debug:
+        msg: "Service node deployment complete on {{ inventory_hostname }}"
