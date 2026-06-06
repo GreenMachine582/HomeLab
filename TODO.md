@@ -105,8 +105,8 @@ Validation and remediation tasks identified by cross-referencing all documentati
   - `docker-compose.svc01.yml`: added missing `extra_hosts: host.docker.internal:host-gateway` to n8n (needed for n8n to call back to host services)
   - `docker-compose.observe.yml`: fixed alertmanager volume path bug (`/config/alertmanager/alertmanager.yml` → `/config/alertmanager.yml` to match the `--config.file` command arg)
 
-- [ ] **#11 — Archive or delete `deploy_homelab.sh` and `setup.sh`**
-  Both scripts are from the old deployment approach (direct shell manipulation of fail2ban, systemd, envsubst templates). Once Ansible roles (Task #4) replace their functions, these files should be removed. Until then, do not run them — they conflict with Ansible-managed state.
+- [x] **#11 — Archive or delete `deploy_homelab.sh` and `setup.sh`**
+  Both scripts deleted. All functions replaced by Ansible roles (hardening, fail2ban, systemd, Docker).
 
 ---
 
