@@ -87,6 +87,11 @@
       ansible.builtin.command:
         cmd: docker compose -f {{ compose_file }} pull
         chdir: "{{ compose_dir }}"
+      environment:
+        TUNNEL_TOKEN: "{{ vault_cloudflare_tunnel_token }}"
+        PIHOLE_WEB_PASSWORD: "{{ vault_pihole_web_password }}"
+        TZ: "{{ timezone }}"
+      no_log: true
       tags: [docker]
       changed_when: true
 
@@ -94,6 +99,11 @@
       ansible.builtin.command:
         cmd: docker compose -f {{ compose_file }} up -d --remove-orphans
         chdir: "{{ compose_dir }}"
+      environment:
+        TUNNEL_TOKEN: "{{ vault_cloudflare_tunnel_token }}"
+        PIHOLE_WEB_PASSWORD: "{{ vault_pihole_web_password }}"
+        TZ: "{{ timezone }}"
+      no_log: true
       tags: [docker]
       changed_when: true
 

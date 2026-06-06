@@ -402,7 +402,7 @@ deploy ALL=(ALL) NOPASSWD: /usr/bin/ansible-playbook
 SSH into the edge node, or run from the PC targeting the edge via the production inventory.
 
 ```bash
-ssh -p <ssh_port> admin@homelab-edge.local
+ssh -p <ssh_port> admin@<ip_edge>
 ```
 
 ```bash
