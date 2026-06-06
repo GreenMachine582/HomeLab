@@ -1,0 +1,25 @@
+#!/bin/bash
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/base_hardening/templates/notify/on-ssh-success.sh.j2
+# Persistent daemon: watches journalctl for accepted SSH logins and notifies.
+set -euo pipefail
+
+HOST="{{ inventory_hostname }}"
+
+notify() {
+    local user="$1" ip="$2" time="$3"
+    local msg="$user logged in to $HOST from $ip at $time"
+    local ntfy_url="{{ notify_ntfy_shoutrrr_url }}?title=SSH+login+on+{{ inventory_hostname }}&priority=high&tags=key"
+
+    shoutrrr send --url "$ntfy_url" --message "$msg" \
+    || shoutrrr send --url "{{ notify_discord_shoutrrr_url }}" --message "🔑 [SSH Login] $msg"
+}
+
+journalctl -fu ssh --output=cat | while read -r line; do
+    if echo "$line" | grep -q "Accepted"; then
+        USER=$(echo "$line" | grep -oP 'for \K\S+')
+        IP=$(echo "$line"   | grep -oP 'from \K\S+')
+        TIME=$(date "+%Y-%m-%d %H:%M:%S")
+        notify "$USER" "$IP" "$TIME"
+    fi
+done

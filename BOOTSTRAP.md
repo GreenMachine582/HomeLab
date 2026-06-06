@@ -34,10 +34,9 @@ steps are kept to the absolute minimum.
     * [3.2 Deploy Service Nodes](#32-deploy-service-nodes)
   * [Phase 4: Automated Deployments](#phase-4-automated-deployments)
     * [How It Works](#how-it-works)
-    * [4.1 Create the Deploy Script](#41-create-the-deploy-script)
-    * [4.2 Configure the Automation Endpoint (n8n or Camunda)](#42-configure-the-automation-endpoint-n8n-or-camunda)
-    * [4.3 GitHub Workflow](#43-github-workflow)
-    * [4.4 Manual Trigger](#44-manual-trigger)
+    * [4.1 Configure the Automation Endpoint (n8n or Camunda)](#41-configure-the-automation-endpoint-n8n-or-camunda)
+    * [4.2 GitHub Workflow](#42-github-workflow)
+    * [4.3 Manual Trigger](#43-manual-trigger)
 <!-- TOC -->
 
 ---
@@ -522,72 +521,48 @@ git push → master
     ↓
 .github/workflows/deploy.yml  (runs on GitHub's hosted runners)
     ↓
-HTTP POST → n8n or Camunda webhook endpoint (running on homelab-svc-01/svc-02)
+HTTP POST → n8n or Camunda webhook endpoint (running on homelab-svc-01)
     ↓
 n8n/Camunda workflow SSHes to homelab-edge as `deploy` user
     ↓
-scripts/deploy.sh pulls latest repo + runs Ansible playbooks
+deploy user runs: git pull + ansible-playbook directly
     ↓
 Ansible deploys to all target nodes
 ```
 
-GitHub only needs to reach the n8n or Camunda endpoint — it never connects directly to the edge or any other node. All 
-Ansible execution stays inside the homelab.
+GitHub only needs to reach the n8n or Camunda endpoint — it never connects directly to the edge or any other node. All
+Ansible execution stays inside the homelab. No deploy script is needed — the `deploy` user's restricted sudo allows
+`ansible-playbook` directly.
 
 ---
 
-### 4.1 Create the Deploy Script
-
-`scripts/deploy.sh` is already in the repo. It runs on the edge node when called by the automation endpoint:
-
-```bash
-#!/bin/bash
-set -euo pipefail
-
-cd /opt/homelab
-git pull origin master
-
-ansible-playbook -i inventories/prod.ini \
-  playbooks/deploy_edge.yml \
-  --vault-password-file .vault_pass
-
-ansible-playbook -i inventories/prod.ini \
-  playbooks/deploy_observe.yml \
-  --vault-password-file .vault_pass
-
-ansible-playbook -i inventories/prod.ini \
-  playbooks/deploy_svc.yml \
-  --vault-password-file .vault_pass
-```
-
-Ensure it is executable:
-
-```bash
-chmod +x scripts/deploy.sh
-```
-
----
-
-### 4.2 Configure the Automation Endpoint (n8n or Camunda)
+### 4.1 Configure the Automation Endpoint (n8n or Camunda)
 
 **Option A — n8n (recommended for simplicity):**
 
 1. Create a new workflow triggered by **Webhook** node
-2. Validate the incoming request (check a shared secret header set by the GitHub workflow)
-3. Add an **SSH** node pointing to `homelab-edge`, user `deploy`, using the `deploy` private key
-4. Command: `/opt/homelab/scripts/deploy.sh`
+2. Validate the incoming request (check `X-Deploy-Secret` header matches `vault_deploy_webhook_secret`)
+3. Add an **SSH** node pointing to `homelab-edge`, port `{{ ssh_port }}`, user `deploy`, using the `deploy` private key
+4. Commands:
+   ```bash
+   cd /opt/homelab
+   sudo ansible-playbook playbooks/deploy_edge.yml
+   sudo ansible-playbook playbooks/deploy_observe.yml
+   sudo ansible-playbook playbooks/deploy_svc.yml
+   ```
+   > `deploy_edge.yml` pulls the latest repo at the start via `become_user: homelab`. No separate `git pull` needed.
 
 **Option B — Camunda:**
 
 1. Deploy a BPMN process with a message start event
 2. Expose a REST endpoint via Camunda's API that receives the GitHub POST
-3. Use a service task to SSH to the edge and run `scripts/deploy.sh`
+3. Use a service task to SSH to the edge and run the same `ansible-playbook` commands above
 
 Either way, store the `deploy` private key as a credential inside n8n/Camunda — it never touches GitHub.
 
 ---
 
-### 4.3 GitHub Workflow
+### 4.2 GitHub Workflow
 
 `.github/workflows/deploy.yml` runs on GitHub's own hosted runners (no self-hosted runner needed):
 
@@ -622,14 +597,19 @@ No Ansible Vault password, no SSH keys, and no homelab IPs are stored in GitHub.
 
 ---
 
-### 4.4 Manual Trigger
+### 4.3 Manual Trigger
 
-For ad-hoc deployments, SSH to the edge as `deploy` and run the script directly:
+For ad-hoc deployments without going through GitHub or n8n, SSH to the edge as `deploy` and run playbooks directly:
 
 ```bash
-ssh deploy@homelab-edge
-/opt/homelab/scripts/deploy.sh
+ssh -p <ssh_port> -i .ssh/deploy deploy@homelab-edge
+
+cd /opt/homelab
+
+# Run whichever playbooks are needed
+sudo ansible-playbook playbooks/deploy_edge.yml
+sudo ansible-playbook playbooks/deploy_observe.yml
+sudo ansible-playbook playbooks/deploy_svc.yml
 ```
 
-The `deploy` user's sudo is restricted to `ansible-playbook` only. Deployments work even if GitHub or the automation 
-endpoint is unavailable.
+The `deploy` user's sudo is restricted to `/usr/bin/ansible-playbook` only — no shell, no root access. The git pull happens automatically inside `deploy_edge.yml` via `become_user: homelab`. Deployments work even if GitHub or the automation endpoint is unavailable.

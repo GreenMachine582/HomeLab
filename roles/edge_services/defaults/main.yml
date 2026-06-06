@@ -1,0 +1,18 @@
+---
+# roles/edge_services/defaults/main.yml
+# Lowest-precedence defaults — override via group_vars/edge.yml.
+
+# Cloudflare Tunnel ingress rules. Each entry: hostname, service.
+# Real list defined in group_vars/edge.yml (cloudflared_ingress).
+cloudflared_ingress: []
+
+# Pi-hole custom DNS entries. Each entry: ip, hostname.
+# Real list defined in group_vars/edge.yml (pihole_custom_dns).
+pihole_custom_dns: []
+
+# Caddy reverse proxy routes. Each entry: hostname, upstream, auth (optional).
+# Real list defined in group_vars/edge.yml (caddy_routes).
+caddy_routes: []
+
+# Base path of the homelab repo on the edge node (where config dirs are created).
+homelab_repo_path: /opt/homelab

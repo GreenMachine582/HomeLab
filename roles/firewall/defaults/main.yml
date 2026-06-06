@@ -1,0 +1,12 @@
+---
+# roles/firewall/defaults/main.yml
+# Lowest-precedence defaults — override via group_vars or host_vars.
+
+# List of UFW rules to apply. Each entry supports: port, proto, src, comment.
+# Passed from the playbook as: firewall_rules: "{{ ufw_rules }}"
+# group_vars/edge.yml and group_vars/svc.yml define the real lists.
+firewall_rules: []
+
+# SSH port to always allow (also used for the rollback-safety wait_for check).
+# Should match ssh_port in group_vars/all/main.yml.
+ssh_port: 22

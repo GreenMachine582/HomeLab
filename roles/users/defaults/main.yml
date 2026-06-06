@@ -1,0 +1,7 @@
+---
+# roles/users/defaults/main.yml
+# Lowest-precedence defaults — override via group_vars or host_vars.
+
+# List of system users to create. Real definitions live in group_vars/all/main.yml.
+# Each entry: name, groups, shell, ssh_key, sudo_passwordless, sudo_commands (optional).
+homelab_users: []

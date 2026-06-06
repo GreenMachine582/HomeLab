@@ -1,0 +1,13 @@
+#!/bin/bash
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/base_hardening/templates/notify/on-boot.sh.j2
+set -euo pipefail
+
+HOST="{{ inventory_hostname }}"
+TIME=$(date "+%Y-%m-%d %H:%M:%S")
+MSG="$HOST booted at $TIME"
+
+NTFY_URL="{{ notify_ntfy_shoutrrr_url }}?title={{ inventory_hostname }}+booted&priority=default&tags=white_check_mark"
+
+shoutrrr send --url "$NTFY_URL" --message "$MSG" \
+|| shoutrrr send --url "{{ notify_discord_shoutrrr_url }}" --message "✅ [Boot] $MSG"

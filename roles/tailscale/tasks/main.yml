@@ -32,20 +32,53 @@
     state: started
   tags: [tailscale]
 
+- name: "Tailscale | Check if already connected"
+  ansible.builtin.command: tailscale status
+  register: ts_status
+  changed_when: false
+  failed_when: false
+  tags: [tailscale]
+
+- name: "Tailscale | Mint auth key via OAuth client"
+  ansible.builtin.uri:
+    url: "https://api.tailscale.com/api/v2/tailnet/-/keys"
+    method: POST
+    user: "{{ vault_tailscale_oauth_client_id }}"
+    password: "{{ vault_tailscale_oauth_client_secret }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      capabilities:
+        devices:
+          create:
+            reusable: true
+            ephemeral: false
+            preauthorized: true
+      expirySeconds: 0
+    status_code: 200
+  register: ts_key_result
+  no_log: true
+  when:
+    - tailscale_up
+    - ts_status.rc != 0
+  tags: [tailscale]
+
 - name: "Tailscale | Authenticate and bring up"
   ansible.builtin.command:
     cmd: >
       tailscale up
-      --authkey={{ tailscale_auth_key }}
+      --authkey={{ ts_key_result.json.key }}
       {% if tailscale_advertise_routes | length > 0 %}
       --advertise-routes={{ tailscale_advertise_routes | join(',') }}
       {% endif %}
       {% if tailscale_accept_routes %}--accept-routes{% endif %}
       {% if tailscale_exit_node %}--advertise-exit-node{% endif %}
       {{ tailscale_extra_args }}
-  when: tailscale_up
+  when:
+    - tailscale_up
+    - ts_status.rc != 0
   changed_when: true
-  no_log: true   # Suppress auth key from logs
+  no_log: true
   tags: [tailscale]
 
 - name: "Tailscale | Enable IP forwarding (subnet router)"
