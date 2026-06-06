@@ -18,6 +18,7 @@
 #   --tags caddy       Caddy reverse proxy config only
 #   --tags alloy       Grafana Alloy log shipper only
 #   --tags unbound     Unbound recursive resolver (host service) only
+#   --tags verify      Health checks only (no deploy)
 #
 # Requires: roles/fail2ban, roles/tailscale, roles/alloy, roles/unbound, roles/edge_services
 # Note: base_hardening runs in bootstrap_edge.yml (Phase 1) only.
@@ -120,14 +121,80 @@
       tags: [docker]
       changed_when: true
 
-    - name: "Verify | Check cloudflared is running"
+    - name: "Verify | Unbound service is active"
+      ansible.builtin.systemd:
+        name: unbound
+      register: unbound_svc
+      failed_when: unbound_svc.status.ActiveState != "active"
+      changed_when: false
+      tags: [verify, unbound]
+
+    - name: "Verify | Unbound is listening on port {{ unbound_port }}"
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ unbound_port }}"
+        timeout: 10
+      become: false
+      tags: [verify, unbound]
+
+    - name: "Verify | Pi-hole is listening on port 53"
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 53
+        timeout: 15
+      become: false
+      tags: [verify, docker]
+
+    - name: "Verify | Caddy is listening on port 80"
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 80
+        timeout: 10
+      become: false
+      tags: [verify, docker]
+
+    - name: "Verify | cloudflared is running"
       ansible.builtin.command:
         cmd: docker inspect --format="{{ '{{' }}.State.Status{{ '}}' }}" cloudflared
       register: cloudflared_status
       changed_when: false
       failed_when: cloudflared_status.stdout != "running"
-      tags: [docker]
+      become: false
+      tags: [verify, docker]
+
+    - name: "Verify | All edge containers are running"
+      ansible.builtin.command:
+        cmd: >
+          docker inspect --format="{{ '{{' }}.Name{{ '}}' }}={{ '{{' }}.State.Status{{ '}}' }}"
+          caddy pihole pihole-exporter node-exporter portainer-agent
+      register: container_statuses
+      changed_when: false
+      failed_when: "'restarting' in container_statuses.stdout or 'exited' in container_statuses.stdout"
+      become: false
+      tags: [verify, docker]
+
+    - name: "Verify | Tailscale is connected"
+      ansible.builtin.command:
+        cmd: tailscale status
+      register: tailscale_check
+      changed_when: false
+      failed_when: tailscale_check.rc != 0
+      become: false
+      tags: [verify, tailscale]
+
+    - name: "Verify | Internet reachable from edge"
+      ansible.builtin.uri:
+        url: https://cloudflare.com
+        status_code: 200
+        timeout: 15
+      become: false
+      tags: [verify]
 
     - name: "Meta | Deploy complete"
       ansible.builtin.debug:
-        msg: "Edge deployment complete. Cloudflare Tunnel status: {{ cloudflared_status.stdout }}"
+        msg:
+          - "Edge deployment complete"
+          - "unbound: {{ unbound_svc.status.ActiveState }}"
+          - "cloudflared: {{ cloudflared_status.stdout }}"
+          - "containers: {{ container_statuses.stdout_lines }}"
+          - "tailscale: {{ 'connected' if tailscale_check.rc == 0 else 'disconnected' }}"
