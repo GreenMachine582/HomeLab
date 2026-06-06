@@ -148,6 +148,20 @@
         mode: "0600"
       tags: [repo]
 
+    - name: "Repo | Write SSH config for GitHub deploy key"
+      ansible.builtin.blockinfile:
+        path: /home/homelab/.ssh/config
+        create: true
+        owner: homelab
+        group: homelab
+        mode: "0600"
+        marker: "# {mark} github.com deploy key"
+        block: |
+          Host github.com
+              IdentityFile ~/.ssh/github
+              IdentitiesOnly yes
+      tags: [repo]
+
     - name: "Repo | Clone homelab repo"
       ansible.builtin.git:
         repo: "git@github.com:{{ vault_github_org }}/homelab.git"
