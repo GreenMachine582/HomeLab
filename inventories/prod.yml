@@ -10,6 +10,9 @@
 all:
   vars:
     ansible_user: homelab
+    # ~/.ssh/homelab resolves to /home/homelab/.ssh/homelab on the edge node (Phase 2+).
+    # If running from your PC, load the key via ssh-agent instead:
+    #   ssh-add ~/homelab/.ssh/homelab
     ansible_ssh_private_key_file: ~/.ssh/homelab
     ansible_python_interpreter: /usr/bin/python3
     ansible_port: "{{ ssh_port }}"
