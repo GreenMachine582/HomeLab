@@ -1,0 +1,23 @@
+# ntfy server configuration
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/observe_services/templates/ntfy/server.yml.j2
+# Docs: https://ntfy.sh/docs/config/
+
+# Public-facing base URL — required for attachments and iOS push poll requests
+base-url: "{{ ntfy_base_url }}"
+
+# ntfy runs behind Caddy reverse proxy
+behind-proxy: true
+
+# HTTP listener (container port; host port mapped in docker-compose.observe.yml)
+listen-http: ":80"
+
+# Persist messages across restarts so since= and poll=1 work correctly
+cache-file: "/var/cache/ntfy/cache.db"
+
+# Access control database (managed via `ntfy user` / `ntfy access` CLI)
+auth-file: "/etc/ntfy/user.db"
+auth-default-access: "deny-all"
+
+# Forward poll requests to upstream so iOS push notifications work
+upstream-base-url: "https://ntfy.sh"

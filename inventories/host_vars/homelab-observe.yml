@@ -1,0 +1,23 @@
+---
+# host_vars/homelab-observe.yml
+# Node-specific overrides for homelab-observe.
+# Group-level config is in group_vars/observe.yml and group_vars/all.yml.
+
+# ── Network ───────────────────────────────────────────────────────────────────
+node_lan_ip: "{{ ip_observe }}"
+node_interface: eth0
+node_hostname: homelab-observe
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+# SD card only. Prometheus and Loki data can grow quickly.
+# If disk pressure occurs, mount a USB SSD and update docker_data_dir.
+# See MONITORING.md § Storage Pressure for guidance.
+docker_data_dir: /var/lib/docker
+
+# ── Prometheus scrape target overrides ────────────────────────────────────────
+# This node is both a scrape host and runs the Prometheus container.
+# No additional scrape config needed here — targets defined in group_vars/observe.yml.
+
+# ── Grafana ───────────────────────────────────────────────────────────────────
+# Instance-level Grafana settings if they diverge from group defaults.
+# grafana_port is inherited from group_vars/observe.yml (3000).

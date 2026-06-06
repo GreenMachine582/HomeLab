@@ -1,0 +1,107 @@
+---
+# group_vars/observe.yml
+# Applied to the [observe] group (homelab-observe only).
+
+# ── Firewall ──────────────────────────────────────────────────────────────────
+ufw_rules:
+  - { port: "{{ ssh_port }}", proto: tcp, src: "{{ lan_subnet }}", comment: "SSH (LAN)" }
+  - { port: 3000, proto: tcp, src: "{{ lan_subnet }}", comment: "Grafana" }
+  - { port: 9090, proto: tcp, src: "{{ lan_subnet }}", comment: "Prometheus" }
+  - { port: 9093, proto: tcp, src: "{{ lan_subnet }}", comment: "Alertmanager" }
+  - { port: 3001, proto: tcp, src: "{{ lan_subnet }}", comment: "Uptime Kuma" }
+  - { port: 9000, proto: tcp, src: "{{ lan_subnet }}", comment: "Portainer HTTP" }
+  - { port: 9443, proto: tcp, src: "{{ lan_subnet }}", comment: "Portainer HTTPS" }
+  - { port: 9100, proto: tcp, src: "{{ lan_subnet }}", comment: "node-exporter" }
+  - { port: 3100, proto: tcp, src: "{{ lan_subnet }}", comment: "Loki (Alloy ingestion)" }
+
+# ── Tailscale ─────────────────────────────────────────────────────────────────
+tailscale_accept_routes: true
+tailscale_exit_node: false
+
+# ── Prometheus ────────────────────────────────────────────────────────────────
+prometheus_port: 9090
+prometheus_retention: "30d"
+prometheus_scrape_interval: "15s"
+
+prometheus_scrape_targets:
+  node_exporter:
+    - { job: "node-edge",    host: "{{ ip_edge }}",    port: 9100 }
+    - { job: "node-observe", host: "{{ ip_observe }}", port: 9100 }
+    - { job: "node-svc-01",  host: "{{ ip_svc_01 }}",  port: 9100 }
+    - { job: "node-svc-02",  host: "{{ ip_svc_02 }}",  port: 9100 }
+    - { job: "node-svc-03",  host: "{{ ip_svc_03 }}",  port: 9100 }
+  cadvisor:
+    - { job: "cadvisor-svc-01", host: "{{ ip_svc_01 }}", port: 8080 }
+    - { job: "cadvisor-svc-02", host: "{{ ip_svc_02 }}", port: 8080 }
+    - { job: "cadvisor-svc-03", host: "{{ ip_svc_03 }}", port: 8080 }
+  pihole:
+    - { job: "pihole-exporter", host: "{{ ip_edge }}", port: 9617 }
+
+# ── Loki ──────────────────────────────────────────────────────────────────────
+loki_port: 3100
+loki_retention: "336h"   # 14 days
+
+# ── Grafana ───────────────────────────────────────────────────────────────────
+grafana_port: 3000
+grafana_admin_user: admin
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+grafana_allow_signup: false
+
+grafana_datasources:
+  - name: Prometheus
+    type: prometheus
+    url: "http://prometheus:9090"
+    is_default: true
+  - name: Loki
+    type: loki
+    url: "http://loki:3100"
+
+grafana_dashboards_path: "{{ homelab_repo_path }}/templates/grafana/dashboards"
+
+# ── Alertmanager ──────────────────────────────────────────────────────────────
+alertmanager_port: 9093
+
+alertmanager_receivers:
+  - name: discord-critical
+    discord_webhook_url: "{{ vault_discord_webhook_critical }}"
+  - name: discord-warning
+    discord_webhook_url: "{{ vault_discord_webhook_warning }}"
+  - name: discord-info
+    discord_webhook_url: "{{ vault_discord_webhook_info }}"
+
+alertmanager_routes:
+  - receiver: discord-critical
+    match:
+      severity: critical
+    repeat_interval: 1h
+  - receiver: discord-warning
+    match:
+      severity: warning
+    repeat_interval: 4h
+  - receiver: discord-info
+    match:
+      severity: info
+    repeat_interval: 12h
+
+# ── Uptime Kuma ───────────────────────────────────────────────────────────────
+uptime_kuma_port: 3001
+
+# Monitor config is currently applied manually via the Uptime Kuma UI.
+# Endpoint reference — keep in sync with MONITORING.md:
+#   http://homelab-edge/health
+#   http://homelab-edge/admin
+#   http://homelab-observe:3000/api/health
+#   http://homelab-observe:9093/-/healthy
+#   http://homelab-svc-01:8081
+#   http://homelab-svc-02:8000/health
+#   http://homelab-svc-03:8096/health
+
+# ── ntfy ──────────────────────────────────────────────────────────────────────
+ntfy_port: 8085          # host port (container serves on 80)
+ntfy_base_url: "http://{{ ip_observe }}:8085"
+ntfy_internal_url: "http://ntfy/alerts"   # Used by services on monitoring_net
+ntfy_config_path: "{{ homelab_repo_path }}/ntfy/config"
+
+# ── Portainer ─────────────────────────────────────────────────────────────────
+portainer_port: 9000
+portainer_agent_port: 9001

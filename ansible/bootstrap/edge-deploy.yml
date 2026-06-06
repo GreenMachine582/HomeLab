@@ -1,0 +1,49 @@
+---
+- name: "CI | Edge | Deploy ingress services"
+  hosts: edge
+  become: true
+  gather_facts: true
+
+  vars:
+    play_description: >
+      CI/CD deployment for Edge node.
+      Ensures HomeLab project is up to date and
+      deploys edge-specific ingress services
+      (cloudflared, caddy, exporters).
+
+    project_dir: "{{ homelab_base_dir }}"
+    compose_file: "docker-compose.edge.yml"
+
+  pre_tasks:
+    - name: "Meta | Show play description"
+      debug:
+        msg: "{{ play_description }}"
+      tags: [meta]
+
+    - name: "Meta | Assert docker is installed"
+      command: docker info
+      changed_when: false
+      tags: [meta, docker]
+
+  roles:
+    - role: homelab_repos
+      tags: [ repo, homelab ]
+      vars:
+        role_description: "Update project repository"
+
+  tasks:
+    - name: "Deploy | Pull latest images"
+      command: docker compose -f {{ compose_file }} pull
+      args:
+        chdir: "{{ project_dir }}"
+      tags: [deploy, docker]
+
+    - name: "Deploy | Apply edge stack"
+      command: docker compose -f {{ compose_file }} up -d
+      args:
+        chdir: "{{ project_dir }}"
+      tags: [deploy, docker]
+
+    - name: "Deploy | Prune unused images"
+      command: docker image prune -f
+      tags: [deploy, cleanup]

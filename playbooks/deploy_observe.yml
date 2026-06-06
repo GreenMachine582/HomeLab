@@ -1,0 +1,131 @@
+---
+# playbooks/deploy_observe.yml
+#
+# Phase 3 — Deploys the full observability stack on homelab-observe.
+# Run from homelab-edge after bootstrap_node.yml has been run on homelab-observe.
+#
+# Usage:
+#   ansible-playbook playbooks/deploy_observe.yml
+#
+# Tags:
+#   --tags hardening     Base OS hardening only
+#   --tags firewall      UFW rules only
+#   --tags tailscale     Tailscale only
+#   --tags docker        Full Docker Compose stack
+#   --tags prometheus    Prometheus config only
+#   --tags grafana       Grafana config only
+#   --tags alertmanager  Alertmanager config only
+#   --tags loki          Loki config only
+#   --tags alloy         Grafana Alloy log shipper only
+#
+# Requires: roles/base_hardening, roles/firewall, roles/tailscale,
+#           roles/observe_services, roles/alloy
+
+- name: "Deploy | Observe | Monitoring and alerting stack"
+  hosts: observe
+  become: true
+  gather_facts: true
+
+  vars:
+    play_description: >
+      Deploys the full observability stack on homelab-observe:
+      Prometheus (metrics), Loki (logs), Grafana (dashboards),
+      Alertmanager (alerts → Discord), ntfy (notifications),
+      Uptime Kuma (endpoint monitoring), Portainer Server (Docker UI).
+
+    compose_file: "docker-compose.observe.yml"
+    compose_dir: "{{ homelab_repo_path }}"
+
+  pre_tasks:
+    - name: "Meta | Show play description"
+      ansible.builtin.debug:
+        msg: "{{ play_description }}"
+
+    - name: "Meta | Update repo to latest"
+      ansible.builtin.git:
+        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        dest: "{{ homelab_repo_path }}"
+        version: "{{ homelab_repo_branch }}"
+        accept_hostkey: true
+        key_file: /home/homelab/.ssh/github
+        force: false
+      become_user: homelab
+      tags: [repo]
+
+  roles:
+    - role: base_hardening
+      tags: [hardening]
+
+    - role: firewall
+      tags: [firewall]
+      vars:
+        firewall_rules: "{{ ufw_rules }}"
+
+    - role: tailscale
+      tags: [tailscale]
+      vars:
+        tailscale_up: true
+        tailscale_accept_routes: "{{ tailscale_accept_routes }}"
+
+    - role: alloy
+      tags: [alloy]
+      vars:
+        alloy_loki_endpoint: "http://localhost:3100/loki/api/v1/push"
+        alloy_scrape_systemd_units: "{{ alloy_scrape_systemd_units | default(['docker', 'tailscaled', 'ssh']) }}"
+
+    - role: observe_services
+      tags: [docker, prometheus, grafana, alertmanager, loki]
+      vars:
+        grafana_admin_password: "{{ vault_grafana_admin_password }}"
+        alertmanager_discord_critical: "{{ vault_discord_webhook_critical }}"
+        alertmanager_discord_warning: "{{ vault_discord_webhook_warning }}"
+        alertmanager_discord_info: "{{ vault_discord_webhook_info }}"
+        prometheus_scrape_targets: "{{ prometheus_scrape_targets }}"
+        loki_retention: "{{ loki_retention }}"
+
+  post_tasks:
+    - name: "Docker | Pull latest images"
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_file }} pull
+        chdir: "{{ compose_dir }}"
+      tags: [docker]
+      changed_when: true
+
+    - name: "Docker | Apply monitoring stack"
+      ansible.builtin.command:
+        cmd: docker compose -f {{ compose_file }} up -d --remove-orphans
+        chdir: "{{ compose_dir }}"
+      tags: [docker]
+      changed_when: true
+
+    - name: "Docker | Prune unused images"
+      ansible.builtin.command:
+        cmd: docker image prune -f
+      tags: [docker]
+      changed_when: true
+
+    - name: "Verify | Grafana health check"
+      ansible.builtin.uri:
+        url: "http://localhost:{{ grafana_port }}/api/health"
+        method: GET
+        status_code: 200
+      register: grafana_health
+      retries: 5
+      delay: 10
+      until: grafana_health.status == 200
+      tags: [docker, grafana]
+
+    - name: "Verify | Prometheus health check"
+      ansible.builtin.uri:
+        url: "http://localhost:{{ prometheus_port }}/-/healthy"
+        method: GET
+        status_code: 200
+      register: prometheus_health
+      retries: 5
+      delay: 10
+      until: prometheus_health.status == 200
+      tags: [docker, prometheus]
+
+    - name: "Meta | Deploy complete"
+      ansible.builtin.debug:
+        msg: "Observe deployment complete. Grafana at http://{{ node_lan_ip }}:{{ grafana_port }}"

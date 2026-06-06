@@ -1,0 +1,45 @@
+global:
+  scrape_interval: {{ prometheus_scrape_interval | default('15s') }}
+  evaluation_interval: {{ prometheus_scrape_interval | default('15s') }}
+  external_labels:
+    cluster: homelab
+
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  # ── node-exporter ─────────────────────────────────────────────────────────
+{% for target in prometheus_scrape_targets.node_exporter %}
+  - job_name: {{ target.job }}
+    static_configs:
+      - targets:
+          - {{ target.host }}:{{ target.port }}
+{% endfor %}
+
+  # ── cAdvisor ──────────────────────────────────────────────────────────────
+{% for target in prometheus_scrape_targets.cadvisor %}
+  - job_name: {{ target.job }}
+    static_configs:
+      - targets:
+          - {{ target.host }}:{{ target.port }}
+{% endfor %}
+
+  # ── Pi-hole exporter ──────────────────────────────────────────────────────
+{% for target in prometheus_scrape_targets.pihole %}
+  - job_name: {{ target.job }}
+    static_configs:
+      - targets:
+          - {{ target.host }}:{{ target.port }}
+{% endfor %}
+
+  # ── Prometheus self-scrape ────────────────────────────────────────────────
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
