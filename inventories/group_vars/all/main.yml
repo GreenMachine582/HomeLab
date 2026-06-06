@@ -81,12 +81,12 @@ node_exporter_port: 9100
 alloy_loki_endpoint: "http://{{ ip_observe }}:3100/loki/api/v1/push"
 
 # ── Notifications ────────────────────────────────────────────────────────────
-# Primary:  shoutrrr → self-hosted ntfy on homelab-observe
-# Fallback: shoutrrr → Discord (fires only if ntfy send fails)
+# Primary:  curl → self-hosted ntfy on homelab-observe
+# Fallback: curl → Discord webhook (fires only if ntfy returns non-2xx or times out)
 notify_script_dir: /usr/local/lib/homelab/notify
-notify_ntfy_shoutrrr_url: "ntfy+http://{{ vault_ntfy_token }}@{{ ip_observe }}:8085/homelab"
-notify_discord_shoutrrr_url: "{{ vault_shoutrrr_discord_alerts }}"
-shoutrrr_version: "0.8.0"
+notify_ntfy_url: "http://{{ ip_observe }}:8085/homelab"
+notify_ntfy_token: "{{ vault_ntfy_token }}"
+notify_discord_webhook: "{{ vault_discord_alerts_webhook }}"
 
 # ── Tailscale (common) ───────────────────────────────────────────────────────
 # Auth keys are minted at deploy time via the OAuth client — no static key stored.

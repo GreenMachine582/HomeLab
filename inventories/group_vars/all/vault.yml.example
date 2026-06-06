@@ -64,12 +64,11 @@ vault_discord_webhook_info: "https://discord.com/api/webhooks/..."
 # Once ntfy is up: ntfy user add <username> && ntfy token add <username>
 vault_ntfy_token: "tk_..."
 
-# ── Shoutrrr (Discord fallback) ───────────────────────────────────────────────
-# Shoutrrr runs on homelab-edge as a lightweight Discord fallback.
-# Notification scripts try ntfy first; if homelab-observe is unreachable they
-# fall back to shoutrrr → Discord directly (no dependency on the observe node).
-# Format: discord://token@channel_id  (derive from the Discord webhook URL)
-vault_shoutrrr_discord_alerts: "discord://token@channel_id"
+# ── Discord — system notifications (boot/shutdown/SSH) ───────────────────────
+# Plain Discord webhook URL used as fallback when ntfy (homelab-observe) is unreachable.
+# Create in Discord → Server Settings → Integrations → Webhooks.
+# Separate from Alertmanager webhooks (critical/warning/info) — use a dedicated channel.
+vault_discord_alerts_webhook: "https://discord.com/api/webhooks/channel_id/token"
 
 # ── PostgreSQL — Camunda (svc-01) ─────────────────────────────────────────────
 vault_camunda_db_user: "camunda"
@@ -90,7 +89,6 @@ vault_n8n_encryption_key: "changeme"
 
 # ── discord-gateway ───────────────────────────────────────────────────────────
 # discord-gateway handles INBOUND Discord slash commands routed to n8n workflows.
-# This is separate from shoutrrr/ntfy (outbound notifications) — different concern.
 # Retained; review after Phase 3 to decide if slash-command automation is needed (TODO #34).
 # DISCORD_PUBLIC_KEY: Discord Developer Portal → your app → General Information
 vault_discord_public_key: "changeme"

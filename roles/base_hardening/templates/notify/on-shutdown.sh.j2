@@ -7,7 +7,14 @@ HOST="{{ inventory_hostname }}"
 TIME=$(date "+%Y-%m-%d %H:%M:%S")
 MSG="$HOST is shutting down at $TIME"
 
-NTFY_URL="{{ notify_ntfy_shoutrrr_url }}?title={{ inventory_hostname }}+shutting+down&priority=high&tags=warning"
-
-shoutrrr send --url "$NTFY_URL" --message "$MSG" \
-|| shoutrrr send --url "{{ notify_discord_shoutrrr_url }}" --message "⚠️ [Shutdown] $MSG"
+curl -sf \
+  -H "Authorization: Bearer {{ notify_ntfy_token }}" \
+  -H "Title: {{ inventory_hostname }} shutting down" \
+  -H "Priority: high" \
+  -H "Tags: warning" \
+  -d "$MSG" \
+  "{{ notify_ntfy_url }}" > /dev/null \
+|| curl -sf \
+  -H "Content-Type: application/json" \
+  --data-raw "{\"content\": \"⚠️ [Shutdown] $MSG\"}" \
+  "{{ notify_discord_webhook }}" > /dev/null || true

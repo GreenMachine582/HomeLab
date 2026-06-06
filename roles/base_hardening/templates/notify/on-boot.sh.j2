@@ -7,7 +7,14 @@ HOST="{{ inventory_hostname }}"
 TIME=$(date "+%Y-%m-%d %H:%M:%S")
 MSG="$HOST booted at $TIME"
 
-NTFY_URL="{{ notify_ntfy_shoutrrr_url }}?title={{ inventory_hostname }}+booted&priority=default&tags=white_check_mark"
-
-shoutrrr send --url "$NTFY_URL" --message "$MSG" \
-|| shoutrrr send --url "{{ notify_discord_shoutrrr_url }}" --message "✅ [Boot] $MSG"
+curl -sf \
+  -H "Authorization: Bearer {{ notify_ntfy_token }}" \
+  -H "Title: {{ inventory_hostname }} booted" \
+  -H "Priority: default" \
+  -H "Tags: white_check_mark" \
+  -d "$MSG" \
+  "{{ notify_ntfy_url }}" > /dev/null \
+|| curl -sf \
+  -H "Content-Type: application/json" \
+  --data-raw "{\"content\": \"✅ [Boot] $MSG\"}" \
+  "{{ notify_discord_webhook }}" > /dev/null || true

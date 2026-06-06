@@ -9,10 +9,18 @@ HOST="{{ inventory_hostname }}"
 notify() {
     local user="$1" ip="$2" time="$3"
     local msg="$user logged in to $HOST from $ip at $time"
-    local ntfy_url="{{ notify_ntfy_shoutrrr_url }}?title=SSH+login+on+{{ inventory_hostname }}&priority=high&tags=key"
 
-    shoutrrr send --url "$ntfy_url" --message "$msg" \
-    || shoutrrr send --url "{{ notify_discord_shoutrrr_url }}" --message "🔑 [SSH Login] $msg"
+    curl -sf \
+      -H "Authorization: Bearer {{ notify_ntfy_token }}" \
+      -H "Title: SSH login on {{ inventory_hostname }}" \
+      -H "Priority: high" \
+      -H "Tags: key" \
+      -d "$msg" \
+      "{{ notify_ntfy_url }}" > /dev/null \
+    || curl -sf \
+      -H "Content-Type: application/json" \
+      --data-raw "{\"content\": \"🔑 [SSH Login] $msg\"}" \
+      "{{ notify_discord_webhook }}" > /dev/null || true
 }
 
 journalctl -fu ssh --output=cat | while read -r line; do

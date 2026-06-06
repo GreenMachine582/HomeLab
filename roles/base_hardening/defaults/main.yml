@@ -32,7 +32,6 @@ ssh_client_alive_interval: 300
 ssh_client_alive_count_max: 2
 
 # ── Notifications ─────────────────────────────────────────────────────────────
-shoutrrr_version: "0.8.0"
 notify_script_dir: /usr/local/lib/homelab/notify
-# notify_ntfy_shoutrrr_url and notify_discord_shoutrrr_url have no safe defaults
+# notify_ntfy_url, notify_ntfy_token, notify_discord_webhook have no safe defaults
 # (they require vault vars and ip_observe) — must be set in group_vars/all/main.yml.
