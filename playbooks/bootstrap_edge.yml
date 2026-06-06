@@ -136,6 +136,7 @@
         path: /home/homelab/.ssh/known_hosts
         state: present
       loop: "{{ _own_host_keys.stdout_lines | select('match', '^[^#]') | list }}"
+      no_log: true
       tags: [ansible]
 
     - name: "Repo | Deploy GitHub deploy key"

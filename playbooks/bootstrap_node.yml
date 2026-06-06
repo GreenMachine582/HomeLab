@@ -113,6 +113,7 @@
         path: /home/homelab/.ssh/known_hosts
         state: present
       loop: "{{ _node_host_keys.stdout_lines | select('match', '^[^#]') | list }}"
+      no_log: true
       delegate_to: localhost
       become: false
 

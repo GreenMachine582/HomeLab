@@ -26,6 +26,8 @@ notify() {
 journalctl -fu ssh --output=cat | while read -r line; do
     if echo "$line" | grep -q "Accepted"; then
         USER=$(echo "$line" | grep -oP 'for \K\S+')
+        # Skip Ansible automation user — it SSHes for every task, causing notification spam.
+        [[ "$USER" == "homelab" ]] && continue
         IP=$(echo "$line"   | grep -oP 'from \K\S+')
         TIME=$(date "+%Y-%m-%d %H:%M:%S")
         notify "$USER" "$IP" "$TIME"
