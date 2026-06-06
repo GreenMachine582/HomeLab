@@ -5,8 +5,7 @@
 # Converts the node into the Ansible control node for the entire homelab.
 #
 # Usage:
-#   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
-#     --ask-become-pass
+#   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
 #
 # Requires: roles/users, roles/base_hardening, roles/docker, roles/tailscale, roles/firewall
 # See: BOOTSTRAP.md § Phase 1

@@ -57,8 +57,11 @@ vault_discord_webhook_info: "https://discord.com/api/webhooks/..."
 
 # ── ntfy ─────────────────────────────────────────────────────────────────────
 # Auth token for the ntfy server on homelab-observe (port 8085).
-# Primary notification target for on-boot/shutdown/SSH scripts (TODO #21).
-# Create with: ntfy token add <username>  (after ntfy user add <username>)
+# Primary notification target for on-boot/shutdown/SSH scripts.
+# ⚠️  Phase 3 prerequisite — ntfy runs on homelab-observe, which isn't deployed until
+# Phase 3. Use a placeholder here during Phase 1; update the vault on the edge node
+# (ansible-vault edit ...) before running deploy_observe.yml.
+# Once ntfy is up: ntfy user add <username> && ntfy token add <username>
 vault_ntfy_token: "tk_..."
 
 # ── Shoutrrr (Discord fallback) ───────────────────────────────────────────────
@@ -86,6 +89,9 @@ vault_n8n_owner_password: "changeme"
 vault_n8n_encryption_key: "changeme"
 
 # ── discord-gateway ───────────────────────────────────────────────────────────
+# discord-gateway handles INBOUND Discord slash commands routed to n8n workflows.
+# This is separate from shoutrrr/ntfy (outbound notifications) — different concern.
+# Retained; review after Phase 3 to decide if slash-command automation is needed (TODO #34).
 # DISCORD_PUBLIC_KEY: Discord Developer Portal → your app → General Information
 vault_discord_public_key: "changeme"
 # Shared secret validated by discord-gateway when n8n calls back
@@ -100,7 +106,8 @@ vault_greentechhub_db_password: "changeme"
 vault_django_secret_key: "changeme"
 
 # ── Deploy webhook ────────────────────────────────────────────────────────────
-# Shared secret sent by GitHub Actions in the X-Deploy-Secret header.
-# Validated by n8n/Camunda before SSHing to the edge — not used by Ansible directly.
-# Must match the DEPLOY_SECRET GitHub Actions secret.
+# GitHub Actions POSTs to the n8n/Camunda webhook with this value in the
+# X-Deploy-Secret header; n8n/Camunda validates it before SSHing to the edge.
+# Without it any caller who knows the URL can trigger a deploy.
+# Must match the DEPLOY_SECRET GitHub Actions secret (repo Settings → Secrets).
 vault_deploy_webhook_secret: "changeme"

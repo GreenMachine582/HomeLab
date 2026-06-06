@@ -312,3 +312,18 @@ Validation and remediation tasks identified by cross-referencing all documentati
   | LAN      | `*.homelab.local`      | No — LAN subnet trusted     |
   | External | `*.yourdomain.com`     | Yes — Authentik forward-auth|
   | Pi-hole  | LAN only (UFW blocks)  | No — never externally exposed|
+
+---
+
+## Post-Phase 3 Review
+
+- [ ] **#34 — Review discord-gateway after Phase 3 is deployed**
+  discord-gateway handles INBOUND Discord slash commands routed to n8n — a different
+  concern from shoutrrr/ntfy (which are outbound notifications). Retained for now.
+  After Phase 3 (svc-01 running), decide:
+  - Keep: if slash-command automation (e.g. `/deploy`, `/status`) is wanted
+  - Remove: drop `discord-gateway` from `docker-compose.svc01.yml`, delete
+    `roles/camunda/templates/discord_gateway/`, remove `vault_discord_public_key`
+    and `vault_n8n_webhook_secret` from vault.yml
+  Refactor may also be needed to better integrate with the shoutrrr/ntfy notification
+  architecture if retained.

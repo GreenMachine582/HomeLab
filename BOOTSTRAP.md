@@ -379,7 +379,7 @@ The `bootstrap_edge.yml` playbook fully configures the edge node:
 | Copy secrets to node       | `vault.yml`, `overrides.yml`, `.vault_pass`, `homelab` SSH key pair — edge can run Phase 2+ without manual file transfer |
 | Register SSH host key      | Edge's own key added to `/home/homelab/.ssh/known_hosts` — required for Phase 2 self-deploy |
 | Harden SSH                 | Key-only auth, no root login, port changed to `ssh_port` via async restart; subsequent tasks reconnect on new port automatically |
-| Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp, 80/tcp (Caddy), 53/any (LAN); SSH reachability verified before play completes |
+| Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp, 53/udp+tcp (Pi-hole DNS, LAN only); SSH reachability verified before play completes. Port 80 (Caddy) opened in Phase 2. |
 | Enable unattended upgrades |                                            |
 | Install Tailscale          | Not started yet; configured in Phase 2     |
 
