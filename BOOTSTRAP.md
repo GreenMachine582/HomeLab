@@ -261,7 +261,7 @@ This allows the edge node to clone and pull the repo without a personal access t
 ### 1.6 Copy SSH Key to Edge Node
 
 ```bash
-ssh-copy-id -i .ssh/homelab-edge.pub admin@homelab-edge.local
+ssh-copy-id -i .ssh/homelab-edge.pub admin@<ip_edge>
 ```
 
 Enter the `admin` password when prompted. This is the only time a password is used for SSH.
@@ -280,7 +280,9 @@ ssh-add .ssh/homelab-edge
 Verify the connection:
 
 ```bash
-ssh admin@homelab-edge.local
+ssh admin@<ip_edge>
+```
+```bash
 exit
 ```
 
@@ -336,19 +338,8 @@ EDITOR=nano ansible-vault create inventories/group_vars/all/vault.yml
 
 Populate it using `inventories/group_vars/all/vault.yml.example` as a reference. Save and exit (`:wq` in Vim).
 
-> **New since the Infisical/Semaphore migration:** the vault now also needs
-> `vault_semaphore_admin_user`/`vault_semaphore_admin_password` (Semaphore's
-> bootstrap admin account — set these to real values now) and
-> `vault_infisical_encryption_key`/`vault_infisical_bootstrap_client_*`/
-> `vault_infisical_runtime_client_*`. The `infisical_*` machine-identity fields
-> **cannot** be known yet — Infisical has to exist before it can mint its own
-> credentials — so leave them as `"changeme"` for the first run; bootstrap
-> detects this, brings Infisical up, skips the seed step with instructions, and
-> you'll fill these in and re-run after completing
-> [First-run Infisical Setup](#first-run-infisical-setup) below. Generate
-> `vault_infisical_encryption_key` now with `openssl rand -hex 16` — see the
-> comment above it in `vault.yml.example` for why it must be backed up
-> separately and never regenerated.
+> - `vault_infisical_encryption_key` — generate with `openssl rand -hex 16`
+> - `vault_infisical_bootstrap_client_*` / `vault_infisical_runtime_client_*` — leave as `"changeme"` for now; filled in after [First-run Infisical Setup](#first-run-infisical-setup)
 
 > **If you created vault.yml by copying `vault.yml.example` directly** (instead of using `ansible-vault create`), encrypt it now:
 > ```bash
