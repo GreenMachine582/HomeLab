@@ -1,0 +1,16 @@
+---
+# roles/infisical/defaults/main.yml
+# Lowest-precedence defaults — override via group_vars or host_vars.
+
+# Deliberately OUTSIDE homelab_repo_path — repo git operations (pull, recurse
+# ownership fixes, rollback checkouts) must never touch node-generated secrets.
+infisical_data_dir: /opt/infisical
+infisical_service_user: homelab
+
+# Internal-only — Tailscale-only access is enforced by the firewall (group_vars/edge.yml),
+# not by this URL. No public hostname; never added to caddy_routes or cloudflared_ingress.
+infisical_site_url: "http://infisical:8080"
+
+infisical_db_user: infisical
+infisical_db_name: infisical
+infisical_redis_port: 6379

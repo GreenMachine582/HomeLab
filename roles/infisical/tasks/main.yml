@@ -1,0 +1,76 @@
+---
+# roles/infisical/tasks/main.yml
+# Renders /opt/infisical/.env — Infisical's own operational secrets.
+#
+# Philosophy (mirrors the seed task's "additive, create-if-absent"): DB/Redis/auth
+# secrets are generated ONCE on this node and then read back from the existing
+# file on every subsequent run, so a re-deploy can never rotate them out from
+# under the running stack. ENCRYPTION_KEY is the one exception — it is a
+# permanent infrastructure secret sourced from the WSL vault.yml (see
+# inventories/group_vars/all/vault.yml.example) and must stay stable across
+# rebuilds. The actual `docker compose up` happens in the playbook post_tasks,
+# same as the rest of the edge stack.
+
+- name: "Infisical | Ensure data directory exists (outside repo path)"
+  ansible.builtin.file:
+    path: "{{ infisical_data_dir }}"
+    state: directory
+    owner: "{{ infisical_service_user }}"
+    group: "{{ infisical_service_user }}"
+    mode: "0750"
+  tags: [infisical]
+
+- name: "Infisical | Check whether .env already exists"
+  ansible.builtin.stat:
+    path: "{{ infisical_data_dir }}/.env"
+  register: _infisical_env_stat
+  tags: [infisical]
+
+- name: "Infisical | Read back existing operational secrets (never regenerate)"
+  ansible.builtin.slurp:
+    src: "{{ infisical_data_dir }}/.env"
+  register: _infisical_env_existing
+  no_log: true
+  when: _infisical_env_stat.stat.exists
+  tags: [infisical]
+
+- name: "Infisical | Parse existing operational secrets"
+  ansible.builtin.set_fact:
+    infisical_db_password: "{{ (_infisical_env_existing.content | b64decode) | regex_search('^POSTGRES_PASSWORD=(.*)$', '\\1', multiline=True) | first }}"
+    infisical_redis_password: "{{ (_infisical_env_existing.content | b64decode) | regex_search('^REDIS_PASSWORD=(.*)$', '\\1', multiline=True) | first }}"
+    infisical_auth_secret: "{{ (_infisical_env_existing.content | b64decode) | regex_search('^AUTH_SECRET=(.*)$', '\\1', multiline=True) | first }}"
+  no_log: true
+  when: _infisical_env_stat.stat.exists
+  tags: [infisical]
+
+- name: "Infisical | Generate operational secrets (first run only — never overwritten again)"
+  ansible.builtin.command:
+    cmd: openssl rand -hex 32
+  register: _infisical_generated
+  changed_when: false
+  no_log: true
+  loop:
+    - db_password
+    - redis_password
+    - auth_secret
+  when: not _infisical_env_stat.stat.exists
+  tags: [infisical]
+
+- name: "Infisical | Store newly generated operational secrets"
+  ansible.builtin.set_fact:
+    infisical_db_password: "{{ _infisical_generated.results[0].stdout }}"
+    infisical_redis_password: "{{ _infisical_generated.results[1].stdout }}"
+    infisical_auth_secret: "{{ _infisical_generated.results[2].stdout }}"
+  no_log: true
+  when: not _infisical_env_stat.stat.exists
+  tags: [infisical]
+
+- name: "Infisical | Render operational .env (mode 0600 — never overwrites secret values)"
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ infisical_data_dir }}/.env"
+    owner: "{{ infisical_service_user }}"
+    group: "{{ infisical_service_user }}"
+    mode: "0600"
+  no_log: true
+  tags: [infisical]

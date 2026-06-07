@@ -106,16 +106,19 @@ services:
   # group_vars/edge.yml and docs/NETWORK.md "Tailscale-only routing"). High
   # blast-radius control plane: holds every application secret.
   # Dedicated Postgres + Redis (NOT the Camunda Postgres — keeps edge self-contained).
-  # .env rendered by roles/infisical to ./infisical/.env (mode 0600, node-generated
-  # secrets + vault_infisical_encryption_key — see roles/infisical/README in CLAUDE.md).
+  # .env rendered by roles/infisical to /opt/infisical/.env (mode 0600) — deliberately
+  # OUTSIDE the repo dir so repo git operations never touch node-generated secrets.
+  # All three containers share /opt/infisical/.env (env_file) — it carries both the
+  # Infisical-named vars (ENCRYPTION_KEY, AUTH_SECRET, DB_CONNECTION_URI, REDIS_URL)
+  # and the POSTGRES_*/REDIS_PASSWORD vars consumed by the DB/cache images. Each
+  # image picks out only the keys it recognises. Single source of truth — no shell-
+  # level ${VAR} substitution, so `docker compose up` needs no extra environment.
   infisical-db:
     image: postgres:16-alpine
     container_name: infisical-db
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: infisical
-      POSTGRES_PASSWORD: "${INFISICAL_DB_PASSWORD}"
-      POSTGRES_DB: infisical
+    env_file:
+      - /opt/infisical/.env
     volumes:
       - infisical_db_data:/var/lib/postgresql/data
     networks:
@@ -127,7 +130,9 @@ services:
     image: redis:7-alpine
     container_name: infisical-redis
     restart: unless-stopped
-    command: ["redis-server", "--requirepass", "${INFISICAL_REDIS_PASSWORD}"]
+    env_file:
+      - /opt/infisical/.env
+    entrypoint: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
     volumes:
       - infisical_redis_data:/data
     networks:
@@ -140,7 +145,7 @@ services:
     container_name: infisical
     restart: unless-stopped
     env_file:
-      - ./infisical/.env
+      - /opt/infisical/.env
     ports:
       - "8222:8080"   # Tailscale-only — bound 0.0.0.0 but firewalled to the Tailscale CGNAT range
     networks:
@@ -157,15 +162,16 @@ services:
   # Repo bind-mounted READ-ONLY at /repo; playbook execution dir is the separate
   # writable semaphore_workspace volume (/tmp/workspace) — facts/temp/inventory
   # writes never touch the repo, and a Semaphore compromise can't rewrite playbooks.
-  # INFISICAL_RUNTIME_TOKEN must be the READ-ONLY runtime identity, never bootstrap.
+  # .env rendered by roles/semaphore to /opt/semaphore/.env (mode 0600), same
+  # rationale as Infisical's — outside the repo dir, shared via env_file. Carries
+  # the admin account, DB credentials, and the READ-ONLY Infisical runtime token
+  # (never the bootstrap/write identity).
   semaphore-db:
     image: postgres:16-alpine
     container_name: semaphore-db
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: semaphore
-      POSTGRES_PASSWORD: "${SEMAPHORE_DB_PASSWORD}"
-      POSTGRES_DB: semaphore
+    env_file:
+      - /opt/semaphore/.env
     volumes:
       - semaphore_db_data:/var/lib/postgresql/data
     networks:
@@ -177,20 +183,16 @@ services:
     image: semaphoreui/semaphore:latest
     container_name: semaphore
     restart: unless-stopped
+    env_file:
+      - /opt/semaphore/.env
     environment:
       SEMAPHORE_DB_DIALECT: postgres
       SEMAPHORE_DB_HOST: semaphore-db
       SEMAPHORE_DB_PORT: "5432"
-      SEMAPHORE_DB_USER: semaphore
-      SEMAPHORE_DB_PASS: "${SEMAPHORE_DB_PASSWORD}"
       SEMAPHORE_DB: semaphore
-      SEMAPHORE_ADMIN: "${SEMAPHORE_ADMIN_USER}"
-      SEMAPHORE_ADMIN_PASSWORD: "${SEMAPHORE_ADMIN_PASSWORD}"
       SEMAPHORE_ADMIN_NAME: "Homelab Admin"
-      SEMAPHORE_ADMIN_EMAIL: "${SEMAPHORE_ADMIN_EMAIL}"
       SEMAPHORE_RUNNER_TMP_PATH: /tmp/workspace
       INFISICAL_API_URL: "http://infisical:8080/api"
-      INFISICAL_TOKEN: "${INFISICAL_RUNTIME_TOKEN}"
     ports:
       - "3010:3000"   # Tailscale-only — bound 0.0.0.0 but firewalled to the Tailscale CGNAT range
     volumes:
