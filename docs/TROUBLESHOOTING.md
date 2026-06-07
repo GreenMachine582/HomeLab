@@ -394,22 +394,42 @@ deletes an existing key, so retrying after a fix is always safe.
 `vault.yml` currently serves two roles: a `[bootstrap]` source for secrets
 Ansible needs directly (read before Infisical can exist), and a `[seed →
 /production/<folder>/<KEY>]` source that the Phase 1 seed task pushes into
-Infisical once. **No role has been converted to read secrets from Infisical at
-runtime yet** — every `{{ vault_<service>_<field> }}` lookup in the existing
-playbooks/roles still resolves straight from the vault, exactly as before this
-migration. The `secret_backend` helper abstraction mentioned in
-`vault.yml.example` (a `vault | infisical` toggle so a role could read from
-either) is **deferred, not implemented** — converting the Camunda stack's
+Infisical once.
+
+**One playbook has been converted as a reference implementation:**
+`deploy_edge.yml` (Phase 2, runs locally on `homelab-edge` — the one node that
+never receives a copy of `vault.yml`, see [CLAUDE.md
+"Secrets"](../CLAUDE.md#secrets)) now resolves `cloudflare/TUNNEL_TOKEN` and
+`pihole/WEB_PASSWORD` from Infisical at runtime via `roles/infisical/tasks/lookup.yml`,
+authenticating with a node-local, read-only Universal Auth identity
+(`/home/homelab/.infisical_runtime_auth.yml`, rendered once during Phase 1 from
+`vault_infisical_runtime_client_*` — the same identity Semaphore uses, never
+routed through a copied `vault.yml`).
+
+**Everything else remains unconverted** — Stage 1 (`bootstrap_edge.yml`, run
+from WSL where `vault.yml` lives) and every Stage 3+ playbook
+(`deploy_observe.yml`, `deploy_svc.yml`, `healthcheck.yml`, `update_all.yml`,
+`backup.yml`, `rollback.yml`, `apply_firewall.yml`) still resolve every
+`{{ vault_<service>_<field> }}` lookup straight from the vault, exactly as
+before this migration. The full `secret_backend` helper abstraction mentioned
+in `vault.yml.example` (a `vault | infisical` toggle so *any* role could read
+from either, generalizing the pattern `roles/infisical/tasks/lookup.yml`
+establishes) is **deferred, not implemented** — converting the Camunda stack's
 lookups (and others) to go through Infisical at runtime is intentionally out of
 scope for this change. Until that lands:
 
-- `vault.yml` remains the single source of truth Ansible actually reads from
-- Infisical holds a parallel, additive copy — useful as a browsable secret
-  store, an emergency fallback if `vault.yml`/`.vault_pass` are lost, and the
-  foundation for the eventual conversion
+- `vault.yml` remains the source of truth for every unconverted role, and the
+  WSL-side seed/fallback source for Infisical
+- Infisical holds a parallel, additive copy of application secrets — useful as
+  a browsable secret store, an emergency fallback if `vault.yml`/`.vault_pass`
+  are lost, the live runtime source for `deploy_edge.yml`/Semaphore, and the
+  foundation for the eventual full conversion
 - Adding a new application secret means adding it to `vault.yml` **and** to
   `_infisical_seed_map` in `roles/infisical/tasks/seed.yml` (plus its folder in
-  Infisical) if you want it seeded too — the two are not auto-synced
+  Infisical) if you want it seeded too — the two are not auto-synced. If a
+  converted role (currently only `deploy_edge.yml`) needs to read it at
+  runtime, also add its `<folder>/<KEY>` path to that play's
+  `infisical_lookup_keys`
 
 ---
 
@@ -626,7 +646,7 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
 - **LAN SSH also works** — connect directly to `ip_observe`, `ip_svc_01` etc. from any device on the same network
 - **Internal DNS is down** — `.homelab.local` hostnames won't resolve; use IPs directly until the edge is restored
 - **External services are down** — Cloudflare Tunnel runs on the edge; public hostnames will be unreachable
-- **Infisical and Semaphore are down** — both run only on the edge; secret lookups that already went through Infisical at runtime fall back to `vault.yml`/`.vault_pass` until it's restored (see [Vault → Infisical conversion status](#vault--infisical-conversion-status))
+- **Infisical and Semaphore are down** — both run only on the edge. `deploy_edge.yml` cannot run during this window either: it executes locally on the edge *and* depends on Infisical for its runtime secret lookups (see [Vault → Infisical conversion status](#vault--infisical-conversion-status)). There is no automatic fallback to `vault.yml` for converted lookups — recovery is via re-bootstrapping (below), which brings Infisical back up before Phase 2 runs. (Stage 3+ playbooks are unaffected by Infisical being down — they still read `{{ vault_* }}` directly from the WSL-side `vault.yml`.)
 
 **Recovery steps:**
 

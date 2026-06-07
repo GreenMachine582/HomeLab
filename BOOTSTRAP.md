@@ -412,7 +412,7 @@ No password prompts — the SSH key passphrase is handled by `ssh-agent` and the
 
 **Pre-flight checks run before anything touches the node:**
 - Verifies all required local files exist: `.ssh/homelab-github`, `.ssh/homelab`, `.vault_pass`, `vault.yml`, `overrides.yml`
-- Asserts all required variables are defined (`ssh_port`, `vault_github_org`, `homelab_repo_path`, etc.)
+- Asserts all required variables are defined (`ssh_port`, `github_org`, `homelab_repo_path`, etc.)
 
 **Post-firewall validation:**
 After UFW is enabled, the playbook probes `ssh_port` from your PC (via `wait_for`) and fails immediately if SSH is unreachable — so a misconfigured firewall is caught before the play reports success.
@@ -438,7 +438,7 @@ The `bootstrap_edge.yml` playbook fully configures the edge node:
 | Install Ansible            | Edge becomes a control node                |
 | Install Git                |                                            |
 | Clone repo                 | `/opt/homelab`, owned by `homelab`         |
-| Copy secrets to node       | `vault.yml`, `overrides.yml`, `.vault_pass`, `homelab` SSH key pair — edge can run Phase 2+ without manual file transfer |
+| Copy files to node         | `overrides.yml`, `homelab` SSH key pair — **`vault.yml`/`.vault_pass` are deliberately NOT copied** (they live only on the WSL/PC control host; see [Secrets](./CLAUDE.md#secrets) and `semaphore_infisical_implementation.md` Task 2). Phase 2+ resolves application secrets from Infisical at runtime instead (`roles/infisical/tasks/lookup.yml`) |
 | Register SSH host key      | Edge's own key added to `/home/homelab/.ssh/known_hosts` — required for Phase 2 self-deploy |
 | Harden SSH                 | Key-only auth, no root login, port changed to `ssh_port` via async restart; subsequent tasks reconnect on new port automatically |
 | Bring up Infisical         | Renders `/opt/infisical/.env` (node-generated secrets), starts `infisical-db`/`infisical-redis`/`infisical`, waits for the API port (8222) to accept connections |
@@ -446,6 +446,7 @@ The `bootstrap_edge.yml` playbook fully configures the edge node:
 | Bring up Semaphore         | Renders `/opt/semaphore/.env`, starts `semaphore-db`/`semaphore`            |
 | Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp, 53/udp+tcp (Pi-hole DNS, LAN only), 8222/tcp + 3010/tcp (Infisical/Semaphore, **Tailscale CGNAT range only** — `100.64.0.0/10`); SSH reachability verified before play completes. Port 80 (Caddy) opened in Phase 2. |
 | Enable unattended upgrades |                                            |
+| Hand off to Phase 2        | Runs `ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge` locally on the edge as `homelab` — no separate SSH-and-run-Phase-2 step. Idempotent and tagged `[deploy]` (not `always`), so a targeted re-run like `--tags infisical,seed,semaphore` skips it. See [Phase 2](#phase-2-edge--self-deploy). |
 
 **Sudo rules created:**
 
@@ -556,6 +557,8 @@ Caddy route — Tailscale is the only path in (see
 
 **Goal:** The edge node deploys its own services using Ansible running locally.
 
+> **This now runs automatically** as the final step of `bootstrap_edge.yml` (see [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does) → "Hand off to Phase 2") — no manual SSH-and-run step is required for a fresh bootstrap. The instructions below are for **re-running Phase 2 on its own** later (e.g. after pulling new changes, or recovering from a partial failure).
+
 SSH into the edge node, or run from the PC targeting the edge via the production inventory.
 
 ```bash
@@ -576,6 +579,7 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 **What `deploy_edge.yml` does:**
 
 - Pulls latest repo from GitHub
+- Resolves application secrets (`cloudflare/TUNNEL_TOKEN`, `pihole/WEB_PASSWORD`) from Infisical at runtime via `roles/infisical/tasks/lookup.yml` — this node never has `vault.yml`; see [Secrets](./CLAUDE.md#secrets)
 - Deploys fail2ban (SSH and Pi-hole jails)
 - Re-asserts Tailscale in subnet-router mode (already brought up and joined during Phase 1 — see [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does); idempotent here, a no-op once joined)
 - Installs and configures Unbound as a host systemd service (port 5335, DNSSEC-validating recursive resolver)
