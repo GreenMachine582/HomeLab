@@ -337,15 +337,6 @@ echo 'export ANSIBLE_VAULT_PASSWORD_FILE=~/homelab/.vault_pass' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-> **Why an env var and not `vault_password_file` in `ansible.cfg`?** `ansible.cfg` is
-> committed and cloned to every node, but `.vault_pass`/`vault.yml` deliberately never
-> leave this WSL/PC control host (see CLAUDE.md "Secrets"). A path in `ansible.cfg`
-> would resolve to a missing file on every node — and Ansible aborts at startup if a
-> *configured* vault password file is missing, even when the playbook needs no vault
-> content at all (as `deploy_edge.yml` and beyond do not). The env var only exists
-> here, so nodes simply run with no vault password configured — which is exactly what
-> they need.
-
 Create the vault:
 
 ```bash
@@ -453,7 +444,6 @@ The `bootstrap_edge.yml` playbook fully configures the edge node:
 | Bring up Semaphore         | Renders `/opt/semaphore/.env`, starts `semaphore-db`/`semaphore`            |
 | Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp, 53/udp+tcp (Pi-hole DNS, LAN only), 8222/tcp + 3010/tcp (Infisical/Semaphore, **Tailscale CGNAT range only** — `100.64.0.0/10`); SSH reachability verified before play completes. Port 80 (Caddy) opened in Phase 2. |
 | Enable unattended upgrades |                                            |
-| Hand off to Phase 2        | Runs `ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge` locally on the edge as `homelab` — no separate SSH-and-run-Phase-2 step. Idempotent and tagged `[deploy]` (not `always`), so a targeted re-run like `--tags infisical,seed,semaphore` skips it. See [Phase 2](#phase-2-edge--self-deploy). |
 
 **Sudo rules created:**
 
@@ -545,7 +535,16 @@ Caddy route — Tailscale is the only path in (see
    (additive — existing keys are never touched), and re-renders Semaphore's
    `.env` with the runtime identity's credentials.
 
-7. **Revoke the bootstrap identity** — once the seed summary reports success
+7. **Now run Phase 2** — `deploy_edge.yml` resolves its application secrets
+   (`cloudflare/TUNNEL_TOKEN`, `pihole/WEB_PASSWORD`) from Infisical via the
+   runtime identity you just created, so this is the first point it can
+   succeed. See [Phase 2](#phase-2-edge--self-deploy) for both ways to run it
+   (SSH into the edge, or directly from your PC/WSL):
+   ```bash
+   ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
+   ```
+
+8. **Revoke the bootstrap identity** — once the seed summary reports success
    (Infisical UI → Access Control → Identities → `bootstrap` → disable or
    delete it). It has write access to every secret in the homelab; there is no
    reason for it to remain active between seed runs. Re-enable it only for a
@@ -564,16 +563,14 @@ Caddy route — Tailscale is the only path in (see
 
 **Goal:** The edge node deploys its own services using Ansible running locally.
 
-> **This now runs automatically** as the final step of `bootstrap_edge.yml` (see [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does) → "Hand off to Phase 2") — no manual SSH-and-run step is required for a fresh bootstrap. The instructions below are for **re-running Phase 2 on its own** later (e.g. after pulling new changes, or recovering from a partial failure).
-
-SSH into the edge node, or run from the PC targeting the edge via the production inventory.
+**Option A — SSH into the edge node:**
 
 ```bash
 ssh -p <ssh_port> admin@<ip_edge>
 ```
 
 ```bash
-sudo su - homelab 
+sudo su - homelab
 ```
 
 ```bash
@@ -581,7 +578,27 @@ cd /opt/homelab
 ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 ```
 
-> `ansible.cfg` sets the default inventory (`prod.yml`) and vault password file — no `-i` or `--vault-password-file` flags needed.
+**Option B — run directly from your PC/WSL:**
+
+`prod.yml` connects as `homelab` via `ansible_ssh_private_key_file: ~/.ssh/homelab`
+— on the edge that resolves to `/home/homelab/.ssh/homelab` (copied there
+during Phase 1), but on your PC/WSL the same literal path resolves to
+`~/.ssh/homelab`, not the repo-relative `~/homelab/.ssh/homelab` where the key
+was generated (step 1.4). Symlink it in once so both environments resolve the
+same path:
+
+```bash
+ln -s ~/homelab/.ssh/homelab     ~/.ssh/homelab
+ln -s ~/homelab/.ssh/homelab.pub ~/.ssh/homelab.pub
+```
+
+Then, from the repo root:
+
+```bash
+ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
+```
+
+> `ansible.cfg` sets the default inventory (`prod.yml`) — no `-i` flag needed. Re-run either option anytime (e.g. after pulling new changes, or recovering from a partial failure) — `deploy_edge.yml` is idempotent.
 
 **What `deploy_edge.yml` does:**
 

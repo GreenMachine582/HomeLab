@@ -11,8 +11,11 @@ all:
   vars:
     ansible_user: homelab
     # ~/.ssh/homelab resolves to /home/homelab/.ssh/homelab on the edge node (Phase 2+).
-    # If running from your PC, load the key via ssh-agent instead:
-    #   ssh-add ~/homelab/.ssh/homelab
+    # Running from your PC/WSL instead (e.g. Phase 2's deploy_edge.yml — see
+    # BOOTSTRAP.md "Phase 2: Edge -> Self-Deploy")? The same literal path means
+    # ~/.ssh/homelab there too — symlink the repo-relative key in once:
+    #   ln -s ~/homelab/.ssh/homelab ~/.ssh/homelab
+    #   ln -s ~/homelab/.ssh/homelab.pub ~/.ssh/homelab.pub
     ansible_ssh_private_key_file: ~/.ssh/homelab
     ansible_python_interpreter: /usr/bin/python3
     ansible_port: "{{ ssh_port }}"

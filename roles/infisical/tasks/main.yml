@@ -43,7 +43,7 @@
   when: _infisical_env_stat.stat.exists
   tags: [infisical]
 
-- name: "Infisical | Generate operational secrets (first run only — never overwritten again)"
+- name: "Infisical | Generate operational secrets"
   ansible.builtin.command:
     cmd: openssl rand -hex 32
   register: _infisical_generated
@@ -65,7 +65,7 @@
   when: not _infisical_env_stat.stat.exists
   tags: [infisical]
 
-- name: "Infisical | Render operational .env (mode 0600 — never overwrites secret values)"
+- name: "Infisical | Render operational .env"
   ansible.builtin.template:
     src: env.j2
     dest: "{{ infisical_data_dir }}/.env"

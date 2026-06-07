@@ -2,11 +2,7 @@
 # playbooks/bootstrap_edge.yml
 #
 # Phase 1 — Run from your PC against a fresh homelab-edge OS install.
-# Converts the node into the Ansible control node for the entire homelab, then
-# hands off to Phase 2 (deploy_edge.yml, run locally on the edge as 'homelab')
-# as its final step — one playbook invocation takes a fresh OS install all the
-# way to a fully deployed, self-hosting edge node. No separate SSH-and-run-Phase-2
-# step required.
+# Converts the node into the Ansible control node for the entire homelab.
 #
 # Usage:
 #   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
@@ -304,36 +300,19 @@
           - { port: 3010, proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Semaphore UI (Tailscale only)" }
       tags: [firewall]
 
-    # ── Phase 2 handoff ──────────────────────────────────────────────────────
-    # Runs deploy_edge.yml locally on the edge (as 'homelab', the Phase 2+
-    # automation user) as bootstrap's final step — the operator shouldn't have
-    # to SSH in separately just to kick off the self-deploy that was always the
-    # very next required action. Safe to chain: deploy_edge.yml is idempotent
-    # and asserts its own preconditions (compose file present, secrets resolvable)
-    # before touching anything. Skipped automatically on a targeted re-run (e.g.
-    # `--tags infisical,seed,semaphore` for "First-run Infisical Setup" follow-up)
-    # since it carries its own `deploy` tag, not `always`.
-    - name: "Deploy | Hand off to Phase 2 (deploy_edge.yml) locally on the edge"
-      ansible.builtin.command:
-        cmd: ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
-        chdir: "{{ homelab_repo_path }}"
-      become_user: homelab
-      changed_when: true
-      tags: [deploy]
-
   post_tasks:
     - name: "Meta | Bootstrap complete"
       ansible.builtin.debug:
         msg: >
-          homelab-edge bootstrap complete — Phase 2 (deploy_edge.yml) ran
-          automatically as the final bootstrap step, so the full edge stack
-          (Infisical, Semaphore, Pi-hole, Caddy, cloudflared, fail2ban, Unbound,
-          Alloy, Tailscale) is up and verified. Infisical
-          (http://{{ ansible_host }}:8222 over Tailscale) is seeded with
-          application secrets; Semaphore (http://{{ ansible_host }}:3010 over
-          Tailscale) is up. Disable or revoke the Infisical bootstrap machine
-          identity now (UI -> Access Control -> Identities) if you haven't
-          already — see vault.yml.example.
-          Re-run Phase 2 anytime with: ansible-playbook playbooks/deploy_edge.yml
-          --limit homelab-edge (from the edge as 'homelab', or from your PC
-          against prod.yml).
+          homelab-edge bootstrap complete — base system, users, Docker,
+          Tailscale, Infisical, and Semaphore are up, and the firewall is
+          configured. Infisical (http://{{ ansible_host }}:8222 over Tailscale)
+          and Semaphore (http://{{ ansible_host }}:3010 over Tailscale) are
+          reachable. If this was a fresh instance, complete "First-run
+          Infisical Setup" in BOOTSTRAP.md before continuing — Phase 2 needs
+          the runtime identity it creates, then re-run with
+          --tags infisical,seed,semaphore to seed Infisical and render
+          Semaphore's .env.
+            ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
+          from the edge as 'homelab', or directly from your PC/WSL — see
+          BOOTSTRAP.md "Phase 2: Edge -> Self-Deploy".

@@ -40,7 +40,7 @@
   when: _semaphore_env_stat.stat.exists
   tags: [semaphore]
 
-- name: "Semaphore | Generate DB password (first run only — never overwritten again)"
+- name: "Semaphore | Generate DB password"
   ansible.builtin.command:
     cmd: openssl rand -hex 32
   register: _semaphore_generated
@@ -56,7 +56,7 @@
   when: not _semaphore_env_stat.stat.exists
   tags: [semaphore]
 
-- name: "Semaphore | Render operational .env (mode 0600 — never overwrites the DB password)"
+- name: "Semaphore | Render operational .env"
   ansible.builtin.template:
     src: env.j2
     dest: "{{ semaphore_data_dir }}/.env"
