@@ -101,8 +101,116 @@ services:
     networks:
       - edge_net
 
+  # ── Infisical (self-hosted secrets manager) ──────────────────────────────────
+  # Tailscale-only — no public ingress, no Caddy vhost (see UFW rules in
+  # group_vars/edge.yml and docs/NETWORK.md "Tailscale-only routing"). High
+  # blast-radius control plane: holds every application secret.
+  # Dedicated Postgres + Redis (NOT the Camunda Postgres — keeps edge self-contained).
+  # .env rendered by roles/infisical to ./infisical/.env (mode 0600, node-generated
+  # secrets + vault_infisical_encryption_key — see roles/infisical/README in CLAUDE.md).
+  infisical-db:
+    image: postgres:16-alpine
+    container_name: infisical-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: infisical
+      POSTGRES_PASSWORD: "${INFISICAL_DB_PASSWORD}"
+      POSTGRES_DB: infisical
+    volumes:
+      - infisical_db_data:/var/lib/postgresql/data
+    networks:
+      - infisical_net
+    security_opt:
+      - no-new-privileges:true
+
+  infisical-redis:
+    image: redis:7-alpine
+    container_name: infisical-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${INFISICAL_REDIS_PASSWORD}"]
+    volumes:
+      - infisical_redis_data:/data
+    networks:
+      - infisical_net
+    security_opt:
+      - no-new-privileges:true
+
+  infisical:
+    image: infisical/infisical:latest
+    container_name: infisical
+    restart: unless-stopped
+    env_file:
+      - ./infisical/.env
+    ports:
+      - "8222:8080"   # Tailscale-only — bound 0.0.0.0 but firewalled to the Tailscale CGNAT range
+    networks:
+      - infisical_net
+      - edge_net      # so semaphore can reach it as http://infisical:8080
+    depends_on:
+      - infisical-db
+      - infisical-redis
+    security_opt:
+      - no-new-privileges:true
+
+  # ── Semaphore (web UI over the existing Ansible playbooks) ───────────────────
+  # Tailscale-only — same routing rationale as Infisical (runs privileged playbooks).
+  # Repo bind-mounted READ-ONLY at /repo; playbook execution dir is the separate
+  # writable semaphore_workspace volume (/tmp/workspace) — facts/temp/inventory
+  # writes never touch the repo, and a Semaphore compromise can't rewrite playbooks.
+  # INFISICAL_RUNTIME_TOKEN must be the READ-ONLY runtime identity, never bootstrap.
+  semaphore-db:
+    image: postgres:16-alpine
+    container_name: semaphore-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: semaphore
+      POSTGRES_PASSWORD: "${SEMAPHORE_DB_PASSWORD}"
+      POSTGRES_DB: semaphore
+    volumes:
+      - semaphore_db_data:/var/lib/postgresql/data
+    networks:
+      - semaphore_net
+    security_opt:
+      - no-new-privileges:true
+
+  semaphore:
+    image: semaphoreui/semaphore:latest
+    container_name: semaphore
+    restart: unless-stopped
+    environment:
+      SEMAPHORE_DB_DIALECT: postgres
+      SEMAPHORE_DB_HOST: semaphore-db
+      SEMAPHORE_DB_PORT: "5432"
+      SEMAPHORE_DB_USER: semaphore
+      SEMAPHORE_DB_PASS: "${SEMAPHORE_DB_PASSWORD}"
+      SEMAPHORE_DB: semaphore
+      SEMAPHORE_ADMIN: "${SEMAPHORE_ADMIN_USER}"
+      SEMAPHORE_ADMIN_PASSWORD: "${SEMAPHORE_ADMIN_PASSWORD}"
+      SEMAPHORE_ADMIN_NAME: "Homelab Admin"
+      SEMAPHORE_ADMIN_EMAIL: "${SEMAPHORE_ADMIN_EMAIL}"
+      SEMAPHORE_RUNNER_TMP_PATH: /tmp/workspace
+      INFISICAL_API_URL: "http://infisical:8080/api"
+      INFISICAL_TOKEN: "${INFISICAL_RUNTIME_TOKEN}"
+    ports:
+      - "3010:3000"   # Tailscale-only — bound 0.0.0.0 but firewalled to the Tailscale CGNAT range
+    volumes:
+      - ".:/repo:ro"
+      - semaphore_workspace:/tmp/workspace
+    networks:
+      - semaphore_net
+      - edge_net      # so semaphore can reach infisical and the deploy targets
+    depends_on:
+      - semaphore-db
+      - infisical
+    security_opt:
+      - no-new-privileges:true
+
 networks:
   edge_net:
+    driver: bridge
+  infisical_net:
+    driver: bridge
+  semaphore_net:
     driver: bridge
 
 volumes:
@@ -110,3 +218,7 @@ volumes:
   caddy_config: {}
   pihole_data: {}
   pihole_dnsmasq: {}
+  infisical_db_data: {}
+  infisical_redis_data: {}
+  semaphore_db_data: {}
+  semaphore_workspace: {}
