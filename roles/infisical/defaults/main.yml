@@ -14,3 +14,8 @@ infisical_site_url: "http://infisical:8080"
 infisical_db_user: infisical
 infisical_db_name: infisical
 infisical_redis_port: 6379
+
+# ── Seed (see tasks/seed.yml and the "Secret naming convention" in vault.yml.example) ──
+# Project/environment slugs that the /production/<folder>/<KEY> paths are seeded into.
+infisical_seed_project_slug: homelab
+infisical_seed_environment: production

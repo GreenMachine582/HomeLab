@@ -7,6 +7,11 @@
 # ── Network ───────────────────────────────────────────────────────────────────
 lan_subnet: "EDIT_BEFORE_USE/24"
 
+# Tailscale's stable CGNAT allocation (RFC 6598) — every tailnet device gets a
+# 100.x.x.x address from this range. Used to scope UFW rules to "Tailscale only"
+# without depending on each node's dynamic tailscale0 interface address.
+tailscale_cgnat_range: "100.64.0.0/10"
+
 ip_edge:    "EDIT_BEFORE_USE"
 ip_observe: "EDIT_BEFORE_USE"
 ip_svc_01:  "EDIT_BEFORE_USE"
