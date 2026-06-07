@@ -17,3 +17,9 @@ docker_data_dir: /var/lib/docker
 # This node runs all playbooks for the homelab.
 is_control_node: true
 ansible_log_path: "{{ homelab_repo_path }}/logs/ansible.log"
+
+# ── Backups (playbooks/backup.yml — Infisical + Semaphore Postgres DBs) ──
+# Outside both /opt/infisical and /opt/semaphore — a backup of one must not
+# live inside the data directory of the other (or itself).
+postgres_backup_dir: /opt/backups/postgres
+backup_retain_days: 14
