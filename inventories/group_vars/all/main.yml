@@ -4,6 +4,12 @@
 # Secrets live alongside this file in vault.yml (Ansible Vault encrypted).
 # Node-specific overrides live in host_vars/<node>.yml
 
+# ── GitHub ────────────────────────────────────────────────────────────────────
+# Org/username the homelab repo lives under — git@github.com:<github_org>/homelab.git.
+# Not a secret (just identifies the repo to clone); overridden with the real
+# value in overrides.yml — see CLAUDE.md "Secrets" for why this isn't in vault.yml.
+github_org: "EDIT_BEFORE_USE"
+
 # ── Network ───────────────────────────────────────────────────────────────────
 lan_subnet: "EDIT_BEFORE_USE/24"
 
@@ -98,5 +104,5 @@ notify_discord_webhook: "{{ vault_discord_alerts_webhook }}"
 
 # ── Ansible repo path (on edge node) ─────────────────────────────────────────
 homelab_repo_path: /opt/homelab
-homelab_repo_url: "git@github.com:{{ vault_github_org }}/homelab.git"
+homelab_repo_url: "git@github.com:{{ github_org }}/homelab.git"
 homelab_repo_branch: master

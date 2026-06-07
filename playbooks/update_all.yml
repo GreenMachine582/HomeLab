@@ -30,7 +30,7 @@
     # ── Repo ──────────────────────────────────────────────────────────────────
     - name: "Repo | Pull latest"
       ansible.builtin.git:
-        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        repo: "git@github.com:{{ github_org }}/homelab.git"
         dest: "{{ homelab_repo_path }}"
         version: "{{ homelab_repo_branch }}"
         accept_hostkey: true

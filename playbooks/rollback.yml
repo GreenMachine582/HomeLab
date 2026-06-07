@@ -62,7 +62,7 @@
 
     - name: "Rollback | Git | Check out previous commit"
       ansible.builtin.git:
-        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        repo: "git@github.com:{{ github_org }}/homelab.git"
         dest: "{{ homelab_repo_path }}"
         version: "{{ rollback_tag }}"
         accept_hostkey: true

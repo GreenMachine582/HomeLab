@@ -26,11 +26,17 @@
 # Infisical's OWN operational secrets (its DB/Redis/auth secrets, ENCRYPTION_KEY) are
 # documented separately near the bottom — most are node-generated, not vault-sourced.
 #
-# Where does the FILE itself live? Still copied to the edge node by
-# bootstrap_edge.yml ("Secrets | Copy Ansible Vault" — Phase 2+ playbooks there
-# still need {{ vault_* }} lookups directly), but its reach stops at the edge:
-# nothing in it is pushed further out to other nodes by hand. Once a key is
-# seeded, Infisical is the canonical distribution point for application secrets.
+# Where does the FILE itself live? ONLY on the WSL/PC control host — it is
+# deliberately NEVER copied to any node, not even homelab-edge (see CLAUDE.md
+# "Secrets" and semaphore_infisical_implementation.md Task 2). Stage 1
+# (bootstrap_edge.yml, run from WSL) and every Stage 3+ playbook still resolve
+# {{ vault_* }} straight from this file via group_vars loading on the control
+# host. deploy_edge.yml (Phase 2 — runs locally on homelab-edge, which never
+# has this file) is the first converted playbook: it resolves its application
+# secrets from Infisical at runtime instead (roles/infisical/tasks/lookup.yml),
+# the reference implementation for the secret_backend abstraction below. Once a
+# key is seeded, Infisical is the canonical distribution point for converted
+# application secrets; everything else still flows from this file.
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Secret naming convention (Infisical project / environment / folder layout)
@@ -72,10 +78,14 @@
 #   vault_django_secret_key           → /production/greentechhub/DJANGO_SECRET_KEY
 #   vault_deploy_webhook_secret       → /production/deploy/WEBHOOK_SECRET
 #
-# Roles read these via the secret_backend helper abstraction (deferred — see
-# docs/TROUBLESHOOTING.md "Vault → Infisical conversion status"). Until that lands,
-# all of the above are still consumed as plain {{ vault_* }} lookups by the running
-# playbooks; this file is the seed/fallback source either way.
+# Two of the above — vault_cloudflare_tunnel_token and vault_pihole_web_password —
+# are now ALSO read at runtime from Infisical (as cloudflare/TUNNEL_TOKEN and
+# pihole/WEB_PASSWORD) by deploy_edge.yml, via roles/infisical/tasks/lookup.yml —
+# the reference implementation for the rest of the secret_backend helper
+# abstraction (deferred — see docs/TROUBLESHOOTING.md "Vault → Infisical
+# conversion status"). Every other entry above is still consumed as a plain
+# {{ vault_* }} lookup by Stage 1/3+ playbooks; this file remains the seed/
+# fallback source either way.
 
 # ══════════════════════════════════════════════════════════════════════════════
 # [bootstrap] — read directly by Ansible; never seeded into Infisical
@@ -94,7 +104,10 @@ vault_homelab_ssh_pubkey: "ssh-ed25519 AAAA... homelab"
 vault_deploy_ssh_pubkey: "ssh-ed25519 AAAA... deploy"
 
 # ── GitHub ────────────────────────────────────────────────────────────────────
-vault_github_org: "your-github-username-or-org"
+# NOT here — github_org lives in overrides.yml (and main.yml's EDIT_BEFORE_USE
+# placeholder). It identifies the repo to clone, not a secret, and is needed
+# before Infisical/vault.yml are reachable — see CLAUDE.md "Secrets" and
+# semaphore_infisical_implementation.md Task 2 ("don't copy vault.yml to the edge").
 
 # ── Tailscale ─────────────────────────────────────────────────────────────────
 # See BOOTSTRAP.md § 1.8 for setup steps (ACL tag + OAuth client creation).
