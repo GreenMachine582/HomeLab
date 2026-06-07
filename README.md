@@ -97,11 +97,14 @@ homelab/
     alloy/                    # Grafana Alloy (logs → Loki)
     users/                    # System user creation (admin, homelab, deploy)
     edge_services/            # cloudflared, Caddy (LAN reverse proxy), Pi-hole, Unbound
+    infisical/                # Infisical .env rendering + seed (secrets manager, Tailscale-only)
+    semaphore/                # Semaphore .env rendering (Ansible web UI, Tailscale-only)
     observe_services/         # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma
     camunda/                  # Camunda 8 + n8n + discord-gateway env rendering
 
   # Docker Compose stacks (at repo root, deployed per-node)
-  docker-compose.edge.yml     # cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter, portainer-agent
+  docker-compose.edge.yml     # cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter,
+                              # portainer-agent, Infisical (+ Postgres, Redis), Semaphore (+ Postgres)
   docker-compose.observe.yml  # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer
   docker-compose.svc01.yml    # Camunda 8, Elasticsearch, n8n, discord-gateway, Portainer Agent
 
@@ -115,6 +118,8 @@ homelab/
   #   roles/observe_services/templates/loki/loki.yml.j2
   #   roles/observe_services/templates/ntfy/server.yml.j2
   #   roles/observe_services/templates/grafana/datasources.yml.j2
+  #   roles/infisical/templates/env.j2
+  #   roles/semaphore/templates/env.j2
   #   roles/fail2ban/templates/jail.conf.j2
   #   roles/camunda/templates/{camunda,n8n,discord_gateway}/{env,env.secrets}.j2
 
@@ -194,6 +199,7 @@ Secrets are stored in `inventories/group_vars/all/vault.yml`. See `inventories/g
 | Data                    | Method                | Destination               | Frequency |
 |-------------------------|-----------------------|---------------------------|-----------|
 | PostgreSQL databases    | `pg_dump`             | `/mnt/nvme/backups`       | Daily     |
+| Infisical / Semaphore DBs (edge) | `pg_dump` \| `gzip` | `/opt/backups/postgres` (homelab-edge) | Daily |
 | Elasticsearch snapshots | Snapshot API          | `/mnt/nvme/elasticsearch` | Daily     |
 | All configuration       | Git (Ansible repo)    | GitHub                    | On commit |
 | Grafana dashboards      | JSON in repo          | GitHub                    | On commit |
@@ -230,3 +236,10 @@ Full stack reference (Prometheus, Loki, Grafana, Alertmanager, Uptime Kuma) is i
 | Alertmanager | `http://alertmanager.homelab.local:9093` |
 | Uptime Kuma  | `http://uptime.homelab.local:3001`       |
 | Portainer    | `http://portainer.homelab.local:9000`    |
+
+**Tailscale-only (no LAN DNS entry, no Caddy route — see [docs/NETWORK.md](./docs/NETWORK.md)):**
+
+| Service   | URL                            | Notes                                             |
+|-----------|--------------------------------|---------------------------------------------------|
+| Infisical | `http://<edge-tailscale-ip>:8222` | Secrets manager — canonical app-secret store     |
+| Semaphore | `http://<edge-tailscale-ip>:3010` | Web UI over the playbooks in this repo            |

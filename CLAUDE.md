@@ -31,7 +31,7 @@ Node IPs are defined in `inventories/group_vars/all/overrides.yml` (gitignored �
 
 Services are split across four compose files by concern:
 
-- `docker-compose.edge.yml` — cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter, portainer-agent (runs on `homelab-edge`)
+- `docker-compose.edge.yml` — cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter, portainer-agent, Infisical (+ Postgres, Redis), Semaphore (+ Postgres) (runs on `homelab-edge`)
 - `docker-compose.svc01.yml` — Camunda, Elasticsearch, n8n, discord-gateway, Portainer Agent (runs on `homelab-svc-01`)
 - `docker-compose.observe.yml` — Prometheus, Loki, Grafana, Alertmanager, ntfy, Portainer Server (runs on `homelab-observe`)
 
@@ -61,6 +61,8 @@ Services are split across four compose files by concern:
 | `cadvisor` | Container metrics exporter (port 8080) | svc nodes |
 | `unbound` | Unbound recursive resolver as host systemd service (port 5335); Pi-hole upstream | edge |
 | `edge_services` | cloudflared, Caddy, Pi-hole config templates | edge |
+| `infisical` | Self-hosted secrets manager — node-generated `.env`, container bring-up, additive seed from `vault.yml`, runtime lookup helper (`tasks/lookup.yml`) used by `deploy_edge.yml` (Tailscale-only) | edge |
+| `semaphore` | Web UI over this repo's playbooks — read-only repo bind mount + writable workspace volume (Tailscale-only) | edge |
 | `observe_services` | Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma | observe |
 | `camunda` | Camunda 8, Elasticsearch, n8n, discord-gateway (env templates) | svc-01 |
 | `greentechhub` | GreenTechHub Django app, Redis, Celery | svc-02 |
@@ -74,7 +76,13 @@ Services are split across four compose files by concern:
 
 ### Secrets
 
-All secrets live in `inventories/group_vars/all/vault.yml` (Ansible Vault). The vault password file is `.vault_pass` (gitignored). Reference secrets in playbooks/vars as `{{ vault_* }}`.
+`inventories/group_vars/all/vault.yml` (Ansible Vault) lives **only on the WSL/PC control host** — it is never copied to any node, not even `homelab-edge` (see "Important Constraints"). The vault password file is `.vault_pass` (gitignored, also WSL-only). It still backs Phase 1 bootstrap (`bootstrap_edge.yml`, run from WSL) and every Stage 3+ playbook (`deploy_observe.yml`, `deploy_svc.yml`, `healthcheck.yml`, `update_all.yml`, `backup.yml`, `rollback.yml`, `apply_firewall.yml`), which still read `{{ vault_* }}` directly — converting these is **deferred**, see `docs/TROUBLESHOOTING.md` "Vault → Infisical conversion status".
+
+`deploy_edge.yml` (Phase 2 — runs on `homelab-edge` itself, which never receives `vault.yml`) is the first **converted** playbook: it resolves its application secrets (`cloudflare/TUNNEL_TOKEN`, `pihole/WEB_PASSWORD`) at runtime from Infisical via `roles/infisical/tasks/lookup.yml`, authenticating with a node-local, read-only Universal Auth identity (credentials rendered once to `/home/homelab/.infisical_runtime_auth.yml` from `vault_infisical_runtime_client_*` during Phase 1 — never routed through a copied `vault.yml`). This is the reference implementation for the rest of the `secret_backend: infisical | vault` helper abstraction, which remains **deferred** for Stage 3+ roles.
+
+Infisical (self-hosted, edge-only, Tailscale-only — see [docs/NETWORK.md](./docs/NETWORK.md#tailscale-only-service-access-infisical--semaphore)) is the long-term canonical store for *application* secrets. The Phase 1 bootstrap seeds it additively (create-if-absent, never overwrite/rotate/delete) from the `[seed → /production/<folder>/<KEY>]` entries in `vault.yml` — see the "Secret naming convention" block at the top of `inventories/group_vars/all/vault.yml.example` and `roles/infisical/tasks/seed.yml`. `vault.yml` remains both the WSL-side source Ansible reads from for unconverted roles *and* the seed/fallback source for Infisical.
+
+Semaphore (web UI over this repo's playbooks, edge-only, Tailscale-only) reads secrets for its own Ansible runs from Infisical via a **read-only** Universal Auth machine identity (`vault_infisical_runtime_client_*`) — kept separate from the write-capable `bootstrap` identity used only once by the seed task. See `BOOTSTRAP.md` "First-run Infisical Setup" for how both identities get created (an inherently manual, one-time runbook — they can't exist before Infisical does).
 
 ## Key Commands
 
@@ -109,7 +117,8 @@ ansible-playbook playbooks/update_all.yml --tags docker,restart
 # Health check all services
 ansible-playbook playbooks/healthcheck.yml
 
-# Vault operations
+# Vault operations — run from WSL/PC, NOT the edge: vault.yml and .vault_pass
+# live there ONLY (never copied to any node — see "Secrets" below)
 ansible-vault edit inventories/group_vars/all/vault.yml
 ansible-vault view inventories/group_vars/all/vault.yml
 ```
@@ -141,6 +150,8 @@ Key templates and their data sources:
 - `roles/observe_services/templates/loki/loki.yml.j2` ← `inventories/group_vars/observe.yml` (`loki_retention`)
 - `roles/camunda/templates/elasticsearch/elasticsearch.yml.j2` ← `inventories/host_vars/homelab-svc-01.yml`
 - `roles/camunda/templates/postgres/postgresql.conf.j2` ← `inventories/host_vars/homelab-svc-01.yml`
+- `roles/infisical/templates/env.j2` ← node-generated secrets (idempotent: read back from `/opt/infisical/.env` if present, else `openssl rand -hex 32`) + `vault_infisical_encryption_key`
+- `roles/semaphore/templates/env.j2` ← node-generated Postgres password + `vault_semaphore_admin_*` and `vault_infisical_runtime_client_*` (read-only Infisical identity for Ansible secret lookups)
 
 > Legacy `envsubst` templates (`alertmanager/alertmanager.yml.tmpl`, `fail2ban/fail2ban.conf.tmpl`) are from the old approach — do not edit them; they will be removed once all Ansible roles are complete.
 
@@ -171,6 +182,8 @@ The `deploy` user has sudo restricted to `/usr/bin/ansible-playbook` only. No sh
 
 - **Never use `docker compose down`** in the deploy script — it would kill `cloudflared` and drop the SSH tunnel mid-session. Use `docker compose up -d --remove-orphans` instead.
 - **`old homelab/`** is an archived copy of the previous repo structure — do not edit files there.
-- `inventories/group_vars/all/vault.yml` and `overrides.yml` are gitignored — never committed. Both must exist on the edge node at `/opt/homelab/inventories/group_vars/all/` for Phase 2+ to work. `bootstrap_edge.yml` copies them automatically from the PC during Phase 1.
+- `inventories/group_vars/all/vault.yml` and `overrides.yml` are gitignored — never committed. **Only `overrides.yml` is copied** to the edge node (by `bootstrap_edge.yml`, into `/opt/homelab/inventories/group_vars/all/`); `vault.yml` and `.vault_pass` deliberately never leave the WSL/PC control host — see "Secrets" above and `semaphore_infisical_implementation.md` Task 2. Phase 2 (`deploy_edge.yml`) instead resolves its application secrets from Infisical at runtime via `roles/infisical/tasks/lookup.yml`.
 - SSH port is non-standard, controlled by `ssh_port` in `inventories/group_vars/all/overrides.yml`. Applied to `sshd_config`, UFW rules, and fail2ban jails — change it in one place.
 - **Firewall rules are not applied by `deploy_edge.yml`** — they are set during Phase 1 and persist. To update UFW rules (e.g. after provisioning a new node or adding a service) run `playbooks/apply_firewall.yml`.
+- **Infisical and Semaphore are deliberately Tailscale-only** — no Pi-hole hostname, no Caddy vhost; UFW scopes ports 8222/3010 to `tailscale_cgnat_range` (`100.64.0.0/10`, `inventories/group_vars/all/main.yml`). Do not add LAN-reachable routes for either — they hold/wield every secret and this repo's playbooks respectively.
+- **The Infisical seed step is gated, not unconditional** — it requires the bootstrap machine identity to already exist, which is impossible on a fresh instance (Infisical has to be initialized — org/admin/project/identities — before it can mint its own credentials). First bootstrap run skips it with instructions; complete `BOOTSTRAP.md` "First-run Infisical Setup" then re-run with `--tags infisical,seed,semaphore`. Don't "fix" this by making the seed unconditional.

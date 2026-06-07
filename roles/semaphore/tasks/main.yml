@@ -1,0 +1,67 @@
+---
+# roles/semaphore/tasks/main.yml
+# Renders /opt/semaphore/.env — Semaphore's operational secrets and the
+# read-only Infisical runtime identity it uses for Ansible secret lookups.
+#
+# Only the Postgres password is node-generated (mirrors roles/infisical's
+# "generate once, read back forever" idempotency). The admin account and the
+# Infisical runtime token are bootstrap-tier values from the WSL vault.yml —
+# see the template for why they can't be runtime Infisical lookups themselves.
+# The actual `docker compose up` happens in the playbook post_tasks, same as
+# the rest of the edge stack.
+
+- name: "Semaphore | Ensure data directory exists (outside repo path)"
+  ansible.builtin.file:
+    path: "{{ semaphore_data_dir }}"
+    state: directory
+    owner: "{{ semaphore_service_user }}"
+    group: "{{ semaphore_service_user }}"
+    mode: "0750"
+  tags: [semaphore]
+
+- name: "Semaphore | Check whether .env already exists"
+  ansible.builtin.stat:
+    path: "{{ semaphore_data_dir }}/.env"
+  register: _semaphore_env_stat
+  tags: [semaphore]
+
+- name: "Semaphore | Read back existing DB password (never regenerate)"
+  ansible.builtin.slurp:
+    src: "{{ semaphore_data_dir }}/.env"
+  register: _semaphore_env_existing
+  no_log: true
+  when: _semaphore_env_stat.stat.exists
+  tags: [semaphore]
+
+- name: "Semaphore | Parse existing DB password"
+  ansible.builtin.set_fact:
+    semaphore_db_password: "{{ (_semaphore_env_existing.content | b64decode) | regex_search('^POSTGRES_PASSWORD=(.*)$', '\\1', multiline=True) | first }}"
+  no_log: true
+  when: _semaphore_env_stat.stat.exists
+  tags: [semaphore]
+
+- name: "Semaphore | Generate DB password (first run only — never overwritten again)"
+  ansible.builtin.command:
+    cmd: openssl rand -hex 32
+  register: _semaphore_generated
+  changed_when: false
+  no_log: true
+  when: not _semaphore_env_stat.stat.exists
+  tags: [semaphore]
+
+- name: "Semaphore | Store newly generated DB password"
+  ansible.builtin.set_fact:
+    semaphore_db_password: "{{ _semaphore_generated.stdout }}"
+  no_log: true
+  when: not _semaphore_env_stat.stat.exists
+  tags: [semaphore]
+
+- name: "Semaphore | Render operational .env (mode 0600 — never overwrites the DB password)"
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ semaphore_data_dir }}/.env"
+    owner: "{{ semaphore_service_user }}"
+    group: "{{ semaphore_service_user }}"
+    mode: "0600"
+  no_log: true
+  tags: [semaphore]

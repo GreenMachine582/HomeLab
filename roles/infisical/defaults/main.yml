@@ -1,0 +1,34 @@
+---
+# roles/infisical/defaults/main.yml
+# Lowest-precedence defaults — override via group_vars or host_vars.
+
+# Deliberately OUTSIDE homelab_repo_path — repo git operations (pull, recurse
+# ownership fixes, rollback checkouts) must never touch node-generated secrets.
+infisical_data_dir: /opt/infisical
+infisical_service_user: homelab
+
+# Internal-only — Tailscale-only access is enforced by the firewall (group_vars/edge.yml),
+# not by this URL. No public hostname; never added to caddy_routes or cloudflared_ingress.
+infisical_site_url: "http://infisical:8080"
+
+infisical_db_user: infisical
+infisical_db_name: infisical
+infisical_redis_port: 6379
+
+# ── Seed (see tasks/seed.yml and the "Secret naming convention" in vault.yml.example) ──
+# Project/environment slugs that the /production/<folder>/<KEY> paths are seeded into.
+infisical_seed_project_slug: homelab
+infisical_seed_environment: production
+
+# ── Runtime lookups (see tasks/lookup.yml) ──────────────────────────────────
+# Where the READ-ONLY runtime identity's Universal Auth credentials are written,
+# once, during Phase 1 — so Phase 2+ playbooks running locally on the edge can
+# resolve application secrets from Infisical without vault.yml ever being copied
+# there. In the homelab user's home dir (not /opt/infisical — that's Infisical's
+# OWN operational secrets; this is the credential Ansible itself authenticates
+# with, mirroring how it's also injected into Semaphore's .env).
+infisical_runtime_auth_path: /home/homelab/.infisical_runtime_auth.yml
+
+# Reachable over loopback on the edge itself — Phase 2+ playbooks run locally
+# there (see CLAUDE.md "Phase 2"). Override per-call if looking up from elsewhere.
+infisical_runtime_api_url: "http://127.0.0.1:8222/api"

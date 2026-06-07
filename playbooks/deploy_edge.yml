@@ -23,6 +23,13 @@
 # Requires: roles/fail2ban, roles/tailscale, roles/alloy, roles/unbound, roles/edge_services
 # Note: base_hardening runs in bootstrap_edge.yml (Phase 1) only.
 #       Run playbooks/update_all.yml for OS package upgrades.
+#
+# Secrets: this node carries no vault.yml (see CLAUDE.md "Secrets" —
+# semaphore_infisical_implementation.md Task 2). The application secrets this
+# play needs (cloudflare/TUNNEL_TOKEN, pihole/WEB_PASSWORD) are resolved at
+# runtime from Infisical via roles/infisical/tasks/lookup.yml, using the
+# READ-ONLY runtime machine identity whose credentials were written, once,
+# during Phase 1 bootstrap to /home/homelab/.infisical_runtime_auth.yml.
 
 - name: "Deploy | Edge | Firewall, fail2ban, and services"
   hosts: edge
@@ -36,7 +43,7 @@
   pre_tasks:
     - name: "Repo | Update to latest"
       ansible.builtin.git:
-        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        repo: "git@github.com:{{ github_org }}/homelab.git"
         dest: "{{ homelab_repo_path }}"
         version: "{{ homelab_repo_branch }}"
         accept_hostkey: true
@@ -45,13 +52,36 @@
       become_user: homelab
       tags: [repo]
 
-    - name: "Preflight | Assert required secrets are defined"
+    # ── Secrets ───────────────────────────────────────────────────────────────
+    # No vault.yml lives on this node by design (CLAUDE.md "Secrets" —
+    # semaphore_infisical_implementation.md Task 2: "don't copy vault.yml to the
+    # edge"). The handful of application secrets this playbook needs were already
+    # seeded into Infisical during Phase 1 bootstrap (roles/infisical/tasks/seed.yml)
+    # — resolve them at runtime through the READ-ONLY runtime identity instead.
+    # This is the reference conversion for Task #5; camunda/observe/svc roles
+    # still read straight from vault.yml (deferred — see TROUBLESHOOTING.md
+    # "Vault → Infisical conversion status").
+    - name: "Secrets | Fetch application secrets from Infisical (read-only runtime identity)"
+      ansible.builtin.include_role:
+        name: infisical
+        tasks_from: lookup.yml
+      vars:
+        infisical_lookup_keys:
+          - cloudflare/TUNNEL_TOKEN
+          - pihole/WEB_PASSWORD
+      tags: [always]
+
+    - name: "Preflight | Assert required secrets resolved"
       ansible.builtin.assert:
         that:
-          - vault_cloudflare_tunnel_token is defined
-          - vault_pihole_web_password is defined
-          - vault_github_org is defined
-        fail_msg: "Required secret undefined — check vault.yml"
+          - infisical_secrets['cloudflare/TUNNEL_TOKEN'] is defined
+          - infisical_secrets['pihole/WEB_PASSWORD'] is defined
+          - github_org is defined
+        fail_msg: >-
+          Required secret unresolved — check that the Phase 1 seed ran
+          (bootstrap_edge.yml --tags infisical,seed), the runtime identity has
+          read access to the homelab/production project, and Infisical itself
+          is reachable at {{ infisical_runtime_api_url }}.
       tags: [always]
 
     - name: "Preflight | Verify compose file exists on node"
@@ -84,8 +114,8 @@
     - role: edge_services
       tags: [docker, pihole]
       vars:
-        pihole_web_password: "{{ vault_pihole_web_password }}"
-        cloudflared_tunnel_token: "{{ vault_cloudflare_tunnel_token }}"
+        pihole_web_password: "{{ infisical_secrets['pihole/WEB_PASSWORD'] }}"
+        cloudflared_tunnel_token: "{{ infisical_secrets['cloudflare/TUNNEL_TOKEN'] }}"
 
   post_tasks:
     - name: "Docker | Pull latest images"
@@ -93,8 +123,8 @@
         cmd: docker compose -f {{ compose_file }} pull
         chdir: "{{ compose_dir }}"
       environment:
-        TUNNEL_TOKEN: "{{ vault_cloudflare_tunnel_token }}"
-        PIHOLE_WEB_PASSWORD: "{{ vault_pihole_web_password }}"
+        TUNNEL_TOKEN: "{{ infisical_secrets['cloudflare/TUNNEL_TOKEN'] }}"
+        PIHOLE_WEB_PASSWORD: "{{ infisical_secrets['pihole/WEB_PASSWORD'] }}"
         TZ: "{{ timezone }}"
       become: false
       no_log: true
@@ -106,8 +136,8 @@
         cmd: docker compose -f {{ compose_file }} up -d --remove-orphans
         chdir: "{{ compose_dir }}"
       environment:
-        TUNNEL_TOKEN: "{{ vault_cloudflare_tunnel_token }}"
-        PIHOLE_WEB_PASSWORD: "{{ vault_pihole_web_password }}"
+        TUNNEL_TOKEN: "{{ infisical_secrets['cloudflare/TUNNEL_TOKEN'] }}"
+        PIHOLE_WEB_PASSWORD: "{{ infisical_secrets['pihole/WEB_PASSWORD'] }}"
         TZ: "{{ timezone }}"
       become: false
       no_log: true

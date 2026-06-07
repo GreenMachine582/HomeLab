@@ -1,0 +1,12 @@
+---
+# roles/semaphore/defaults/main.yml
+# Lowest-precedence defaults — override via group_vars or host_vars.
+
+# Deliberately OUTSIDE homelab_repo_path — same rationale as Infisical's
+# /opt/infisical: repo git operations must never touch node-generated secrets.
+semaphore_data_dir: /opt/semaphore
+semaphore_service_user: homelab
+
+semaphore_admin_email: "admin@homelab.local"
+semaphore_db_user: semaphore
+semaphore_db_name: semaphore

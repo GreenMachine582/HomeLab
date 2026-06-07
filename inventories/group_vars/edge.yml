@@ -12,6 +12,8 @@ ufw_rules:
   - { port: 8080,             proto: tcp, src: "{{ lan_subnet }}", comment: "Pi-hole admin direct (fallback if Caddy is down)" }
   - { port: 9001,             proto: tcp, src: "{{ ip_observe }}", comment: "Portainer Agent (from observe)" }
   - { port: 9100,             proto: tcp, src: "{{ lan_subnet }}", comment: "node-exporter (Prometheus scrape)" }
+  - { port: 8222,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Infisical UI/API (Tailscale only)" }
+  - { port: 3010,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Semaphore UI (Tailscale only)" }
 
 # ── fail2ban ──────────────────────────────────────────────────────────────────
 fail2ban_jails:
