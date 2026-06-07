@@ -71,6 +71,8 @@ Tailscale IPs are assigned by the coordination server and stable per device. Upd
 | GreenTechHub      | `homelab-svc-02`  | 8000  |
 | Jellyfin          | `homelab-svc-03`  | 8096  |
 | Pi-hole admin     | `homelab-edge`    | 80    |
+| Infisical (Tailscale only) | `homelab-edge` | 8222 |
+| Semaphore (Tailscale only) | `homelab-edge` | 3010 |
 | SSH (all nodes)   | all               | `ssh_port` |
 
 ---
@@ -86,8 +88,19 @@ All nodes use `ufw` with a default-deny inbound policy. Rules are applied by the
 | `ssh_port` | TCP  | any     | SSH admin access              |
 | 53   | TCP/UDP  | LAN     | Pi-hole DNS (LAN only)        |
 | 80   | TCP      | LAN     | Pi-hole admin UI (LAN only)   |
+| 8222 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Infisical UI/API — secrets manager (Tailscale only) |
+| 3010 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Semaphore UI — wields the playbooks in this repo (Tailscale only) |
 
 No ports are forwarded from the router. Cloudflare Tunnel connects outbound — all external traffic enters through it.
+
+> **Why CGNAT-range, not the LAN subnet:** Infisical holds every application
+> secret and Semaphore can run any playbook in this repo with the `homelab`
+> user's full sudo — neither gets a Caddy vhost or a Pi-hole hostname, and
+> LAN reachability would defeat the purpose. Scoping the `src` to Tailscale's
+> stable `100.64.0.0/10` CGNAT allocation (rather than a single node's dynamic
+> `tailscale0` address) means the rule survives Tailscale IP churn and admin
+> devices reach both services the same way they reach everything else on the
+> tailnet — see `tailscale_cgnat_range` in `group_vars/all/main.yml`.
 
 ### `homelab-observe`
 
@@ -187,6 +200,13 @@ is not a dependency for accessing homelab nodes.
 Because every node has its own Tailscale connection, the edge going dark has no impact on your ability to SSH into or 
 manage any other node over VPN. LAN access (direct IP on `ssh_port`) remains available regardless.
 
+> **`homelab-edge` joins the tailnet during Phase 1** (not Phase 2, as every
+> other node does) — `bootstrap_edge.yml` brings Tailscale up before Infisical
+> and Semaphore, because both are Tailscale-only services that must be
+> reachable (for the Phase 1 seed task, and for the operator afterwards) by
+> the time bootstrap finishes. `deploy_edge.yml` re-runs the `tailscale` role
+> in Phase 2 too — idempotent, a no-op once the node is already joined.
+
 ### ACLs
 
 Tailscale ACLs are defined in the Tailscale admin console (not in this repo). Recommended policy:
@@ -246,6 +266,17 @@ LAN client → Pi-hole DNS (<ip_edge>:53)
     → resolves service.homelab.local → node IP
     → direct connection to node:port over LAN
 ```
+
+### Tailscale-Only Service Access (Infisical / Semaphore)
+
+```
+Admin device (on tailnet) → http://<edge-tailscale-ip>:{8222,3010}
+    → ufw allows 100.64.0.0/10 on that port → container on homelab-edge
+```
+
+No Pi-hole hostname, no Caddy vhost, no LAN reachability — by design (see
+[Firewall Rules](#firewall-rules)). The device making the request must itself
+be a tailnet member; there is no other path in.
 
 ### Ansible Deploy (Phase 3+)
 
