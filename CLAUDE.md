@@ -31,7 +31,7 @@ Node IPs are defined in `inventories/group_vars/all/overrides.yml` (gitignored �
 
 Services are split across four compose files by concern:
 
-- `docker-compose.edge.yml` — cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter, portainer-agent (runs on `homelab-edge`)
+- `docker-compose.edge.yml` — cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter, portainer-agent, Infisical (+ Postgres, Redis), Semaphore (+ Postgres) (runs on `homelab-edge`)
 - `docker-compose.svc01.yml` — Camunda, Elasticsearch, n8n, discord-gateway, Portainer Agent (runs on `homelab-svc-01`)
 - `docker-compose.observe.yml` — Prometheus, Loki, Grafana, Alertmanager, ntfy, Portainer Server (runs on `homelab-observe`)
 
@@ -61,6 +61,8 @@ Services are split across four compose files by concern:
 | `cadvisor` | Container metrics exporter (port 8080) | svc nodes |
 | `unbound` | Unbound recursive resolver as host systemd service (port 5335); Pi-hole upstream | edge |
 | `edge_services` | cloudflared, Caddy, Pi-hole config templates | edge |
+| `infisical` | Self-hosted secrets manager — node-generated `.env`, container bring-up, additive seed from `vault.yml` (Tailscale-only) | edge |
+| `semaphore` | Web UI over this repo's playbooks — read-only repo bind mount + writable workspace volume (Tailscale-only) | edge |
 | `observe_services` | Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma | observe |
 | `camunda` | Camunda 8, Elasticsearch, n8n, discord-gateway (env templates) | svc-01 |
 | `greentechhub` | GreenTechHub Django app, Redis, Celery | svc-02 |
@@ -74,7 +76,11 @@ Services are split across four compose files by concern:
 
 ### Secrets
 
-All secrets live in `inventories/group_vars/all/vault.yml` (Ansible Vault). The vault password file is `.vault_pass` (gitignored). Reference secrets in playbooks/vars as `{{ vault_* }}`.
+All secrets live in `inventories/group_vars/all/vault.yml` (Ansible Vault). The vault password file is `.vault_pass` (gitignored). Reference secrets in playbooks/vars as `{{ vault_* }}` — **this is still true for every role today**; no role reads from Infisical at runtime yet (see below).
+
+Infisical (self-hosted, edge-only, Tailscale-only — see [docs/NETWORK.md](./docs/NETWORK.md#tailscale-only-service-access-infisical--semaphore)) is being layered in as the long-term canonical store for *application* secrets. The Phase 1 bootstrap seeds it additively (create-if-absent, never overwrite/rotate/delete) from the `[seed → /production/<folder>/<KEY>]` entries in `vault.yml` — see the "Secret naming convention" block at the top of `inventories/group_vars/all/vault.yml.example` and `roles/infisical/tasks/seed.yml`. Converting roles to actually read from it at runtime (the `secret_backend` helper abstraction) is **deferred** — see `docs/TROUBLESHOOTING.md` "Vault → Infisical conversion status". Until that lands, `vault.yml` remains both the source Ansible reads from *and* the seed/fallback source for Infisical.
+
+Semaphore (web UI over this repo's playbooks, edge-only, Tailscale-only) reads secrets for its own Ansible runs from Infisical via a **read-only** Universal Auth machine identity (`vault_infisical_runtime_client_*`) — kept separate from the write-capable `bootstrap` identity used only once by the seed task. See `BOOTSTRAP.md` "First-run Infisical Setup" for how both identities get created (an inherently manual, one-time runbook — they can't exist before Infisical does).
 
 ## Key Commands
 
@@ -141,6 +147,8 @@ Key templates and their data sources:
 - `roles/observe_services/templates/loki/loki.yml.j2` ← `inventories/group_vars/observe.yml` (`loki_retention`)
 - `roles/camunda/templates/elasticsearch/elasticsearch.yml.j2` ← `inventories/host_vars/homelab-svc-01.yml`
 - `roles/camunda/templates/postgres/postgresql.conf.j2` ← `inventories/host_vars/homelab-svc-01.yml`
+- `roles/infisical/templates/env.j2` ← node-generated secrets (idempotent: read back from `/opt/infisical/.env` if present, else `openssl rand -hex 32`) + `vault_infisical_encryption_key`
+- `roles/semaphore/templates/env.j2` ← node-generated Postgres password + `vault_semaphore_admin_*` and `vault_infisical_runtime_client_*` (read-only Infisical identity for Ansible secret lookups)
 
 > Legacy `envsubst` templates (`alertmanager/alertmanager.yml.tmpl`, `fail2ban/fail2ban.conf.tmpl`) are from the old approach — do not edit them; they will be removed once all Ansible roles are complete.
 
@@ -174,3 +182,5 @@ The `deploy` user has sudo restricted to `/usr/bin/ansible-playbook` only. No sh
 - `inventories/group_vars/all/vault.yml` and `overrides.yml` are gitignored — never committed. Both must exist on the edge node at `/opt/homelab/inventories/group_vars/all/` for Phase 2+ to work. `bootstrap_edge.yml` copies them automatically from the PC during Phase 1.
 - SSH port is non-standard, controlled by `ssh_port` in `inventories/group_vars/all/overrides.yml`. Applied to `sshd_config`, UFW rules, and fail2ban jails — change it in one place.
 - **Firewall rules are not applied by `deploy_edge.yml`** — they are set during Phase 1 and persist. To update UFW rules (e.g. after provisioning a new node or adding a service) run `playbooks/apply_firewall.yml`.
+- **Infisical and Semaphore are deliberately Tailscale-only** — no Pi-hole hostname, no Caddy vhost; UFW scopes ports 8222/3010 to `tailscale_cgnat_range` (`100.64.0.0/10`, `inventories/group_vars/all/main.yml`). Do not add LAN-reachable routes for either — they hold/wield every secret and this repo's playbooks respectively.
+- **The Infisical seed step is gated, not unconditional** — it requires the bootstrap machine identity to already exist, which is impossible on a fresh instance (Infisical has to be initialized — org/admin/project/identities — before it can mint its own credentials). First bootstrap run skips it with instructions; complete `BOOTSTRAP.md` "First-run Infisical Setup" then re-run with `--tags infisical,seed,semaphore`. Don't "fix" this by making the seed unconditional.
