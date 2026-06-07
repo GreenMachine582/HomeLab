@@ -10,9 +10,7 @@
 # Variable naming convention: vault_<service>_<field>
 #
 # ── Where does this file live now? ───────────────────────────────────────────
-# As of the Infisical migration, vault.yml plays TWO roles and exists ONLY on the
-# WSL control host (it is never copied to or stored on any node — bootstrap_edge.yml
-# no longer ships it to the edge):
+# As of the Infisical migration, vault.yml plays TWO roles:
 #
 #   1. BOOTSTRAP secrets — read directly by Ansible via {{ vault_* }} during Phase 1/3
 #      (before Infisical exists, or values Infisical itself depends on). These never
@@ -27,6 +25,12 @@
 #
 # Infisical's OWN operational secrets (its DB/Redis/auth secrets, ENCRYPTION_KEY) are
 # documented separately near the bottom — most are node-generated, not vault-sourced.
+#
+# Where does the FILE itself live? Still copied to the edge node by
+# bootstrap_edge.yml ("Secrets | Copy Ansible Vault" — Phase 2+ playbooks there
+# still need {{ vault_* }} lookups directly), but its reach stops at the edge:
+# nothing in it is pushed further out to other nodes by hand. Once a key is
+# seeded, Infisical is the canonical distribution point for application secrets.
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Secret naming convention (Infisical project / environment / folder layout)
