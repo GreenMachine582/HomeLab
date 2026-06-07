@@ -8,6 +8,74 @@
 #   ansible-vault create inventories/group_vars/all/vault.yml --vault-password-file .vault_pass
 #
 # Variable naming convention: vault_<service>_<field>
+#
+# ── Where does this file live now? ───────────────────────────────────────────
+# As of the Infisical migration, vault.yml plays TWO roles and exists ONLY on the
+# WSL control host (it is never copied to or stored on any node — bootstrap_edge.yml
+# no longer ships it to the edge):
+#
+#   1. BOOTSTRAP secrets — read directly by Ansible via {{ vault_* }} during Phase 1/3
+#      (before Infisical exists, or values Infisical itself depends on). These never
+#      move to Infisical. Marked "[bootstrap]" below.
+#
+#   2. APPLICATION secret SEED — the additive, create-if-absent source that the Phase 1
+#      seed task pushes into Infisical (see "Secret naming convention" below). Once a
+#      key exists in Infisical, Infisical is canonical for runtime lookups; vault.yml
+#      keeps the value so a destroyed/rebuilt Infisical can be fully repopulated, and
+#      so `secret_backend: vault` works as an emergency fallback if Infisical is down.
+#      Marked "[seed → /production/<folder>/<KEY>]" below.
+#
+# Infisical's OWN operational secrets (its DB/Redis/auth secrets, ENCRYPTION_KEY) are
+# documented separately near the bottom — most are node-generated, not vault-sourced.
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Secret naming convention (Infisical project / environment / folder layout)
+# ══════════════════════════════════════════════════════════════════════════════
+# project: homelab
+# environment: production
+# folders:
+#   /camunda  /n8n  /discord  /cloudflare  /pihole  /grafana
+#   /ntfy     /greentechhub   /deploy
+#
+# Mapping rule:  vault_<service>_<field>  →  /production/<service-folder>/<FIELD>
+#   e.g. vault_camunda_db_password  →  /production/camunda/DB_PASSWORD
+#
+# Full map (seed task, Infisical lookups, and the UI must all agree on this):
+#   vault_cloudflare_tunnel_id        → /production/cloudflare/TUNNEL_ID
+#   vault_cloudflare_tunnel_token     → /production/cloudflare/TUNNEL_TOKEN
+#   vault_cloudflare_api_token        → /production/cloudflare/API_TOKEN
+#   vault_pihole_web_password         → /production/pihole/WEB_PASSWORD
+#   vault_grafana_admin_password      → /production/grafana/ADMIN_PASSWORD
+#   vault_discord_webhook_critical    → /production/discord/WEBHOOK_CRITICAL
+#   vault_discord_webhook_warning     → /production/discord/WEBHOOK_WARNING
+#   vault_discord_webhook_info        → /production/discord/WEBHOOK_INFO
+#   vault_discord_alerts_webhook      → /production/discord/ALERTS_WEBHOOK
+#   vault_discord_public_key          → /production/discord/PUBLIC_KEY
+#   vault_ntfy_token                  → /production/ntfy/TOKEN
+#   vault_camunda_db_user             → /production/camunda/DB_USER
+#   vault_camunda_db_password         → /production/camunda/DB_PASSWORD
+#   vault_camunda_admin_user          → /production/camunda/ADMIN_USER
+#   vault_camunda_admin_password      → /production/camunda/ADMIN_PASSWORD
+#   vault_camunda_license_key         → /production/camunda/LICENSE_KEY
+#   vault_n8n_user                    → /production/n8n/USER
+#   vault_n8n_password                → /production/n8n/PASSWORD
+#   vault_n8n_owner_email             → /production/n8n/OWNER_EMAIL
+#   vault_n8n_owner_password          → /production/n8n/OWNER_PASSWORD
+#   vault_n8n_encryption_key          → /production/n8n/ENCRYPTION_KEY
+#   vault_n8n_webhook_secret          → /production/n8n/WEBHOOK_SECRET
+#   vault_greentechhub_db_user        → /production/greentechhub/DB_USER
+#   vault_greentechhub_db_password    → /production/greentechhub/DB_PASSWORD
+#   vault_django_secret_key           → /production/greentechhub/DJANGO_SECRET_KEY
+#   vault_deploy_webhook_secret       → /production/deploy/WEBHOOK_SECRET
+#
+# Roles read these via the secret_backend helper abstraction (deferred — see
+# docs/TROUBLESHOOTING.md "Vault → Infisical conversion status"). Until that lands,
+# all of the above are still consumed as plain {{ vault_* }} lookups by the running
+# playbooks; this file is the seed/fallback source either way.
+
+# ══════════════════════════════════════════════════════════════════════════════
+# [bootstrap] — read directly by Ansible; never seeded into Infisical
+# ══════════════════════════════════════════════════════════════════════════════
 
 # ── Bootstrap credentials ─────────────────────────────────────────────────────
 # admin sudo password — set in RPi Imager (BOOTSTRAP.md § 0.3); used only during Phase 1
@@ -26,8 +94,22 @@ vault_github_org: "your-github-username-or-org"
 
 # ── Tailscale ─────────────────────────────────────────────────────────────────
 # See BOOTSTRAP.md § 1.8 for setup steps (ACL tag + OAuth client creation).
+# Needed before Infisical exists (Tailscale brings up the network Infisical/Semaphore
+# are reachable on) — stays a bootstrap secret.
 vault_tailscale_oauth_client_id: "..."
-vault_tailscale_oauth_client_secret: "tskey-secret-..."
+vault_tailscale_oauth_client_secret: "tskey-client-..."
+
+# ── Semaphore admin account ───────────────────────────────────────────────────
+# Semaphore comes up during Phase 1, before Infisical is seeded — its bootstrap
+# admin account can't be a runtime Infisical lookup (chicken-and-egg). Stays here.
+vault_semaphore_admin_user: "admin"
+vault_semaphore_admin_password: "changeme"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# [seed → /production/<folder>/<KEY>] — application secrets, pushed into Infisical
+# by the Phase 1 seed task (additive, create-if-absent). See naming convention above
+# for the exact destination path of each key.
+# ══════════════════════════════════════════════════════════════════════════════
 
 # ── Cloudflare ────────────────────────────────────────────────────────────────
 # Tunnel token: Cloudflare Zero Trust → Tunnels → your tunnel → Overview
@@ -104,3 +186,34 @@ vault_django_secret_key: "changeme"
 # Without it any caller who knows the URL can trigger a deploy.
 # Must match the DEPLOY_SECRET GitHub Actions secret (repo Settings → Secrets).
 vault_deploy_webhook_secret: "changeme"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Infisical — operational secrets and machine identities
+# ══════════════════════════════════════════════════════════════════════════════
+# Most of Infisical's own secrets (DB password, Redis password, app auth secret) are
+# generated ONCE on the edge node by roles/infisical and written to /opt/infisical/.env
+# (mode 0600) — they never touch this file or leave the node. The exceptions below
+# DO need to live here:
+
+# ENCRYPTION_KEY is a PERMANENT infrastructure secret — like a Postgres cluster key or
+# a Vault unseal key. Losing it makes every Infisical Postgres backup permanently
+# undecryptable; a changed key cannot decrypt an existing volume. Generate ONCE with:
+#   openssl rand -hex 16
+# Store it here AND in at least two more independent locations (password manager,
+# offline backup) — never rely on a single copy. roles/infisical writes this value
+# (and only this value) from vault.yml into the node .env during Phase 1.
+vault_infisical_encryption_key: "changeme"
+
+# Bootstrap machine identity — create/write scope (create project, folders, secrets).
+# Used ONCE by the Phase 1 seed task (runs from WSL) to populate Infisical from this
+# file. Disable or revoke the identity in the Infisical UI immediately after Phase 1
+# completes; only re-enable for a deliberate re-seed/rebuild. See BOOTSTRAP.md for the
+# identity-creation runbook (manual, one-time, done via the Infisical UI/API).
+vault_infisical_bootstrap_client_id: "changeme"
+vault_infisical_bootstrap_client_secret: "changeme"
+
+# Runtime machine identity — READ-ONLY scope. This is the token injected into
+# Semaphore's environment for Ansible lookups during normal operation. A leaked
+# runtime token can only read secrets, never rewrite the store.
+vault_infisical_runtime_client_id: "changeme"
+vault_infisical_runtime_client_secret: "changeme"
