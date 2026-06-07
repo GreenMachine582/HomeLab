@@ -330,6 +330,22 @@ printf "your-strong-vault-password" > .vault_pass
 chmod 600 .vault_pass
 ```
 
+Point Ansible at it via an environment variable (add to `~/.bashrc` / `~/.zshrc` so it persists across sessions):
+
+```bash
+echo 'export ANSIBLE_VAULT_PASSWORD_FILE=~/homelab/.vault_pass' >> ~/.bashrc
+source ~/.bashrc
+```
+
+> **Why an env var and not `vault_password_file` in `ansible.cfg`?** `ansible.cfg` is
+> committed and cloned to every node, but `.vault_pass`/`vault.yml` deliberately never
+> leave this WSL/PC control host (see CLAUDE.md "Secrets"). A path in `ansible.cfg`
+> would resolve to a missing file on every node — and Ansible aborts at startup if a
+> *configured* vault password file is missing, even when the playbook needs no vault
+> content at all (as `deploy_edge.yml` and beyond do not). The env var only exists
+> here, so nodes simply run with no vault password configured — which is exactly what
+> they need.
+
 Create the vault:
 
 ```bash

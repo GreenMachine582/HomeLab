@@ -88,7 +88,7 @@ Semaphore (web UI over this repo's playbooks, edge-only, Tailscale-only) reads s
 
 ### Ansible (run from `homelab-edge` at `/opt/homelab` as `homelab` user)
 
-`ansible.cfg` sets the default inventory (`prod.yml`) and vault password file — no `-i` or `--vault-password-file` flags needed for Phase 2+ commands.
+`ansible.cfg` sets the default inventory (`prod.yml`) — no `-i` flag needed for Phase 2+ commands. It deliberately does **not** set `vault_password_file`: that file is cloned to every node, but `.vault_pass`/`vault.yml` never leave the WSL/PC control host (see "Secrets" below), and Ansible aborts at startup if a *configured* vault password file is missing — even for playbooks needing no vault content. On the WSL/PC side, set `ANSIBLE_VAULT_PASSWORD_FILE` in your shell profile instead (see `BOOTSTRAP.md` § 1.9) — no `--vault-password-file` flag needed there either, and nodes simply run with no vault password configured, which is what they need.
 
 ```bash
 # Test connectivity (Phase 1 bootstrap inventory — from PC, uses admin user)
