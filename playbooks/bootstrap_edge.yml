@@ -262,7 +262,7 @@
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.edge.yml up -d infisical-db infisical-redis infisical
         chdir: "{{ homelab_repo_path }}"
-      become: false
+      become_user: homelab
       changed_when: true
       tags: [infisical]
 
@@ -289,7 +289,7 @@
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.edge.yml up -d semaphore-db semaphore
         chdir: "{{ homelab_repo_path }}"
-      become: false
+      become_user: homelab
       changed_when: true
       tags: [semaphore]
 
