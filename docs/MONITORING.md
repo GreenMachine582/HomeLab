@@ -246,6 +246,8 @@ HTTP/HTTPS checks every 60 seconds. Alerts fire after 2 consecutive failures.
 |-------------------|-------------------------------------------|
 | Edge health       | `http://homelab-edge/health`              |
 | Pi-hole admin     | `http://homelab-edge/admin`               |
+| Infisical         | `http://homelab-edge:8222/api/status`     |
+| Semaphore         | `http://homelab-edge:3010/api/ping`       |
 | Grafana           | `http://homelab-observe:3000/api/health`  |
 | Alertmanager      | `http://homelab-observe:9093/-/healthy`   |
 | Camunda           | `http://homelab-svc-01:8081`              |
@@ -253,6 +255,8 @@ HTTP/HTTPS checks every 60 seconds. Alerts fire after 2 consecutive failures.
 | Jellyfin          | `http://homelab-svc-03:8096/health`       |
 
 > Uptime Kuma monitor configuration is not currently managed by Ansible — configure monitors manually after first deploy. This is a known gap; a future playbook task will import monitor config via the Uptime Kuma API.
+>
+> Infisical and Semaphore are **Tailscale-only** (see [docs/NETWORK.md](./NETWORK.md#tailscale-only-service-access-infisical--semaphore)) — `homelab-observe` reaches them the same way any tailnet member does, via MagicDNS (`homelab-edge`) over its own independent Tailscale connection; no special routing is needed. Verify `/api/status` (Infisical) and `/api/ping` (Semaphore) against the deployed image versions before relying on them — endpoint paths can move across releases (the same caveat noted in `roles/infisical/tasks/seed.yml`).
 
 ### Notifications
 

@@ -24,6 +24,10 @@ Common issues, diagnostic commands, and recovery procedures. Organised by area.
   * [Tailscale](#tailscale)
     * [Node not appearing in Tailscale admin console](#node-not-appearing-in-tailscale-admin-console)
     * [Cannot reach a node over Tailscale](#cannot-reach-a-node-over-tailscale)
+  * [Infisical & Semaphore](#infisical--semaphore)
+    * [Bootstrap keeps skipping the Infisical seed step](#bootstrap-keeps-skipping-the-infisical-seed-step)
+    * [Seed task fails with an authentication or 4xx/5xx error](#seed-task-fails-with-an-authentication-or-4xx5xx-error)
+    * [Vault → Infisical conversion status](#vault--infisical-conversion-status)
   * [Cloudflare Tunnel](#cloudflare-tunnel)
     * [External services not reachable](#external-services-not-reachable)
   * [Monitoring Stack](#monitoring-stack)
@@ -333,6 +337,82 @@ Review ACLs in the Tailscale admin console. See `docs/NETWORK.md` for the recomm
 
 ---
 
+## Infisical & Semaphore
+
+Both run on `homelab-edge`, **Tailscale-only** (no Pi-hole hostname, no Caddy
+route — see [docs/NETWORK.md](./NETWORK.md#tailscale-only-service-access-infisical--semaphore)).
+If you can't reach `http://<edge-tailscale-ip>:8222` or `:3010`, start with the
+[Tailscale](#tailscale) checks above — connectivity issues here are almost
+always "the requesting device isn't on the tailnet" or "ACL/firewall blocks the
+port," not the containers themselves.
+
+### Bootstrap keeps skipping the Infisical seed step
+
+This is expected on a fresh instance — not a failure. The seed step is gated on
+`vault_infisical_bootstrap_client_id/secret` actually being set (not the
+`"changeme"` placeholder), because that machine identity can only be minted
+*from inside an already-initialised Infisical* — org, admin account, project,
+environment, and the identity itself all have to exist first. Nothing in
+Ansible can automate a system into having created its own credentials before it
+existed.
+
+Complete [BOOTSTRAP.md → First-run Infisical Setup](../BOOTSTRAP.md#first-run-infisical-setup)
+(create the org/project/folders/identities, write the resulting
+`vault_infisical_bootstrap_client_*`/`vault_infisical_runtime_client_*` values
+into the vault), then re-run:
+
+```bash
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
+  --tags infisical,seed,semaphore
+```
+
+The `debug` message printed when the seed is skipped (`roles/infisical/tasks/seed.yml`)
+repeats these exact steps and the re-run command.
+
+### Seed task fails with an authentication or 4xx/5xx error
+
+```bash
+# From the edge node — confirm the API is actually up
+curl -sf http://127.0.0.1:8222/api/status
+
+# Re-run just the seed step with verbose output
+cd /opt/homelab
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
+  --tags infisical,seed -vvv
+```
+
+Likely causes:
+- **Wrong/revoked credentials** — the bootstrap identity was disabled after a previous seed (step 7 of the runbook tells you to do exactly this). Re-enable it in the Infisical UI for a deliberate re-seed, then disable it again afterward.
+- **Project/environment/folder slug mismatch** — `infisical_seed_project_slug` / `infisical_seed_environment` (`roles/infisical/defaults/main.yml`, default `homelab` / `production`) must match what you created in the UI exactly, and the nine folders must match the "Secret naming convention" block in `vault.yml.example`.
+- **API shape drift** — the seed task's endpoint paths (Universal Auth login, `/v3/secrets/raw/...`) are version-pinned assumptions, flagged with a `⚠️` comment at the top of `seed.yml`. Check them against the deployed Infisical version's API reference if errors mention unexpected fields or 404s on routes that should exist.
+
+The seed is **additive and idempotent** — re-running it never overwrites or
+deletes an existing key, so retrying after a fix is always safe.
+
+### Vault → Infisical conversion status
+
+`vault.yml` currently serves two roles: a `[bootstrap]` source for secrets
+Ansible needs directly (read before Infisical can exist), and a `[seed →
+/production/<folder>/<KEY>]` source that the Phase 1 seed task pushes into
+Infisical once. **No role has been converted to read secrets from Infisical at
+runtime yet** — every `{{ vault_<service>_<field> }}` lookup in the existing
+playbooks/roles still resolves straight from the vault, exactly as before this
+migration. The `secret_backend` helper abstraction mentioned in
+`vault.yml.example` (a `vault | infisical` toggle so a role could read from
+either) is **deferred, not implemented** — converting the Camunda stack's
+lookups (and others) to go through Infisical at runtime is intentionally out of
+scope for this change. Until that lands:
+
+- `vault.yml` remains the single source of truth Ansible actually reads from
+- Infisical holds a parallel, additive copy — useful as a browsable secret
+  store, an emergency fallback if `vault.yml`/`.vault_pass` are lost, and the
+  foundation for the eventual conversion
+- Adding a new application secret means adding it to `vault.yml` **and** to
+  `_infisical_seed_map` in `roles/infisical/tasks/seed.yml` (plus its folder in
+  Infisical) if you want it seeded too — the two are not auto-synced
+
+---
+
 ## Cloudflare Tunnel
 
 ### External services not reachable
@@ -456,6 +536,28 @@ docker compose start <service>
 docker exec -it postgres psql -U <db-user> -d <db-name> -c "\dt"
 ```
 
+**Edge node (Infisical / Semaphore):** these each have their own dedicated
+Postgres container (no shared `postgres`) and their dumps are gzip-compressed
+straight off `pg_dump` into `{{ postgres_backup_dir }}` (`/opt/backups/postgres`
+— see `playbooks/backup.yml`), so the restore pipes through `gunzip` first:
+
+```bash
+docker compose stop infisical          # or: semaphore
+
+gunzip -c /opt/backups/postgres/infisical_<date>.sql.gz \
+  | docker exec -i infisical-db psql -U infisical -d infisical
+
+docker compose start infisical
+docker exec -it infisical-db psql -U infisical -d infisical -c "\dt"
+```
+
+> **Restoring Infisical also requires `vault_infisical_encryption_key` to be
+> the exact value used when the backup was taken** — it's a permanent,
+> non-rotatable key (see the comment above it in `vault.yml.example`); a
+> mismatched key leaves every secret in the restored database permanently
+> undecryptable. If Infisical itself is unrecoverable, fall back to seeding a
+> fresh instance from `vault.yml` — see [First-run Infisical Setup](../BOOTSTRAP.md#first-run-infisical-setup).
+
 ### Elasticsearch heap pressure
 
 If Camunda components are slow or Elasticsearch is logging GC pressure:
@@ -524,6 +626,7 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
 - **LAN SSH also works** — connect directly to `ip_observe`, `ip_svc_01` etc. from any device on the same network
 - **Internal DNS is down** — `.homelab.local` hostnames won't resolve; use IPs directly until the edge is restored
 - **External services are down** — Cloudflare Tunnel runs on the edge; public hostnames will be unreachable
+- **Infisical and Semaphore are down** — both run only on the edge; secret lookups that already went through Infisical at runtime fall back to `vault.yml`/`.vault_pass` until it's restored (see [Vault → Infisical conversion status](#vault--infisical-conversion-status))
 
 **Recovery steps:**
 
@@ -533,6 +636,14 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
    ```bash
    ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
    ```
+   This brings Infisical and Semaphore back up too. If you still have the
+   original `vault_infisical_bootstrap_client_*`/`vault_infisical_runtime_client_*`
+   credentials in the vault (and `vault_infisical_encryption_key` is unchanged),
+   restore the Postgres backup first (see [Restoring a PostgreSQL backup](#restoring-a-postgresql-backup))
+   to bring Infisical back with its existing org/identities intact — otherwise
+   you'll need to redo [First-run Infisical Setup](../BOOTSTRAP.md#first-run-infisical-setup)
+   against a fresh instance and re-seed from `vault.yml` (which remains the
+   canonical fallback source for every seeded secret).
 4. Run Phase 2 to restore edge services:
    ```bash
    ansible-playbook playbooks/deploy_edge.yml
