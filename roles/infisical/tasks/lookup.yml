@@ -1,0 +1,59 @@
+---
+# roles/infisical/tasks/lookup.yml
+# Runtime secret lookup for Phase 2+ playbooks running locally on homelab-edge —
+# where, by design, vault.yml never exists (see CLAUDE.md "Secrets" and
+# semaphore_infisical_implementation.md Task 2: "don't copy vault.yml to the
+# edge"). Authenticates with the READ-ONLY runtime machine identity — its
+# Universal Auth credentials are loaded from the node-local
+# infisical_runtime_auth_path (written once during Phase 1 bootstrap from the
+# WSL vault.yml; see templates/runtime_auth.yml.j2 and tasks/main.yml — the same
+# identity Semaphore's own .env carries) — and resolves each `<folder>/<KEY>`
+# path in `infisical_lookup_keys` to its current value.
+#
+# Call via `include_role: { name: infisical, tasks_from: lookup.yml }` (not
+# include_tasks) so the role's defaults — infisical_runtime_auth_path,
+# infisical_runtime_api_url, infisical_seed_project_slug/environment — load
+# alongside it.
+#
+# Sets `infisical_secrets`, a dict keyed by "<folder>/<KEY>" -> resolved value,
+# e.g. infisical_secrets['cloudflare/TUNNEL_TOKEN']. Read-only by construction —
+# the runtime identity cannot create/edit/delete, so a leaked token (or a bug
+# here) can only ever read.
+#
+# This is the minimal "reference" lookup for the edge's own application secrets —
+# the rest of Task #5 (converting camunda/observe/svc roles the same way) is
+# still deferred; see semaphore_infisical_implementation.md "Stage 3+" note.
+
+- name: "Infisical lookup | Resolve application secrets ({{ infisical_lookup_keys | join(', ') }})"
+  no_log: true
+  block:
+    - name: "Infisical lookup | Load runtime identity credentials (node-local, never in git)"
+      ansible.builtin.include_vars:
+        file: "{{ infisical_runtime_auth_path }}"
+
+    - name: "Infisical lookup | Authenticate with the runtime machine identity (Universal Auth, read-only)"
+      ansible.builtin.uri:
+        url: "{{ infisical_runtime_api_url }}/v1/auth/universal-auth/login"
+        method: POST
+        body_format: json
+        body:
+          clientId: "{{ infisical_runtime_client_id }}"
+          clientSecret: "{{ infisical_runtime_client_secret }}"
+        status_code: 200
+      register: _infisical_lookup_auth
+
+    - name: "Infisical lookup | Fetch each requested secret"
+      ansible.builtin.uri:
+        url: "{{ infisical_runtime_api_url }}/v3/secrets/raw/{{ item | basename }}?workspaceSlug={{ infisical_seed_project_slug }}&environment={{ infisical_seed_environment }}&secretPath=/{{ item | dirname }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ _infisical_lookup_auth.json.accessToken }}"
+        status_code: 200
+      loop: "{{ infisical_lookup_keys }}"
+      loop_control:
+        label: "/{{ infisical_seed_environment }}/{{ item }}"
+      register: _infisical_lookup_results
+
+    - name: "Infisical lookup | Build the resolved secrets map"
+      ansible.builtin.set_fact:
+        infisical_secrets: "{{ dict(infisical_lookup_keys | zip(_infisical_lookup_results.results | map(attribute='json.secret.secretValue'))) }}"

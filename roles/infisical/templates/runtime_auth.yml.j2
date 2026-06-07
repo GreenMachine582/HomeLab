@@ -1,0 +1,25 @@
+{{ ansible_managed | comment }}
+#
+# READ-ONLY Infisical runtime identity credentials for Phase 2+ Ansible runs —
+# node-local, NEVER committed, and (after this one-time write from the WSL
+# vault.yml during Phase 1) never needs vault.yml on this node again. Lives at
+# {{ infisical_runtime_auth_path }} (mode 0600, {{ infisical_service_user }}-owned).
+#
+# Loaded via include_vars by roles/infisical/tasks/lookup.yml so deploy_edge.yml
+# (and future Phase 2+ playbooks) can resolve application secrets straight from
+# Infisical without ever needing a copy of vault.yml here — see CLAUDE.md
+# "Secrets" and semaphore_infisical_implementation.md Task 2.
+#
+# Same READ-ONLY identity already injected into Semaphore's own .env
+# (vault_infisical_runtime_client_{id,secret} — see roles/semaphore/templates/env.j2):
+# it can only read secrets, never create/edit/delete/manage projects. A leaked
+# copy of this file is no worse than a leaked Semaphore token.
+#
+# Source of truth remains the WSL vault.yml. Rotate by updating it there, then
+# re-render both copies with:
+#   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml --tags infisical,semaphore
+# To change without a full bootstrap re-run: edit this file directly on the
+# node (keep mode 0600) — see docs/TROUBLESHOOTING.md.
+
+infisical_runtime_client_id: "{{ vault_infisical_runtime_client_id }}"
+infisical_runtime_client_secret: "{{ vault_infisical_runtime_client_secret }}"

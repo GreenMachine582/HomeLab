@@ -74,3 +74,20 @@
     mode: "0600"
   no_log: true
   tags: [infisical]
+
+# ── Runtime lookup credentials (for Phase 2+ Ansible runs — see tasks/lookup.yml) ──
+# Written once from the WSL vault.yml, same "[bootstrap]-sourced, then node-local
+# forever" precedent as ENCRYPTION_KEY above — NOT the additive Infisical-side
+# seed (that's tasks/seed.yml; this never touches Infisical's secret store, it
+# just gives Ansible itself something to authenticate with). Lets deploy_edge.yml
+# (and future Phase 2+ playbooks running locally on the edge) resolve application
+# secrets straight from Infisical without vault.yml ever being copied here.
+- name: "Infisical | Render runtime lookup credentials for Phase 2+ Ansible runs (read-only identity)"
+  ansible.builtin.template:
+    src: runtime_auth.yml.j2
+    dest: "{{ infisical_runtime_auth_path }}"
+    owner: "{{ infisical_service_user }}"
+    group: "{{ infisical_service_user }}"
+    mode: "0600"
+  no_log: true
+  tags: [infisical]

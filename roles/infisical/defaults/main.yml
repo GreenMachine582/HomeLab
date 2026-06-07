@@ -19,3 +19,16 @@ infisical_redis_port: 6379
 # Project/environment slugs that the /production/<folder>/<KEY> paths are seeded into.
 infisical_seed_project_slug: homelab
 infisical_seed_environment: production
+
+# ── Runtime lookups (see tasks/lookup.yml) ──────────────────────────────────
+# Where the READ-ONLY runtime identity's Universal Auth credentials are written,
+# once, during Phase 1 — so Phase 2+ playbooks running locally on the edge can
+# resolve application secrets from Infisical without vault.yml ever being copied
+# there. In the homelab user's home dir (not /opt/infisical — that's Infisical's
+# OWN operational secrets; this is the credential Ansible itself authenticates
+# with, mirroring how it's also injected into Semaphore's .env).
+infisical_runtime_auth_path: /home/homelab/.infisical_runtime_auth.yml
+
+# Reachable over loopback on the edge itself — Phase 2+ playbooks run locally
+# there (see CLAUDE.md "Phase 2"). Override per-call if looking up from elsewhere.
+infisical_runtime_api_url: "http://127.0.0.1:8222/api"
