@@ -13,9 +13,10 @@
 # writes the read-only "runtime" identity's freshly-minted credentials to —
 # never from vault.yml, which never holds these values at all any more (see
 # CLAUDE.md "Secrets" and that task's header for why). infisical_runtime_auth_path
-# is in scope here because include_role: name: infisical runs earlier in the
-# same play — role defaults loaded via include_role stay in scope for its
-# remainder.
+# is in scope here because bootstrap_edge.yml's FIRST `include_role: name:
+# infisical` is given `public: true` — without it, a role's defaults are only
+# visible to its OWN tasks, not to a different role (semaphore) included later
+# in the same play.
 #
 # The actual `docker compose up` happens in the playbook post_tasks, same as
 # the rest of the edge stack.
@@ -69,7 +70,7 @@
 - name: "Semaphore | Load read-only Infisical runtime identity credentials (node-local — see roles/infisical/tasks/bootstrap_instance.yml)"
   ansible.builtin.include_vars:
     file: "{{ infisical_runtime_auth_path }}"
-  no_log: false  # TEMP — debugging missing/unreadable runtime-auth file; restore to `true` once root-caused (only exposes the file path + a parse/access error, not its contents)
+  no_log: true
   tags: [semaphore]
 
 - name: "Semaphore | Render operational .env"

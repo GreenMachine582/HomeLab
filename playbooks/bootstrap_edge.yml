@@ -283,6 +283,10 @@
     - name: "Infisical | Render operational .env (node-generated secrets)"
       ansible.builtin.include_role:
         name: infisical
+        public: true   # exposes infisical's role defaults (incl. infisical_runtime_auth_path)
+                       # to the rest of THIS play — the later Semaphore include_role needs it
+                       # (see roles/semaphore/tasks/main.yml) and is a different role, so it
+                       # can't see infisical's defaults without this.
       tags: [infisical]
 
     - name: "Docker | Bring up Infisical (db, redis, app)"
