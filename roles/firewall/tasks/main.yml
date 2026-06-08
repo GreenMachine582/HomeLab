@@ -52,14 +52,26 @@
     direction: in
   tags: [firewall]
 
-# Keep port 22 open during transition — remove once new SSH port confirmed on all nodes.
+# Transition safety net — gated by ssh_legacy_port_22_enabled (default true,
+# roles/firewall/defaults/main.yml). Flip it to false in group_vars/host_vars
+# per node once that node's new SSH port is confirmed reachable; the paired
+# removal task below then cleans the rule up via Ansible.
 - name: "Firewall | Keep legacy SSH port 22 open (transition safety)"
   community.general.ufw:
     rule: allow
     port: "22"
     proto: tcp
     comment: "SSH legacy - remove after new port confirmed"
-  when: ssh_port | int != 22
+  when: ssh_port | int != 22 and ssh_legacy_port_22_enabled | bool
+  tags: [firewall]
+
+- name: "Firewall | Remove legacy SSH port 22 rule (new port confirmed)"
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    delete: true
+  when: ssh_port | int != 22 and not (ssh_legacy_port_22_enabled | bool)
   tags: [firewall]
 
 - name: "Firewall | Allow SSH port"

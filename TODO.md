@@ -345,20 +345,18 @@ Validation and remediation tasks identified by cross-referencing all documentati
 
 ## Security / Firewall (identified 2026-06-08)
 
-- [ ] **#36 — Legacy SSH port 22 UFW rule never gets removed**
-  `roles/firewall/tasks/main.yml` ("Firewall | Keep legacy SSH port 22 open (transition safety)",
-  ~line 56) unconditionally (re-)adds `22/tcp ALLOW IN Anywhere` whenever `ssh_port | int != 22`,
-  with the comment "SSH legacy - remove after new port confirmed" — but nothing ever flips that
-  condition off. Confirmed still present (`ufw status numbered` rules [2]/[9]) on homelab-edge
-  after a successful Phase 1 bootstrap and live SSH on the new port (2189). Worse: even a manual
-  `ufw delete` of the rule would be re-added on the very next firewall/bootstrap run, since the
-  task's only gate is `ssh_port | int != 22` — true forever once `ssh_port` is customized.
-  Fix options: (a) add a var (e.g. `ssh_legacy_port_22_enabled`, defaulted `true`, flipped to
-  `false` in `group_vars`/`host_vars` once the new port is confirmed across all nodes) that gates
-  the task and explicitly removes the rule (`state: absent`) when false, or (b) delete the task
-  entirely now that the new port is proven working on the edge — re-add manually if a future port
-  migration needs the same transition safety net. Either way, update the stale "Keep port 22 open
-  during transition — remove once new SSH port confirmed on all nodes" comment (line 55).
+- [x] **#36 — Legacy SSH port 22 UFW rule never gets removed** ✅ 2026-06-08
+  Fixed via option (a) — added `ssh_legacy_port_22_enabled` (default `true`,
+  `roles/firewall/defaults/main.yml`) gating the existing "keep port 22 open"
+  task, plus a paired "Remove legacy SSH port 22 rule" task (`delete: true`)
+  that fires when the var is `false`. Flip it to `false` in `group_vars`/
+  `host_vars` per node once that node's new `ssh_port` is confirmed reachable
+  — Ansible then removes the stale rule itself on the next firewall run, no
+  manual `ufw delete` needed (and it stays removed: the gate now reflects the
+  operator's confirmation, not just "is ssh_port customized"). Updated the
+  stale transition-safety comment above the task to document the new pattern.
+  Reusable for any future SSH port migration — just flip the var back to
+  `true` for the affected node(s).
 
 - [x] **#37 — `base_hardening` sets `net.ipv4.ip_forward=0`, silently breaking Docker port forwarding on re-runs**
   `roles/base_hardening/tasks/main.yml` ("Security | Apply kernel hardening sysctls", ~line 111)
