@@ -225,7 +225,7 @@
         label: "{{ item.item.name }}"
       register: _infisical_client_secrets
 
-    - name: "Infisical bootstrap | Grant each identity access to the project (with its seeded role)"
+    - name: "Infisical bootstrap | Grant each identity access to the project"
       ansible.builtin.uri:
         url: "{{ infisical_api_url }}/v2/workspace/{{ _infisical_project_id }}/identity-memberships/{{ item.json.identity.id }}"
         method: POST
@@ -276,7 +276,7 @@
           greentechhub/DJANGO_SECRET_KEY: "{{ vault_django_secret_key }}"
           deploy/WEBHOOK_SECRET: "{{ vault_deploy_webhook_secret }}"
 
-    - name: "Infisical bootstrap | Check which application-secret keys already exist (read before write — never overwrite)"
+    - name: "Infisical bootstrap | Check which application-secret keys already exist"
       ansible.builtin.uri:
         url: "{{ infisical_api_url }}/v3/secrets/raw/{{ item.key | basename }}?workspaceSlug={{ infisical_seed_project_slug }}&environment={{ infisical_seed_environment }}&secretPath=/{{ item.key | dirname }}"
         method: GET
@@ -305,6 +305,22 @@
       loop_control:
         label: "/production/{{ item.item.key }}"
       when: item.status == 404
+      register: _infisical_seed_create_DEBUG  # TEMP — diagnostic, remove with the debug task below once root-caused
+      failed_when: false
+
+    # TEMP DEBUG — surfaces ONLY status/msg/url (never `body`/`secretValue`/the
+    # bearer token, none of which are referenced here) so the real rejection
+    # reason is visible without leaking application secrets or the admin token
+    # into the log. Remove this task and the `register`/`failed_when` above
+    # once the create-secret failure is root-caused.
+    - name: "Infisical bootstrap | TEMP DEBUG — show create-secret status/msg (not body/values)"
+      ansible.builtin.debug:
+        msg: "{{ item.item.item.key }} -> status={{ item.status | default('n/a') }} | msg={{ item.msg | default('(no msg)') }} | url={{ item.url | default('n/a') }}"
+      loop: "{{ _infisical_seed_create_DEBUG.results }}"
+      loop_control:
+        label: "{{ item.item.item.key | default('?') }}"
+      when: item.skipped is not defined or not item.skipped
+      no_log: false
 
     - name: "Infisical bootstrap | Build name -> {clientId, clientSecret} map for the summary"
       ansible.builtin.set_fact:
@@ -320,14 +336,7 @@
         loop_var: idx
         label: "{{ _infisical_identities.results[idx].item.name }}"
 
-    # The definitive (and only) write of this file: this is the first point in
-    # the play at which the runtime identity — and therefore real values for
-    # it — exist. Binds the freshly-minted client ID/secret in via task `vars:`
-    # (template expects _runtime_client_id/_secret — see runtime_auth.yml.j2)
-    # so the same template/format/permissions serve both this and any future
-    # manual re-render after a credential rotation. No vault.yml round-trip
-    # for this node-local file at all — see CLAUDE.md "Secrets".
-    - name: "Infisical bootstrap | Write runtime lookup credentials from freshly-minted values (no vault.yml round-trip)"
+    - name: "Infisical bootstrap | Write runtime lookup credentials from freshly-minted values"
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../roles/infisical/templates/runtime_auth.yml.j2"
         dest: "{{ infisical_runtime_auth_path }}"
