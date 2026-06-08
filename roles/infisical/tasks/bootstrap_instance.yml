@@ -86,6 +86,9 @@
       organization: "{{ infisical_seed_organization_name }}"
     status_code: [200, 400, 401, 403, 409]
   register: _infisical_bootstrap_result
+  until: _infisical_bootstrap_result.status != -1
+  retries: 10
+  delay: 6
   failed_when: false
   no_log: true
   become: false
@@ -101,6 +104,29 @@
     msg: "status={{ _infisical_bootstrap_result.status }} | msg={{ _infisical_bootstrap_result.msg | default('(no msg)') }} | url={{ _infisical_bootstrap_result.url | default('n/a') }} | elapsed={{ _infisical_bootstrap_result.elapsed | default('n/a') }}"
   when: not _infisical_bootstrap_fresh
   no_log: false
+  tags: [infisical, bootstrap]
+
+- name: "Infisical bootstrap | SKIPPED — could not reach Infisical's API (not an 'already initialised' rejection)"
+  ansible.builtin.debug:
+    msg: >-
+      Skipping instance bootstrap: every attempt to reach
+      POST /v1/admin/bootstrap failed at the transport level (status -1 —
+      "{{ _infisical_bootstrap_result.msg | default('connection failure') }}"),
+      even after retrying. This is NOT Infisical reporting "already
+      initialised" — that would be a real HTTP rejection (400/401/403/409).
+      A -1 means the TCP port was open (this task runs after "Wait for the
+      API port to accept connections" passes) but Infisical's backend never
+      served a real HTTP response — it's still starting up (running DB
+      migrations, etc. — self-hosted Infisical can take longer to become
+      request-ready than to open its port) or it crashed/restarted. Check
+      `docker compose -f docker-compose.edge.yml logs infisical` (and
+      infisical-db/infisical-redis) for the real cause, then re-run this
+      playbook once it's healthy — re-running is safe and idempotent; nothing
+      has been provisioned yet, so there's no "stuck" state and no need to
+      wipe any volumes.
+  when:
+    - not _infisical_bootstrap_fresh
+    - _infisical_bootstrap_result.status == -1
   tags: [infisical, bootstrap]
 
 - name: "Infisical bootstrap | SKIPPED — instance already initialised"
@@ -122,7 +148,9 @@
       docker-compose.edge.yml rm -sf infisical infisical-db infisical-redis`
       then remove the infisical-db/infisical-redis volumes — and re-run this
       playbook against the now-empty instance.
-  when: not _infisical_bootstrap_fresh
+  when:
+    - not _infisical_bootstrap_fresh
+    - _infisical_bootstrap_result.status != -1
   tags: [infisical, bootstrap]
 
 - name: "Infisical bootstrap | Provision org, project, environment, folders, and identities"
