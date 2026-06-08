@@ -69,7 +69,7 @@
 - name: "Semaphore | Load read-only Infisical runtime identity credentials (node-local — see roles/infisical/tasks/bootstrap_instance.yml)"
   ansible.builtin.include_vars:
     file: "{{ infisical_runtime_auth_path }}"
-  no_log: true
+  no_log: false  # TEMP — debugging missing/unreadable runtime-auth file; restore to `true` once root-caused (only exposes the file path + a parse/access error, not its contents)
   tags: [semaphore]
 
 - name: "Semaphore | Render operational .env"
