@@ -300,7 +300,7 @@
           environment: "{{ infisical_seed_environment }}"
           secretPath: "/{{ item.item.key | dirname }}"
           secretValue: "{{ item.item.value }}"
-        status_code: 200
+        status_code: [200, 201]
       loop: "{{ _infisical_seed_existing.results }}"
       loop_control:
         label: "/production/{{ item.item.key }}"
