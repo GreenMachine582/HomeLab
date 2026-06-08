@@ -4,9 +4,19 @@
 # read-only Infisical runtime identity it uses for Ansible secret lookups.
 #
 # Only the Postgres password is node-generated (mirrors roles/infisical's
-# "generate once, read back forever" idempotency). The admin account and the
-# Infisical runtime token are bootstrap-tier values from the WSL vault.yml —
-# see the template for why they can't be runtime Infisical lookups themselves.
+# "generate once, read back forever" idempotency). The admin account is a
+# bootstrap-tier value from the WSL vault.yml — Semaphore comes up before
+# Infisical is seeded, so its own admin account can't be a runtime Infisical
+# lookup (see the template for the full reasoning). The Infisical runtime
+# token, by contrast, is loaded straight from the SAME node-local file
+# (infisical_runtime_auth_path) that roles/infisical/tasks/bootstrap_instance.yml
+# writes the read-only "runtime" identity's freshly-minted credentials to —
+# never from vault.yml, which never holds these values at all any more (see
+# CLAUDE.md "Secrets" and that task's header for why). infisical_runtime_auth_path
+# is in scope here because include_role: name: infisical runs earlier in the
+# same play — role defaults loaded via include_role stay in scope for its
+# remainder.
+#
 # The actual `docker compose up` happens in the playbook post_tasks, same as
 # the rest of the edge stack.
 
@@ -54,6 +64,12 @@
     semaphore_db_password: "{{ _semaphore_generated.stdout }}"
   no_log: true
   when: not _semaphore_env_stat.stat.exists
+  tags: [semaphore]
+
+- name: "Semaphore | Load read-only Infisical runtime identity credentials (node-local — see roles/infisical/tasks/bootstrap_instance.yml)"
+  ansible.builtin.include_vars:
+    file: "{{ infisical_runtime_auth_path }}"
+  no_log: true
   tags: [semaphore]
 
 - name: "Semaphore | Render operational .env"

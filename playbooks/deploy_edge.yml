@@ -56,7 +56,7 @@
     # No vault.yml lives on this node by design (CLAUDE.md "Secrets" —
     # semaphore_infisical_implementation.md Task 2: "don't copy vault.yml to the
     # edge"). The handful of application secrets this playbook needs were already
-    # seeded into Infisical during Phase 1 bootstrap (roles/infisical/tasks/seed.yml)
+    # seeded into Infisical during Phase 1 bootstrap (roles/infisical/tasks/bootstrap_instance.yml)
     # — resolve them at runtime through the READ-ONLY runtime identity instead.
     # This is the reference conversion for Task #5; camunda/observe/svc roles
     # still read straight from vault.yml (deferred — see TROUBLESHOOTING.md
@@ -78,10 +78,14 @@
           - infisical_secrets['pihole/WEB_PASSWORD'] is defined
           - github_org is defined
         fail_msg: >-
-          Required secret unresolved — check that the Phase 1 seed ran
-          (bootstrap_edge.yml --tags infisical,seed), the runtime identity has
-          read access to the homelab/production project, and Infisical itself
-          is reachable at {{ infisical_runtime_api_url }}.
+          Required secret unresolved — check that Phase 1 provisioned and
+          seeded Infisical successfully (bootstrap_edge.yml --tags
+          infisical,bootstrap — see "Infisical bootstrap | Summary" in its
+          output, or re-run with -vvv; it's a no-op against an
+          already-initialised instance, see TROUBLESHOOTING.md "Bootstrap
+          playbook reports Infisical already initialised"), that the runtime
+          identity has read access to the homelab/production project, and that
+          Infisical itself is reachable at {{ infisical_runtime_api_url }}.
       tags: [always]
 
     - name: "Preflight | Verify compose file exists on node"

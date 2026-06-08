@@ -164,8 +164,10 @@ services:
   # writes never touch the repo, and a Semaphore compromise can't rewrite playbooks.
   # .env rendered by roles/semaphore to /opt/semaphore/.env (mode 0600), same
   # rationale as Infisical's — outside the repo dir, shared via env_file. Carries
-  # the admin account, DB credentials, and the READ-ONLY Infisical runtime token
-  # (never the bootstrap/write identity).
+  # the admin account, DB credentials, and the READ-ONLY Infisical "runtime"
+  # identity's token — loaded straight from the node-local file
+  # bootstrap_instance.yml writes it to; there is no write-capable identity
+  # anywhere in this design (see CLAUDE.md "Secrets").
   semaphore-db:
     image: postgres:16-alpine
     container_name: semaphore-db

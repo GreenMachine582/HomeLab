@@ -70,11 +70,36 @@ vault_tailscale_oauth_client_id: "..."
 vault_tailscale_oauth_client_secret: "tskey-client-..."
 
 # ── Infisical ─────────────────────────────────────────────────────────────────
+# vault_infisical_admin_email/password are DIFFERENT from every other
+# vault_infisical_* value below: they must hold REAL values BEFORE the first
+# Phase 1 run (not "changeme") — they're the seed credentials the bootstrap
+# playbook's one-shot POST /v1/admin/bootstrap call uses to create Infisical's
+# admin account and organization (see
+# roles/infisical/tasks/bootstrap_instance.yml). Nothing can mint these for
+# you; pick a real email and a strong password now.
+vault_infisical_admin_email: "admin@example.com"
+vault_infisical_admin_password: "changeme"
+
+# vault_infisical_encryption_key ALSO needs a REAL value before first run —
+# it's PERMANENT (a changed key can't decrypt the existing Postgres volume; see
+# roles/infisical/templates/env.j2 and docs/TROUBLESHOOTING.md for rotation).
+# Generate one with: openssl rand -hex 16
 vault_infisical_encryption_key: "changeme"
-vault_infisical_bootstrap_client_id: "changeme"
-vault_infisical_bootstrap_client_secret: "changeme"
-vault_infisical_runtime_client_id: "changeme"
-vault_infisical_runtime_client_secret: "changeme"
+
+# Notice what's NOT here: no vault_infisical_bootstrap_client_*/
+# vault_infisical_runtime_client_* placeholders. Earlier designs round-tripped
+# freshly-minted Infisical machine-identity credentials through this file —
+# Part 1 would print them, you'd paste them in, re-encrypt, then run Part 2.
+# That's gone. bootstrap_edge.yml now provisions Infisical, seeds every
+# application secret below into it, AND creates the one machine identity it
+# still needs (read-only "runtime", for Phase 2+ Ansible runs and Semaphore)
+# — all via its REST API, all in one pass — and writes that identity's
+# credentials straight to a node-local file
+# (/home/homelab/.infisical_runtime_auth.yml) the instant they're minted.
+# Nothing is ever printed for you to copy; nothing here ever needs editing
+# after the fact. See roles/infisical/tasks/bootstrap_instance.yml's header
+# and CLAUDE.md "Secrets" for the full "no persisted bootstrap identity, no
+# vault.yml round-trip" rationale.
 
 # ── Semaphore admin account ───────────────────────────────────────────────────
 vault_semaphore_admin_user: "admin"

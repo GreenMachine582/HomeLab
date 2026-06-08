@@ -256,7 +256,7 @@ HTTP/HTTPS checks every 60 seconds. Alerts fire after 2 consecutive failures.
 
 > Uptime Kuma monitor configuration is not currently managed by Ansible — configure monitors manually after first deploy. This is a known gap; a future playbook task will import monitor config via the Uptime Kuma API.
 >
-> Infisical and Semaphore are **Tailscale-only** (see [docs/NETWORK.md](./NETWORK.md#tailscale-only-service-access-infisical--semaphore)) — `homelab-observe` reaches them the same way any tailnet member does, via MagicDNS (`homelab-edge`) over its own independent Tailscale connection; no special routing is needed. Verify `/api/status` (Infisical) and `/api/ping` (Semaphore) against the deployed image versions before relying on them — endpoint paths can move across releases (the same caveat noted in `roles/infisical/tasks/seed.yml`).
+> Infisical and Semaphore are **Tailscale-only** (see [docs/NETWORK.md](./NETWORK.md#tailscale-only-service-access-infisical--semaphore)) — `homelab-observe` reaches them the same way any tailnet member does, via MagicDNS (`homelab-edge`) over its own independent Tailscale connection; no special routing is needed. Verify `/api/status` (Infisical) and `/api/ping` (Semaphore) against the deployed image versions before relying on them — endpoint paths can move across releases (the same caveat noted in `roles/infisical/tasks/bootstrap_instance.yml`).
 
 ### Notifications
 

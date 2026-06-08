@@ -95,30 +95,3 @@ open work.
 
   ntfy topic and Discord webhook already available (`vault_ntfy_token`, `vault_discord_alerts_webhook`).
   **Prerequisite:** Phase 3 (ntfy on homelab-observe) and Phase 4 (n8n webhook wired) must be live.
-
----
-
-## Bootstrap Restructuring
-
-- [ ] **#39 — Automate Infisical project/environment/folder/identity creation via its REST API**
-  `BOOTSTRAP.md` "First-run Infisical Setup" currently makes the operator manually click through
-  5 steps in the UI: (1) create org + admin account, (2) create the `homelab` project, (3) create
-  the `production` environment, (4) create 9 folders that must exactly match the naming convention
-  in `vault.yml.example`, (5) create 2 Universal Auth machine identities (`bootstrap` write,
-  `runtime` read-only) and copy their client ID/secret pairs. Only step 1 is *inherently* manual —
-  Infisical can't have an admin before something creates one. Steps 2-5 are all doable through
-  Infisical's REST API (https://infisical.com/docs/api-reference/overview/introduction) once an
-  authenticated admin session/token exists — automating them also kills a whole class of "folder
-  name doesn't exactly match the convention" typo bugs that the seed task, runtime lookups, and
-  this runbook currently all have to agree on by hand.
-  **Plan** (lives in the new Part 2 playbook from #38): prompt for, or read from a local untracked
-  file, the admin email/password created in step 1; authenticate against Infisical's auth API;
-  drive the REST API to create the project, environment, the 9 folders (sourced from
-  `vault.yml.example`'s naming-convention block so there's one source of truth), and the two
-  Universal Auth identities with their client secrets; print the resulting credentials for the
-  operator to drop into `vault.yml` (writing directly to the encrypted vault file is out of scope —
-  too fragile). End state: the manual runbook shrinks from 8 steps to "create org+admin → run
-  Part 2 → copy 4 values into vault → re-run with `--tags seed,semaphore`".
-  ⚠️ Verify exact endpoint paths/payloads against the deployed Infisical version before
-  implementing — the API has moved across releases (the existing `roles/infisical/tasks/seed.yml`
-  already carries this same caveat for the v3 raw-secrets routes).

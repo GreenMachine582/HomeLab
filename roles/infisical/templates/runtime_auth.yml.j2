@@ -1,25 +1,28 @@
 {{ ansible_managed | comment }}
 #
 # READ-ONLY Infisical runtime identity credentials for Phase 2+ Ansible runs —
-# node-local, NEVER committed, and (after this one-time write from the WSL
-# vault.yml during Phase 1) never needs vault.yml on this node again. Lives at
+# node-local, NEVER committed, and NEVER sourced from (or round-tripped
+# through) vault.yml: roles/infisical/tasks/bootstrap_instance.yml creates this
+# identity via Infisical's REST API during Phase 1 and renders this file
+# directly from the client ID/secret the API hands back in that same moment —
+# the only point at which real values exist. Lives at
 # {{ infisical_runtime_auth_path }} (mode 0600, {{ infisical_service_user }}-owned).
 #
 # Loaded via include_vars by roles/infisical/tasks/lookup.yml so deploy_edge.yml
 # (and future Phase 2+ playbooks) can resolve application secrets straight from
 # Infisical without ever needing a copy of vault.yml here — see CLAUDE.md
-# "Secrets" and semaphore_infisical_implementation.md Task 2.
+# "Secrets". Semaphore reads this exact same file directly, the same way
+# (roles/semaphore/tasks/main.yml), to authenticate its own Ansible runs.
 #
-# Same READ-ONLY identity already injected into Semaphore's own .env
-# (vault_infisical_runtime_client_{id,secret} — see roles/semaphore/templates/env.j2):
-# it can only read secrets, never create/edit/delete/manage projects. A leaked
-# copy of this file is no worse than a leaked Semaphore token.
+# READ-ONLY by design: this identity can only read secrets, never
+# create/edit/delete/manage projects. A leaked copy of this file is no worse
+# than a leaked Semaphore token.
 #
-# Source of truth remains the WSL vault.yml. Rotate by updating it there, then
-# re-render both copies with:
-#   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml --tags infisical,semaphore
-# To change without a full bootstrap re-run: edit this file directly on the
-# node (keep mode 0600) — see docs/TROUBLESHOOTING.md.
+# This file IS the source of truth — there is no second copy to keep in sync.
+# To rotate: generate a fresh client secret for the "runtime" identity
+# (Infisical UI -> Access Control -> Identities -> runtime -> Universal Auth —
+# the client ID stays the same), then edit this file directly on the node
+# (keep mode 0600) and restart Semaphore — see docs/TROUBLESHOOTING.md.
 
-infisical_runtime_client_id: "{{ vault_infisical_runtime_client_id }}"
-infisical_runtime_client_secret: "{{ vault_infisical_runtime_client_secret }}"
+infisical_runtime_client_id: "{{ _runtime_client_id }}"
+infisical_runtime_client_secret: "{{ _runtime_client_secret }}"

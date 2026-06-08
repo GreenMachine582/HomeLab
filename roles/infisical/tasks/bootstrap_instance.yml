@@ -1,0 +1,352 @@
+---
+# roles/infisical/tasks/bootstrap_instance.yml
+# Fully provisions a fresh Infisical instance via its REST API — org + admin
+# account + "homelab" project + "production" environment + the application
+# folders + the read-only runtime machine identity — AND seeds every
+# application secret from vault.yml into it, all in one pass: zero manual UI
+# steps, zero manual copy-paste. Included by bootstrap_edge.yml, on the edge
+# node itself, before the firewall role runs (so 127.0.0.1:8222 is reachable).
+#
+# ── Why this is gated on the bootstrap call's own result ─────────────────────
+# POST /v1/admin/bootstrap (https://infisical.com/docs/self-hosting/guides/automated-bootstrapping)
+# is a one-shot, unauthenticated "Programmatic Provisioning" endpoint: called
+# against a fresh instance it creates the admin account AND the organization
+# AND hands back an instance-admin Bearer token in a single response — and
+# refuses to run again once an instance is initialised. That refusal IS the
+# idempotency signal we need: a 200 means "fresh instance, go ahead and
+# provision and seed everything"; anything else means "already done, nothing
+# to do". No per-resource check-before-create dance required for the
+# provisioning steps — a successful bootstrap response guarantees an empty
+# project/folder/identity space to provision into. (The application-secret
+# seed below stays additive/create-if-absent regardless — same as the old
+# seed.yml — in case secrets were hand-added via the UI between runs.)
+#
+# ── Why there's no persisted "bootstrap" [write] identity any more ───────────
+# The instance-admin token this task extracts from the one-shot bootstrap
+# response (_infisical_admin_token) already has MORE access than any
+# project-scoped "admin"-role machine identity could — it can create the
+# project, folders, AND push every application secret immediately, in this
+# same play, while it's already in hand. Minting a separate persisted
+# "bootstrap" identity just to redo the same work a moment later — then
+# printing its credentials for an operator to copy into vault.yml, then
+# remembering to revoke it afterwards — would be pure ceremony with a
+# meaningfully larger blast radius (a long-lived, write-everything credential
+# sitting in an encrypted file). So the seed happens here, inline, using this
+# one-shot token directly, and only the "runtime" identity — read-only,
+# used by Phase 2+ Ansible runs and Semaphore, neither of which should ever
+# hold write access to every secret — gets created, persisted, and written
+# straight to a node-local file. Nothing to print, copy, round-trip through
+# vault.yml, or remember to revoke.
+#
+# This is what makes #39's original "only the org+admin step is inherently
+# manual" framing obsolete — and what makes the old Part 1/Part 2 split itself
+# unnecessary (see bootstrap_edge.yml): Infisical ends this task fully
+# provisioned, fully seeded, and with Semaphore's runtime credentials already
+# sitting in the node-local file it reads from — all in one pass, with no
+# checkpoint of any kind in between.
+#
+# Runs directly on the edge node — NOT delegated to localhost (unlike the old,
+# now-deleted seed.yml's Part 2 calls). infisical_api_url is
+# http://127.0.0.1:8222/api: the edge node's own loopback, where Infisical's
+# container publishes its port, and that address only resolves correctly from
+# the edge node itself. become: false matches the sibling "Wait for the API
+# port to accept connections" task: these are unauthenticated/Bearer-token
+# HTTP calls to a loopback port and need no elevated privileges.
+#
+# Also writes the freshly-minted runtime identity credentials straight to
+# infisical_runtime_auth_path (see the dedicated task below) — bypassing
+# vault.yml entirely for that node-local file, which Semaphore now reads
+# directly too (roles/semaphore/tasks/main.yml). This task runs immediately
+# after the runtime identity is created — the first point at which its real
+# values exist — so this is the definitive write of that file's real content.
+#
+# ⚠️  Verify EVERY endpoint path/payload/response-field below against the
+# deployed Infisical version's API reference before first run — none of this
+# can be exercised without a live, freshly-initialised instance, and the API
+# has moved across releases (the old seed.yml carried the same caveat for its
+# routes — now folded into this file). Specifically check: the bootstrap
+# endpoint's reject status code on a second call (assumed non-200 below),
+# identity.credentials.token's exact field path, the project/environment/
+# folder/identity/secret creation routes, and the project role slug ("viewer"
+# — confirm it exists and grants the intended read-only scope).
+
+- name: "Infisical bootstrap | Attempt one-shot instance bootstrap (org + admin + token)"
+  ansible.builtin.uri:
+    url: "{{ infisical_api_url }}/v1/admin/bootstrap"
+    method: POST
+    body_format: json
+    body:
+      email: "{{ vault_infisical_admin_email }}"
+      password: "{{ vault_infisical_admin_password }}"
+      organization: "{{ infisical_seed_organization_name }}"
+    status_code: [200, 400, 401, 403, 409]
+  register: _infisical_bootstrap_result
+  failed_when: false
+  no_log: true
+  become: false
+  tags: [infisical, bootstrap]
+
+- name: "Infisical bootstrap | Determine whether this is a fresh instance"
+  ansible.builtin.set_fact:
+    _infisical_bootstrap_fresh: "{{ _infisical_bootstrap_result.status == 200 }}"
+  tags: [infisical, bootstrap]
+
+- name: "Infisical bootstrap | SKIPPED — instance already initialised"
+  ansible.builtin.debug:
+    msg: >-
+      Skipping instance bootstrap: Infisical has already been initialised
+      (POST /v1/admin/bootstrap returned {{ _infisical_bootstrap_result.status }},
+      not 200 — expected on every run after the first). Provisioning, seeding,
+      and the runtime-credential write all happen in the same one-shot pass as
+      that call, so there's nothing left to do — the org/project/folders/
+      "runtime" identity already exist, every application secret is already
+      seeded, and /home/homelab/.infisical_runtime_auth.yml already holds that
+      identity's credentials (Semaphore and Phase 2+ Ansible runs are reading
+      from it right now). Adding a brand-new application secret later doesn't
+      need a re-run of this task — add it directly via the Infisical UI
+      instead (see TROUBLESHOOTING.md "Bootstrap playbook reports Infisical
+      already initialised"). If you need to re-provision from scratch (e.g.
+      testing), stop the stack and wipe its volumes — `docker compose -f
+      docker-compose.edge.yml rm -sf infisical infisical-db infisical-redis`
+      then remove the infisical-db/infisical-redis volumes — and re-run this
+      playbook against the now-empty instance.
+  when: not _infisical_bootstrap_fresh
+  tags: [infisical, bootstrap]
+
+- name: "Infisical bootstrap | Provision org, project, environment, folders, and identities"
+  when: _infisical_bootstrap_fresh
+  no_log: true
+  become: false
+  tags: [infisical, bootstrap]
+  block:
+    - name: "Infisical bootstrap | Extract instance-admin token and organization ID"
+      ansible.builtin.set_fact:
+        _infisical_admin_token: "{{ _infisical_bootstrap_result.json.identity.credentials.token }}"
+        _infisical_org_id: "{{ _infisical_bootstrap_result.json.organization.id }}"
+
+    - name: "Infisical bootstrap | Create the {{ infisical_seed_project_slug }} project"
+      ansible.builtin.uri:
+        url: "{{ infisical_api_url }}/v2/workspace"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _infisical_admin_token }}"
+        body_format: json
+        body:
+          projectName: "{{ infisical_seed_project_slug }}"
+          organizationId: "{{ _infisical_org_id }}"
+        status_code: [200, 201]
+      register: _infisical_project
+
+    - name: "Infisical bootstrap | Capture project ID"
+      ansible.builtin.set_fact:
+        _infisical_project_id: "{{ _infisical_project.json.project.id | default(_infisical_project.json.workspace.id) }}"
+
+    - name: "Infisical bootstrap | Create the {{ infisical_seed_environment }} environment"
+      ansible.builtin.uri:
+        url: "{{ infisical_api_url }}/v1/workspace/{{ _infisical_project_id }}/environments"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _infisical_admin_token }}"
+        body_format: json
+        body:
+          name: "{{ infisical_seed_environment | capitalize }}"
+          slug: "{{ infisical_seed_environment }}"
+        status_code: [200, 201]
+
+    - name: "Infisical bootstrap | Create application secret folders"
+      ansible.builtin.uri:
+        url: "{{ infisical_api_url }}/v1/folders"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _infisical_admin_token }}"
+        body_format: json
+        body:
+          workspaceId: "{{ _infisical_project_id }}"
+          environment: "{{ infisical_seed_environment }}"
+          name: "{{ item }}"
+          path: /
+        status_code: [200, 201]
+      loop: "{{ infisical_seed_folders }}"
+      loop_control:
+        label: "/{{ item }}"
+
+    - name: "Infisical bootstrap | Create machine identities"
+      ansible.builtin.uri:
+        url: "{{ infisical_api_url }}/v1/identities"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _infisical_admin_token }}"
+        body_format: json
+        body:
+          name: "{{ item.name }}"
+          organizationId: "{{ _infisical_org_id }}"
+        status_code: [200, 201]
+      loop: "{{ infisical_seed_identities }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: _infisical_identities
+
+    - name: "Infisical bootstrap | Attach Universal Auth to each identity"
+      ansible.builtin.uri:
+        url: "{{ infisical_api_url }}/v1/auth/universal-auth/identities/{{ item.json.identity.id }}"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _infisical_admin_token }}"
+        body_format: json
+        body:
+          clientSecretTrustedIps: [{ ipAddress: "0.0.0.0/0" }]
+          accessTokenTrustedIps: [{ ipAddress: "0.0.0.0/0" }]
+          accessTokenTTL: 2592000
+          accessTokenMaxTTL: 2592000
+        status_code: [200, 201]
+      loop: "{{ _infisical_identities.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      register: _infisical_universal_auth
+
+    - name: "Infisical bootstrap | Generate a client secret for each identity"
+      ansible.builtin.uri:
+        url: "{{ infisical_api_url }}/v1/auth/universal-auth/identities/{{ item.json.identity.id }}/client-secrets"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _infisical_admin_token }}"
+        body_format: json
+        body:
+          description: "Provisioned by bootstrap_edge.yml (#39 — instance bootstrap)"
+          numUsesLimit: 0
+        status_code: [200, 201]
+      loop: "{{ _infisical_identities.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      register: _infisical_client_secrets
+
+    - name: "Infisical bootstrap | Grant each identity access to the project (with its seeded role)"
+      ansible.builtin.uri:
+        url: "{{ infisical_api_url }}/v2/workspace/{{ _infisical_project_id }}/identity-memberships/{{ item.json.identity.id }}"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _infisical_admin_token }}"
+        body_format: json
+        body:
+          role: "{{ item.item.role }}"
+        status_code: [200, 201]
+      loop: "{{ _infisical_identities.results }}"
+      loop_control:
+        label: "{{ item.item.name }} ({{ item.item.role }})"
+
+    # ── Application-secret seed (formerly roles/infisical/tasks/seed.yml) ────
+    # Folded in here because _infisical_admin_token already has full write
+    # access — see the header's "no persisted bootstrap identity" rationale.
+    # Same map, same additive create-if-absent GET-then-POST pattern, same
+    # idempotency guarantee (existing keys are never overwritten/rotated/
+    # deleted) — just authenticated with this one-shot token instead of a
+    # separately-provisioned, separately-authenticated machine identity.
+    - name: "Infisical bootstrap | Build the vault_<service>_<field> -> /production/<folder>/<KEY> map"
+      ansible.builtin.set_fact:
+        _infisical_seed_map:
+          cloudflare/TUNNEL_ID: "{{ vault_cloudflare_tunnel_id }}"
+          cloudflare/TUNNEL_TOKEN: "{{ vault_cloudflare_tunnel_token }}"
+          cloudflare/API_TOKEN: "{{ vault_cloudflare_api_token }}"
+          pihole/WEB_PASSWORD: "{{ vault_pihole_web_password }}"
+          grafana/ADMIN_PASSWORD: "{{ vault_grafana_admin_password }}"
+          discord/WEBHOOK_CRITICAL: "{{ vault_discord_webhook_critical }}"
+          discord/WEBHOOK_WARNING: "{{ vault_discord_webhook_warning }}"
+          discord/WEBHOOK_INFO: "{{ vault_discord_webhook_info }}"
+          discord/ALERTS_WEBHOOK: "{{ vault_discord_alerts_webhook }}"
+          discord/PUBLIC_KEY: "{{ vault_discord_public_key }}"
+          ntfy/TOKEN: "{{ vault_ntfy_token }}"
+          camunda/DB_USER: "{{ vault_camunda_db_user }}"
+          camunda/DB_PASSWORD: "{{ vault_camunda_db_password }}"
+          camunda/ADMIN_USER: "{{ vault_camunda_admin_user }}"
+          camunda/ADMIN_PASSWORD: "{{ vault_camunda_admin_password }}"
+          camunda/LICENSE_KEY: "{{ vault_camunda_license_key }}"
+          n8n/USER: "{{ vault_n8n_user }}"
+          n8n/PASSWORD: "{{ vault_n8n_password }}"
+          n8n/OWNER_EMAIL: "{{ vault_n8n_owner_email }}"
+          n8n/OWNER_PASSWORD: "{{ vault_n8n_owner_password }}"
+          n8n/ENCRYPTION_KEY: "{{ vault_n8n_encryption_key }}"
+          n8n/WEBHOOK_SECRET: "{{ vault_n8n_webhook_secret }}"
+          greentechhub/DB_USER: "{{ vault_greentechhub_db_user }}"
+          greentechhub/DB_PASSWORD: "{{ vault_greentechhub_db_password }}"
+          greentechhub/DJANGO_SECRET_KEY: "{{ vault_django_secret_key }}"
+          deploy/WEBHOOK_SECRET: "{{ vault_deploy_webhook_secret }}"
+
+    - name: "Infisical bootstrap | Check which application-secret keys already exist (read before write — never overwrite)"
+      ansible.builtin.uri:
+        url: "{{ infisical_api_url }}/v3/secrets/raw/{{ item.key | basename }}?workspaceSlug={{ infisical_seed_project_slug }}&environment={{ infisical_seed_environment }}&secretPath=/{{ item.key | dirname }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ _infisical_admin_token }}"
+        status_code: [200, 404]
+      loop: "{{ _infisical_seed_map | dict2items(key_name='key', value_name='value') }}"
+      loop_control:
+        label: "/production/{{ item.key }}"
+      register: _infisical_seed_existing
+
+    - name: "Infisical bootstrap | Create only the application-secret keys that don't exist yet (additive)"
+      ansible.builtin.uri:
+        url: "{{ infisical_api_url }}/v3/secrets/raw/{{ item.item.key | basename }}"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _infisical_admin_token }}"
+        body_format: json
+        body:
+          workspaceSlug: "{{ infisical_seed_project_slug }}"
+          environment: "{{ infisical_seed_environment }}"
+          secretPath: "/{{ item.item.key | dirname }}"
+          secretValue: "{{ item.item.value }}"
+        status_code: 200
+      loop: "{{ _infisical_seed_existing.results }}"
+      loop_control:
+        label: "/production/{{ item.item.key }}"
+      when: item.status == 404
+
+    - name: "Infisical bootstrap | Build name -> {clientId, clientSecret} map for the summary"
+      ansible.builtin.set_fact:
+        _infisical_provisioned_credentials: >-
+          {{ _infisical_provisioned_credentials | default({}) | combine({
+            _infisical_identities.results[idx].item.name: {
+              'client_id': _infisical_universal_auth.results[idx].json.identity.id,
+              'client_secret': _infisical_client_secrets.results[idx].json.clientSecret
+            }
+          }) }}
+      loop: "{{ range(0, _infisical_identities.results | length) | list }}"
+      loop_control:
+        loop_var: idx
+        label: "{{ _infisical_identities.results[idx].item.name }}"
+
+    # The definitive (and only) write of this file: this is the first point in
+    # the play at which the runtime identity — and therefore real values for
+    # it — exist. Binds the freshly-minted client ID/secret in via task `vars:`
+    # (template expects _runtime_client_id/_secret — see runtime_auth.yml.j2)
+    # so the same template/format/permissions serve both this and any future
+    # manual re-render after a credential rotation. No vault.yml round-trip
+    # for this node-local file at all — see CLAUDE.md "Secrets".
+    - name: "Infisical bootstrap | Write runtime lookup credentials from freshly-minted values (no vault.yml round-trip)"
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/infisical/templates/runtime_auth.yml.j2"
+        dest: "{{ infisical_runtime_auth_path }}"
+        owner: "{{ infisical_service_user }}"
+        group: "{{ infisical_service_user }}"
+        mode: "0600"
+      vars:
+        _runtime_client_id: "{{ _infisical_provisioned_credentials.runtime.client_id }}"
+        _runtime_client_secret: "{{ _infisical_provisioned_credentials.runtime.client_secret }}"
+
+    - name: "Infisical bootstrap | Summary"
+      ansible.builtin.debug:
+        msg: >-
+          Infisical fully provisioned AND seeded — nothing left to copy or click.
+          Org "{{ infisical_seed_organization_name }}", project
+          "{{ infisical_seed_project_slug }}", environment
+          "{{ infisical_seed_environment }}", {{ infisical_seed_folders | length }}
+          folders, and the read-only "runtime" machine identity are all in place.
+          {{ _infisical_seed_existing.results | selectattr('status', 'equalto', 404) | list | length }}
+          application secret(s) were created from vault.yml
+          ({{ _infisical_seed_existing.results | selectattr('status', 'equalto', 200) | list | length }}
+          already present and left untouched — additive, never overwritten).
+          The runtime identity's credentials have already been written to
+          {{ infisical_runtime_auth_path }} on this node, so deploy_edge.yml's
+          Infisical lookups (Phase 2) and Semaphore (coming up next in this
+          same play) both resolve their secrets correctly right now — no
+          vault.yml edit, no printed values to paste anywhere, no second pass.

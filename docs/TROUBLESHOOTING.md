@@ -346,50 +346,55 @@ If you can't reach `http://<edge-tailscale-ip>:8222` or `:3010`, start with the
 always "the requesting device isn't on the tailnet" or "ACL/firewall blocks the
 port," not the containers themselves.
 
-### Bootstrap keeps skipping the Infisical seed step
+### Bootstrap playbook reports Infisical already initialised — nothing provisioned or seeded
 
-This is expected on a fresh instance — not a failure. Phase 1 is split into
-two playbooks (`bootstrap_edge.yml` Part 1, then `bootstrap_edge_part2.yml`)
-specifically because the seed step is gated on
-`vault_infisical_bootstrap_client_id/secret` actually being set (not the
-`"changeme"` placeholder), and that machine identity can only be minted
-*from inside an already-initialised Infisical* — org, admin account, project,
-environment, and the identity itself all have to exist first. Nothing in
-Ansible can automate a system into having created its own credentials before it
-existed. (`seed.yml`'s gate also acts as a safety net inside Part 2 itself, in
-case you run it before finishing the manual setup.)
+This is expected on every run after the first — not a failure. The entire
+provision-and-seed block (`roles/infisical/tasks/bootstrap_instance.yml`) is
+gated on the one-shot `POST /v1/admin/bootstrap` call's own result: a fresh,
+uninitialised instance returns `200` with an instance-admin token, and in that
+single pass the play provisions the org, admin account, project, environment,
+folders, and read-only `runtime` identity; seeds every `[seed → ...]`
+application secret from `vault.yml` into its mapped
+`/production/<folder>/<KEY>` path; and writes the `runtime` identity's
+freshly-minted credentials straight to `/home/homelab/.infisical_runtime_auth.yml`.
+Once that's happened, the same call returns a non-`200` status
+("already initialised") and the **entire** block is skipped — there's nothing
+left to provision, and there's no longer an admin token available to
+authenticate a re-seed with (the one-shot call only returns one the first
+time). A `debug` message in `bootstrap_instance.yml` confirms the skip and
+explains why; see that file's header comment for the full "why this is gated
+on the bootstrap call's own result" rationale.
 
-Complete [BOOTSTRAP.md → First-run Infisical Setup](../BOOTSTRAP.md#first-run-infisical-setup)
-(create the org/project/folders/identities, write the resulting
-`vault_infisical_bootstrap_client_*`/`vault_infisical_runtime_client_*` values
-into the vault), then run Part 2:
+**Need to add a brand-new application secret later?** The playbook's
+provisioning-and-seed block is now permanently a no-op against an initialised
+instance, so re-running it won't pick up new entries you add to
+`_infisical_seed_map`. Add the secret directly via the Infisical web UI
+instead — it's Tailscale-reachable at `http://<edge-tailscale-ip>:8222`,
+trivial for occasional one-offs. See [What the Bootstrap Playbook
+Does](../BOOTSTRAP.md#what-the-bootstrap-playbook-does) for the full
+"adding a new service" checklist (vault entry, seed-map entry, folder, etc.).
 
-```bash
-ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge_part2.yml
-```
-
-The `debug` message printed when the seed is skipped (`roles/infisical/tasks/seed.yml`)
-repeats these exact steps and the run command.
-
-### Seed task fails with an authentication or 4xx/5xx error
+### Bootstrap instance/seed step fails with an authentication or 4xx/5xx error
 
 ```bash
 # From the edge node — confirm the API is actually up
 curl -sf http://127.0.0.1:8222/api/status
 
-# Re-run just the seed step with verbose output
+# Re-run just the provision-and-seed step with verbose output (only does
+# anything against a FRESH/uninitialised instance — see the skip behavior above)
 cd /opt/homelab
-ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge_part2.yml \
-  --tags infisical,seed -vvv
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
+  --tags infisical,bootstrap -vvv
 ```
 
 Likely causes:
-- **Wrong/revoked credentials** — the bootstrap identity was disabled after a previous seed (step 8 of the runbook tells you to do exactly this). Re-enable it in the Infisical UI for a deliberate re-seed, then disable it again afterward.
-- **Project/environment/folder slug mismatch** — `infisical_seed_project_slug` / `infisical_seed_environment` (`roles/infisical/defaults/main.yml`, default `homelab` / `production`) must match what you created in the UI exactly, and the nine folders must match the "Secret naming convention" block in `vault.yml.example`.
-- **API shape drift** — the seed task's endpoint paths (Universal Auth login, `/v3/secrets/raw/...`) are version-pinned assumptions, flagged with a `⚠️` comment at the top of `seed.yml`. Check them against the deployed Infisical version's API reference if errors mention unexpected fields or 404s on routes that should exist.
+- **Project/environment/folder slug mismatch** — `infisical_seed_project_slug` / `infisical_seed_environment` / `infisical_seed_folders` (`roles/infisical/defaults/main.yml`, default `homelab` / `production` / the nine folders in the "Secret naming convention" block in `vault.yml.example`) drive *both* what `bootstrap_instance.yml` provisions and what the lookup tasks expect — they should always agree by construction now. A mismatch here would mean one of those defaults was edited without the other, or Infisical's instance was provisioned by some other means.
+- **API shape drift** — `bootstrap_instance.yml`'s endpoint paths, payload shapes, and response field paths (the one-shot bootstrap call, project/environment/folder/identity creation, Universal Auth attach + client-secret generation, and the `/v3/secrets/raw/...` seed routes) are all version-pinned assumptions, flagged with a `⚠️` comment at the top of that file. Check them against the deployed Infisical version's API reference if errors mention unexpected fields or 404s on routes that should exist.
+- **Mid-run failure leaves a half-provisioned instance** — because the whole block runs at most once (gated on the one-shot bootstrap call returning `200`), a failure partway through (e.g. folders created but identity creation fails) can't simply be retried with a second `ansible-playbook` run — the next attempt sees an already-initialised instance and skips everything. Recovery means either finishing the remaining steps by hand via the Infisical UI, or wiping Infisical's volumes and retrying against a clean instance (see [Restoring a PostgreSQL backup](#restoring-a-postgresql-backup) and the disaster-recovery steps below).
 
-The seed is **additive and idempotent** — re-running it never overwrites or
-deletes an existing key, so retrying after a fix is always safe.
+The application-secret seed itself is **additive and idempotent** — on a
+successful run it never overwrites or deletes an existing key, so retrying
+(against a fresh instance) after a fix is always safe.
 
 ### Vault → Infisical conversion status
 
@@ -404,9 +409,12 @@ never receives a copy of `vault.yml`, see [CLAUDE.md
 "Secrets"](../CLAUDE.md#secrets)) now resolves `cloudflare/TUNNEL_TOKEN` and
 `pihole/WEB_PASSWORD` from Infisical at runtime via `roles/infisical/tasks/lookup.yml`,
 authenticating with a node-local, read-only Universal Auth identity
-(`/home/homelab/.infisical_runtime_auth.yml`, rendered once during Phase 1 from
-`vault_infisical_runtime_client_*` — the same identity Semaphore uses, never
-routed through a copied `vault.yml`).
+(`/home/homelab/.infisical_runtime_auth.yml`, written directly during Phase 1
+by `roles/infisical/tasks/bootstrap_instance.yml` the instant the identity's
+credentials are minted — the same identity, and the same file, Semaphore
+reads from. These credentials never exist in `vault.yml` at all; see
+[CLAUDE.md "Secrets"](../CLAUDE.md#secrets) for why there's no
+write-capable "bootstrap" identity or `vault.yml` round-trip any more).
 
 **Everything else remains unconverted** — Stage 1 (`bootstrap_edge.yml`, run
 from WSL where `vault.yml` lives) and every Stage 3+ playbook
@@ -427,11 +435,13 @@ scope for this change. Until that lands:
   are lost, the live runtime source for `deploy_edge.yml`/Semaphore, and the
   foundation for the eventual full conversion
 - Adding a new application secret means adding it to `vault.yml` **and** to
-  `_infisical_seed_map` in `roles/infisical/tasks/seed.yml` (plus its folder in
-  Infisical) if you want it seeded too — the two are not auto-synced. If a
-  converted role (currently only `deploy_edge.yml`) needs to read it at
-  runtime, also add its `<folder>/<KEY>` path to that play's
-  `infisical_lookup_keys`
+  `_infisical_seed_map` in `roles/infisical/tasks/bootstrap_instance.yml`
+  (plus its folder in Infisical) if you want it seeded too — the two are not
+  auto-synced, and (per the section above) the seed only actually *runs*
+  against a fresh, uninitialised instance, so an existing instance needs the
+  secret added by hand via the Infisical UI. If a converted role (currently
+  only `deploy_edge.yml`) needs to read it at runtime, also add its
+  `<folder>/<KEY>` path to that play's `infisical_lookup_keys`
 
 ---
 
@@ -577,8 +587,17 @@ docker exec -it infisical-db psql -U infisical -d infisical -c "\dt"
 > the exact value used when the backup was taken** — it's a permanent,
 > non-rotatable key (see the comment above it in `vault.yml.example`); a
 > mismatched key leaves every secret in the restored database permanently
-> undecryptable. If Infisical itself is unrecoverable, fall back to seeding a
-> fresh instance from `vault.yml` — see [First-run Infisical Setup](../BOOTSTRAP.md#first-run-infisical-setup).
+> undecryptable. If Infisical itself is unrecoverable, fall back to wiping it
+> and re-running the bootstrap playbook
+> (`ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml`):
+> its one-shot `POST /v1/admin/bootstrap` call detects the fresh, empty
+> instance and automatically re-provisions everything from scratch — org,
+> admin, project, environment, folders, the read-only `runtime` identity —
+> re-seeds every application secret straight from `vault.yml` (the canonical
+> fallback source), and writes fresh runtime credentials to the node-local
+> file. Nothing is printed for you to copy anywhere; the instance is
+> immediately usable. See [What the Bootstrap Playbook
+> Does](../BOOTSTRAP.md#what-the-bootstrap-playbook-does).
 
 ### Elasticsearch heap pressure
 
@@ -658,14 +677,29 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
    ```bash
    ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
    ```
-   This brings Infisical and Semaphore back up too. If you still have the
-   original `vault_infisical_bootstrap_client_*`/`vault_infisical_runtime_client_*`
-   credentials in the vault (and `vault_infisical_encryption_key` is unchanged),
-   restore the Postgres backup first (see [Restoring a PostgreSQL backup](#restoring-a-postgresql-backup))
-   to bring Infisical back with its existing org/identities intact — otherwise
-   you'll need to redo [First-run Infisical Setup](../BOOTSTRAP.md#first-run-infisical-setup)
-   against a fresh instance and re-seed from `vault.yml` (which remains the
-   canonical fallback source for every seeded secret).
+   This single pass brings Infisical (and Semaphore) back up, and handles
+   either recovery path automatically — no credentials to copy anywhere
+   either way:
+   - **If you still have a usable Postgres backup** (and
+     `vault_infisical_encryption_key` is unchanged — see the callout above),
+     restore it first (see [Restoring a PostgreSQL
+     backup](#restoring-a-postgresql-backup)) so Infisical comes back with its
+     existing org/project/folders/identity intact. The one-shot
+     `POST /v1/admin/bootstrap` call (`roles/infisical/tasks/bootstrap_instance.yml`)
+     detects the non-empty instance, skips provisioning and seeding entirely
+     (confirmed by a `debug` message), and leaves the existing node-local
+     runtime credentials file untouched — Semaphore and Phase 2+ keep working
+     with no further action.
+   - **Otherwise**, let the playbook run through against the fresh, empty
+     instance: the bootstrap call returns `200`, and in one pass it
+     re-provisions everything from scratch via the REST API (org, admin,
+     project, environment, folders, the read-only `runtime` identity),
+     re-seeds every application secret straight from `vault.yml` (the
+     canonical fallback source for every seeded secret), and writes fresh
+     runtime credentials to `/home/homelab/.infisical_runtime_auth.yml` —
+     which the same play's Semaphore step then reads to come back up
+     authenticated. See [What the Bootstrap Playbook
+     Does](../BOOTSTRAP.md#what-the-bootstrap-playbook-does).
 4. Run Phase 2 to restore edge services:
    ```bash
    ansible-playbook playbooks/deploy_edge.yml

@@ -15,10 +15,41 @@ infisical_db_user: infisical
 infisical_db_name: infisical
 infisical_redis_port: 6379
 
-# ── Seed (see tasks/seed.yml and the "Secret naming convention" in vault.yml.example) ──
-# Project/environment slugs that the /production/<folder>/<KEY> paths are seeded into.
+# ── Seed (see tasks/bootstrap_instance.yml and the "Secret naming convention"
+# in vault.yml.example) — project/environment slugs the /production/<folder>/<KEY>
+# paths are seeded into. (The seed itself runs once, inline, during instance
+# bootstrap — using the one-shot call's instance-admin token, not a persisted
+# machine identity. See bootstrap_instance.yml's header for why.)
 infisical_seed_project_slug: homelab
 infisical_seed_environment: production
+
+# ── Instance bootstrap (see tasks/bootstrap_instance.yml) ───────────────────
+# Single source of truth for the org/project/folder/identity shape that
+# bootstrap_instance.yml provisions via the REST API on a fresh instance —
+# must agree with the "Secret naming convention" block in vault.yml.example
+# (folder names feed straight into the seed step's /production/<folder>/<KEY>
+# paths and lookup.yml's runtime resolution; a mismatch here breaks both).
+infisical_seed_organization_name: homelab
+
+infisical_seed_folders:
+  - camunda
+  - n8n
+  - discord
+  - cloudflare
+  - pihole
+  - grafana
+  - ntfy
+  - greentechhub
+  - deploy
+
+# Project role slug — ⚠️ verify against the deployed Infisical version; this is
+# a built-in project role name and may differ across releases. read-only:
+# Phase 2+ playbooks (and Semaphore) resolve application secrets at runtime —
+# nothing else needs a persisted machine identity. The one-time application
+# secret seed authenticates with the bootstrap call's own instance-admin token
+# (see bootstrap_instance.yml) — nothing to provision, persist, or revoke for it.
+infisical_seed_identities:
+  - { name: runtime, role: viewer }
 
 # ── Runtime lookups (see tasks/lookup.yml) ──────────────────────────────────
 # Where the READ-ONLY runtime identity's Universal Auth credentials are written,
