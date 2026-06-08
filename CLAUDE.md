@@ -76,7 +76,7 @@ Services are split across four compose files by concern:
 
 ### Secrets
 
-`inventories/group_vars/all/vault.yml` (Ansible Vault) lives **only on the WSL/PC control host** — it is never copied to any node, not even `homelab-edge` (see "Important Constraints"). The vault password file is `.vault_pass` (gitignored, also WSL-only). It still backs Phase 1 bootstrap (`bootstrap_edge.yml`, run from WSL) and every Stage 3+ playbook (`deploy_observe.yml`, `deploy_svc.yml`, `healthcheck.yml`, `update_all.yml`, `backup.yml`, `rollback.yml`, `apply_firewall.yml`), which still read `{{ vault_* }}` directly — converting these is **deferred**, see `docs/TROUBLESHOOTING.md` "Vault → Infisical conversion status".
+`inventories/group_vars/all/vault.yml` (Ansible Vault) lives **only on the WSL/PC control host** — it is never copied to any node, not even `homelab-edge` (see "Important Constraints"). The vault password file is `.vault_pass` (gitignored, also WSL-only). It still backs Phase 1 bootstrap (`bootstrap_edge.yml` Part 1 + `bootstrap_edge_part2.yml`, both run from WSL) and every Stage 3+ playbook (`deploy_observe.yml`, `deploy_svc.yml`, `healthcheck.yml`, `update_all.yml`, `backup.yml`, `rollback.yml`, `apply_firewall.yml`), which still read `{{ vault_* }}` directly — converting these is **deferred**, see `docs/TROUBLESHOOTING.md` "Vault → Infisical conversion status".
 
 `deploy_edge.yml` (Phase 2 — runs on `homelab-edge` itself, which never receives `vault.yml`) is the first **converted** playbook: it resolves its application secrets (`cloudflare/TUNNEL_TOKEN`, `pihole/WEB_PASSWORD`) at runtime from Infisical via `roles/infisical/tasks/lookup.yml`, authenticating with a node-local, read-only Universal Auth identity (credentials rendered once to `/home/homelab/.infisical_runtime_auth.yml` from `vault_infisical_runtime_client_*` during Phase 1 — never routed through a copied `vault.yml`). This is the reference implementation for the rest of the `secret_backend: infisical | vault` helper abstraction, which remains **deferred** for Stage 3+ roles.
 
@@ -94,8 +94,13 @@ Semaphore (web UI over this repo's playbooks, edge-only, Tailscale-only) reads s
 # Test connectivity (Phase 1 bootstrap inventory — from PC, uses admin user)
 ansible -i inventories/bootstrap.ini edge_bootstrap -m ping
 
-# Phase 1: Bootstrap the edge node from your PC
+# Phase 1, Part 1: Bootstrap the edge node from your PC (base system + Infisical)
 ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
+
+# ...complete BOOTSTRAP.md "First-run Infisical Setup" (manual: org/admin/project/identities)...
+
+# Phase 1, Part 2: seed Infisical and bring up Semaphore
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge_part2.yml
 
 # Phase 2: Deploy edge services (run on edge as homelab user)
 ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
@@ -186,4 +191,4 @@ The `deploy` user has sudo restricted to `/usr/bin/ansible-playbook` only. No sh
 - SSH port is non-standard, controlled by `ssh_port` in `inventories/group_vars/all/overrides.yml`. Applied to `sshd_config`, UFW rules, and fail2ban jails — change it in one place.
 - **Firewall rules are not applied by `deploy_edge.yml`** — they are set during Phase 1 and persist. To update UFW rules (e.g. after provisioning a new node or adding a service) run `playbooks/apply_firewall.yml`.
 - **Infisical and Semaphore are deliberately Tailscale-only** — no Pi-hole hostname, no Caddy vhost; UFW scopes ports 8222/3010 to `tailscale_cgnat_range` (`100.64.0.0/10`, `inventories/group_vars/all/main.yml`). Do not add LAN-reachable routes for either — they hold/wield every secret and this repo's playbooks respectively.
-- **The Infisical seed step is gated, not unconditional** — it requires the bootstrap machine identity to already exist, which is impossible on a fresh instance (Infisical has to be initialized — org/admin/project/identities — before it can mint its own credentials). First bootstrap run skips it with instructions; complete `BOOTSTRAP.md` "First-run Infisical Setup" then re-run with `--tags infisical,seed,semaphore`. Don't "fix" this by making the seed unconditional.
+- **The Infisical seed step is gated, not unconditional** — it requires the bootstrap machine identity to already exist, which is impossible on a fresh instance (Infisical has to be initialized — org/admin/project/identities — before it can mint its own credentials). This is *why* Phase 1 bootstrap is split into `bootstrap_edge.yml` (Part 1 — brings Infisical up, then stops) and `bootstrap_edge_part2.yml` (Part 2 — seeds it and brings up Semaphore): the manual checkpoint between them is `BOOTSTRAP.md` "First-run Infisical Setup". `seed.yml`'s gate also remains as a safety net inside Part 2 — running it before that checkpoint just skips with instructions. Don't "fix" this by making the seed unconditional.

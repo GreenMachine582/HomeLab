@@ -75,7 +75,8 @@ homelab/
     homelab-svc-03.yml        # Jellyfin: media paths, transcoding settings
 
   playbooks/
-    bootstrap_edge.yml        # Phase 1: initial edge setup
+    bootstrap_edge.yml        # Phase 1, Part 1: initial edge setup + Infisical bring-up
+    bootstrap_edge_part2.yml  # Phase 1, Part 2: Infisical seed + Semaphore (after manual org/admin setup)
     bootstrap_node.yml        # Phase 3: bootstrap a new node
     deploy_edge.yml           # Phase 2: deploy edge services
     deploy_observe.yml        # Phase 3: deploy monitoring stack

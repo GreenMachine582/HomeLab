@@ -201,11 +201,15 @@ Because every node has its own Tailscale connection, the edge going dark has no 
 manage any other node over VPN. LAN access (direct IP on `ssh_port`) remains available regardless.
 
 > **`homelab-edge` joins the tailnet during Phase 1** (not Phase 2, as every
-> other node does) — `bootstrap_edge.yml` brings Tailscale up before Infisical
-> and Semaphore, because both are Tailscale-only services that must be
-> reachable (for the Phase 1 seed task, and for the operator afterwards) by
-> the time bootstrap finishes. `deploy_edge.yml` re-runs the `tailscale` role
-> in Phase 2 too — idempotent, a no-op once the node is already joined.
+> other node does) — `bootstrap_edge.yml` (Part 1) brings Tailscale up before
+> Infisical, because both Infisical and Semaphore (brought up later, in Part 2 —
+> see [BOOTSTRAP.md "First-run Infisical
+> Setup"](../BOOTSTRAP.md#first-run-infisical-setup)) are Tailscale-only
+> services that must be reachable — for the Part 2 seed task (which talks to
+> Infisical over its Tailscale IP, since by then the firewall has already
+> restricted :8222 to the tailnet), and for the operator throughout — by the
+> time Phase 1 finishes. `deploy_edge.yml` re-runs the `tailscale` role in
+> Phase 2 too — idempotent, a no-op once the node is already joined.
 
 ### ACLs
 

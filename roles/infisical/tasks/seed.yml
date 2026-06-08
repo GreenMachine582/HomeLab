@@ -45,15 +45,16 @@
     msg: >-
       Skipping the seed: vault_infisical_bootstrap_client_id/secret are still
       "changeme" (expected on a fresh instance — these can't exist before
-      Infisical does). Infisical is up at http://{{ ansible_host }}:8222 over
-      Tailscale. Complete its one-time setup now (see BOOTSTRAP.md "First-run
+      Infisical does). Infisical is up at
+      http://{{ _edge_tailscale_ip.stdout }}:8222 over Tailscale. Complete its
+      one-time setup now (see BOOTSTRAP.md "First-run
       Infisical setup": create the org, admin account, "homelab" project, a
       "production" environment, the /camunda /n8n /discord /cloudflare /pihole
       /grafana /ntfy /greentechhub /deploy folders, and the bootstrap [write]
       + runtime [read-only] machine identities). Write the resulting
       vault_infisical_bootstrap_client_*/vault_infisical_runtime_client_*
       values into vault.yml, re-encrypt it, then re-run:
-        ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml --tags infisical,seed,semaphore
+        ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge_part2.yml
   when: not _infisical_seed_ready
   tags: [infisical, seed]
 

@@ -1,14 +1,20 @@
 ---
 # playbooks/bootstrap_edge.yml
 #
-# Phase 1 — Run from your PC against a fresh homelab-edge OS install.
-# Converts the node into the Ansible control node for the entire homelab.
+# Phase 1, Part 1 of 2 — Run from your PC against a fresh homelab-edge OS
+# install. Converts the node into the Ansible control node for the homelab,
+# hardens it, and brings Infisical online — then hands off to a manual
+# checkpoint (Infisical's first-run org/admin setup) before Part 2 finishes
+# the job.
 #
 # Usage:
 #   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
 #
 # Requires: roles/users, roles/base_hardening, roles/docker, roles/tailscale,
-#           roles/infisical, roles/semaphore, roles/firewall
+#           roles/infisical, roles/firewall
+# Then:     manually create the Infisical org + admin account — see
+#           BOOTSTRAP.md "First-run Infisical Setup" steps 1-5 — and run
+#           playbooks/bootstrap_edge_part2.yml to finish Phase 1.
 # See: BOOTSTRAP.md § Phase 1
 
 - name: "Bootstrap | Edge | Base system, users, and access"
@@ -18,9 +24,10 @@
 
   vars:
     play_description: >
-      One-time bootstrap of homelab-edge from a fresh OS install.
-      Creates system users, installs Docker and Ansible, clones the repo,
-      hardens SSH, and configures the firewall. Safe to re-run.
+      Part 1 of the homelab-edge bootstrap. Creates system users, installs
+      Docker and Ansible, clones the repo, hardens SSH, brings Infisical
+      online, and configures the firewall. Safe to re-run. Ends with a
+      manual checkpoint — see the final debug message for what's next.
 
   pre_tasks:
     - name: "Preflight | Check required local files exist"
@@ -56,17 +63,15 @@
           - homelab_repo_branch is defined
           - lan_subnet is defined
           - vault_infisical_encryption_key is defined
-          - vault_infisical_bootstrap_client_id is defined
-          - vault_infisical_bootstrap_client_secret is defined
           - vault_infisical_runtime_client_id is defined
           - vault_infisical_runtime_client_secret is defined
-          - vault_semaphore_admin_user is defined
-          - vault_semaphore_admin_password is defined
         fail_msg: >-
           Required variable undefined — check group_vars/all/main.yml, vault.yml and
-          overrides.yml. Infisical/Semaphore now come up during Phase 1, so their
-          vault_infisical_*/vault_semaphore_* entries (see vault.yml.example) must
-          already be set before bootstrapping.
+          overrides.yml. Infisical now comes up during Part 1, so its
+          vault_infisical_encryption_key/vault_infisical_runtime_client_* entries
+          (see vault.yml.example) must already be set before bootstrapping.
+          (vault_infisical_bootstrap_client_*/vault_semaphore_* aren't needed until
+          Part 2 — they come from the manual Infisical first-run setup.)
       delegate_to: localhost
       become: false
 
@@ -235,20 +240,19 @@
         recurse: true
       tags: [repo]
 
-    # ── Infisical + Semaphore ────────────────────────────────────────────────
-    # Brought up here, in Phase 1, rather than left to deploy_edge.yml's full-stack
-    # `docker compose up`: the brief requires both services live and Infisical
-    # seeded with application secrets by the end of bootstrap, so that Phase 2+
-    # playbooks can assume Infisical is the canonical app-secret store from their
-    # very first run. Brought up individually (not the whole edge stack) so
-    # cloudflared/Caddy/Pi-hole still come up under deploy_edge.yml's control,
-    # as before.
+    # ── Infisical ────────────────────────────────────────────────────────────
+    # Brought up here, in Part 1, rather than left to deploy_edge.yml's full-stack
+    # `docker compose up`: Phase 2+ playbooks need Infisical live and reachable
+    # from their very first run — deploy_edge.yml resolves its own application
+    # secrets from it (roles/infisical/tasks/lookup.yml). Brought up individually
+    # (not the whole edge stack) so cloudflared/Caddy/Pi-hole still come up under
+    # deploy_edge.yml's control, as before.
     #
-    # Reachability during this window: the firewall task below has not run yet,
-    # so the node still has its OS-default (permissive) inbound policy — the
-    # seed task can reach Infisical over the LAN. Once "Firewall | Configure and
-    # enable" runs at the end of this play, ports 8222/3010 become Tailscale-only
-    # (group_vars/edge.yml ufw_rules) — the steady-state access path thereafter.
+    # Seeding it with application secrets and bringing up Semaphore both wait for
+    # Part 2 — they need machine identities that can only be minted from inside an
+    # already-initialised Infisical (org, admin account, project, environment —
+    # see BOOTSTRAP.md "First-run Infisical Setup"), an inherently manual
+    # checkpoint that has to sit between this play and Part 2.
     - name: "Infisical | Render operational .env (node-generated secrets)"
       ansible.builtin.include_role:
         name: infisical
@@ -270,25 +274,6 @@
       become: false
       tags: [infisical]
 
-    - name: "Infisical | Seed application secrets from the WSL vault.yml (additive, create-if-absent)"
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/infisical/tasks/seed.yml"
-      vars:
-        infisical_api_url: "http://{{ ansible_host }}:8222/api"
-      tags: [infisical, seed]
-
-    - name: "Semaphore | Render operational .env (node-generated + vault-seeded secrets)"
-      ansible.builtin.include_role:
-        name: semaphore
-      tags: [semaphore]
-
-    - name: "Docker | Bring up Semaphore (db, app)"
-      ansible.builtin.command:
-        cmd: docker compose -f docker-compose.edge.yml up -d semaphore-db semaphore
-        chdir: "{{ homelab_repo_path }}"
-      become_user: homelab
-      changed_when: true
-      tags: [semaphore]
-
     - name: "Firewall | Configure and enable"
       ansible.builtin.include_role:
         name: firewall
@@ -301,18 +286,16 @@
       tags: [firewall]
 
   post_tasks:
-    - name: "Meta | Bootstrap complete"
+    - name: "Meta | Part 1 complete"
       ansible.builtin.debug:
         msg: >
-          homelab-edge bootstrap complete — base system, users, Docker,
-          Tailscale, Infisical, and Semaphore are up, and the firewall is
-          configured. Infisical (http://{{ ansible_host }}:8222 over Tailscale)
-          and Semaphore (http://{{ ansible_host }}:3010 over Tailscale) are
-          reachable. If this was a fresh instance, complete "First-run
-          Infisical Setup" in BOOTSTRAP.md before continuing — Phase 2 needs
-          the runtime identity it creates, then re-run with
-          --tags infisical,seed,semaphore to seed Infisical and render
-          Semaphore's .env.
-            ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
-          from the edge as 'homelab', or directly from your PC/WSL — see
-          BOOTSTRAP.md "Phase 2: Edge -> Self-Deploy".
+          homelab-edge Part 1 complete — base system, users, Docker, Tailscale,
+          and Infisical are up, and the firewall is configured (port 8222 is
+          now Tailscale-only — find the edge's tailnet IP via `tailscale status`
+          or the admin console, then browse to http://<that-ip>:8222). Now
+          complete its first-run setup — BOOTSTRAP.md "First-run Infisical
+          Setup" steps 1-5: create the org + admin account, the "homelab"
+          project, the "production" environment, the nine secret folders, and
+          the bootstrap [write] + runtime [read-only] machine identities —
+          then write their credentials into vault.yml. Finish Phase 1 with:
+            ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge_part2.yml

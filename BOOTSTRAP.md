@@ -27,8 +27,8 @@ steps are kept to the absolute minimum.
     * [1.8 Set Up Tailscale OAuth Client](#18-set-up-tailscale-oauth-client)
     * [1.9 Create Ansible Vault and Override Config](#19-create-ansible-vault-and-override-config)
     * [1.10 Configure Bootstrap Inventory](#110-configure-bootstrap-inventory)
-    * [1.11 Run the Bootstrap Playbook](#111-run-the-bootstrap-playbook)
-    * [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does)
+    * [1.11 Run the Bootstrap Playbook (Part 1)](#111-run-the-bootstrap-playbook-part-1)
+    * [What the Bootstrap Playbooks Do](#what-the-bootstrap-playbooks-do)
     * [First-run Infisical Setup](#first-run-infisical-setup)
   * [Phase 2: Edge → Self-Deploy](#phase-2-edge--self-deploy)
   * [Phase 3: Edge → Other Nodes](#phase-3-edge--other-nodes)
@@ -397,7 +397,14 @@ homelab-edge | SUCCESS => {
 
 ---
 
-### 1.11 Run the Bootstrap Playbook
+### 1.11 Run the Bootstrap Playbook (Part 1)
+
+Phase 1 is split into two playbooks around Infisical's first-run checkpoint —
+its org/admin/project/identities can't be created until Infisical itself is up
+and running, which only happens partway through bootstrap. Part 1 gets it
+running and hands off to a manual setup step; [Part
+2](#first-run-infisical-setup) finishes the job. See [What the Bootstrap
+Playbooks Do](#what-the-bootstrap-playbooks-do) for the full breakdown.
 
 Make sure the SSH key is loaded in `ssh-agent` (step 1.7) before running.
 
@@ -415,16 +422,27 @@ No password prompts — the SSH key passphrase is handled by `ssh-agent` and the
 **Post-firewall validation:**
 After UFW is enabled, the playbook probes `ssh_port` from your PC (via `wait_for`) and fails immediately if SSH is unreachable — so a misconfigured firewall is caught before the play reports success.
 
-**Expected duration:** 15–20 minutes (the Infisical/Semaphore bring-up — pulling
-images, waiting for Infisical's API port, and the seed step — adds several
-minutes over a pre-Infisical bootstrap; first-run seed is normally *skipped*,
-so most of that time is image pulls and container start/health-wait).
+**Expected duration:** 12–18 minutes (the Infisical bring-up — pulling images
+and waiting for its API port — adds a few minutes over a pre-Infisical
+bootstrap; most of that time is image pulls and container start/health-wait).
+
+Part 1 ends with a debug message pointing you at [First-run Infisical
+Setup](#first-run-infisical-setup) — complete that, then run
+`bootstrap_edge_part2.yml` to finish Phase 1.
 
 ---
 
-### What the Bootstrap Playbook Does
+### What the Bootstrap Playbooks Do
 
-The `bootstrap_edge.yml` playbook fully configures the edge node:
+Phase 1 is split into two playbooks around Infisical's first-run checkpoint —
+its org, admin account, project, environment, and machine identities can't be
+created until Infisical itself is up, which only happens partway through
+bootstrap (see [First-run Infisical Setup](#first-run-infisical-setup) for why
+this can't be automated away). Part 1 gets the node — and Infisical — running
+and hands off to that manual setup; Part 2 seeds Infisical and brings up
+Semaphore once the identities it needs exist.
+
+#### Part 1 — `bootstrap_edge.yml`
 
 | Task                       | Detail                                     |
 |----------------------------|--------------------------------------------|
@@ -432,7 +450,7 @@ The `bootstrap_edge.yml` playbook fully configures the edge node:
 | Create `homelab` user      | Ansible automation, passwordless sudo      |
 | Create `deploy` user       | Webhook/SSH trigger, restricted sudo       |
 | Install Docker             |                                            |
-| Install Tailscale          | Brought up here (not Phase 2) — `tailscale_up: true` — so Infisical/Semaphore are reachable over the tailnet by the end of bootstrap. See the [Mode](./docs/NETWORK.md#mode) note in NETWORK.md. |
+| Install Tailscale          | Brought up here (not Phase 2) — `tailscale_up: true` — so Infisical (and, once Part 2 brings it up, Semaphore) is reachable over the tailnet by the end of Phase 1. See the [Mode](./docs/NETWORK.md#mode) note in NETWORK.md. |
 | Install Ansible            | Edge becomes a control node                |
 | Install Git                |                                            |
 | Clone repo                 | `/opt/homelab`, owned by `homelab`         |
@@ -440,8 +458,6 @@ The `bootstrap_edge.yml` playbook fully configures the edge node:
 | Register SSH host key      | Edge's own key added to `/home/homelab/.ssh/known_hosts` — required for Phase 2 self-deploy |
 | Harden SSH                 | Key-only auth, no root login, port changed to `ssh_port` via async restart; subsequent tasks reconnect on new port automatically |
 | Bring up Infisical         | Renders `/opt/infisical/.env` (node-generated secrets), starts `infisical-db`/`infisical-redis`/`infisical`, waits for the API port (8222) to accept connections |
-| Seed Infisical             | **Gated** — seeds application secrets from the WSL-local `vault.yml` only if the bootstrap machine identity is already configured (`vault_infisical_bootstrap_client_*` ≠ `"changeme"`); otherwise skips with instructions. See [First-run Infisical Setup](#first-run-infisical-setup). |
-| Bring up Semaphore         | Renders `/opt/semaphore/.env`, starts `semaphore-db`/`semaphore`            |
 | Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp, 53/udp+tcp (Pi-hole DNS, LAN only), 8222/tcp + 3010/tcp (Infisical/Semaphore, **Tailscale CGNAT range only** — `100.64.0.0/10`); SSH reachability verified before play completes. Port 80 (Caddy) opened in Phase 2. |
 | Enable unattended upgrades |                                            |
 
@@ -454,6 +470,23 @@ homelab ALL=(ALL) NOPASSWD:ALL
 # /etc/sudoers.d/deploy
 deploy ALL=(ALL) NOPASSWD: /usr/bin/ansible-playbook
 ```
+
+Part 1 ends here: Infisical is running and reachable over Tailscale, but has
+no org/admin/project/identities yet — and the firewall now restricts ports
+8222/3010 to the Tailscale CGNAT range. Complete [First-run Infisical
+Setup](#first-run-infisical-setup) steps 1–5 (entirely manual — through
+Infisical's UI), then continue with Part 2.
+
+#### Part 2 — `bootstrap_edge_part2.yml`
+
+| Task               | Detail                                                                 |
+|--------------------|------------------------------------------------------------------------|
+| Seed Infisical     | **Gated** — authenticates as the `bootstrap` machine identity (created in First-run Infisical Setup step 5) and pushes every `[seed → ...]` secret from the WSL-local `vault.yml` into its mapped `/production/<folder>/<KEY>` path — additive, existing keys untouched — but only if that identity is actually configured (`vault_infisical_bootstrap_client_*` ≠ `"changeme"`); otherwise skips with instructions, as a safety net for running Part 2 too early. Reaches Infisical over the edge's **Tailscale IP** (`tailscale ip -4`), since Part 1's firewall step already restricted port 8222 to the Tailscale CGNAT range — the LAN IP (`ansible_host`) the original single-pass flow used can no longer reach it. |
+| Bring up Semaphore | Renders `/opt/semaphore/.env` (node-generated Postgres password + the `runtime` identity's credentials for its own Ansible secret lookups), starts `semaphore-db`/`semaphore` |
+
+Part 2 finishes Phase 1 — Infisical is seeded and Semaphore is up and
+reachable over Tailscale. Its closing debug message reminds you to revoke the
+`bootstrap` identity (step 8 below) before moving on to Phase 2.
 
 ---
 
@@ -469,11 +502,12 @@ credentials before it existed; this first-run setup is an inherently manual,
 one-time runbook done through Infisical's UI (or its REST API directly, if you
 prefer scripting it).
 
-This is why bootstrap is a **two-pass flow**:
+This is why Phase 1 is split into two playbooks around this checkpoint (see
+[What the Bootstrap Playbooks Do](#what-the-bootstrap-playbooks-do)):
 
-1. **First run** — `ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml` brings Infisical and Semaphore up, finds `vault_infisical_bootstrap_client_*` still `"changeme"`, and skips the seed step with a `debug` message repeating the steps below and the exact re-run command.
-2. **You complete this runbook** (steps 1–6).
-3. **Second run** — re-run with `--tags infisical,seed,semaphore` (shown at the end) to seed Infisical and (re)render Semaphore's `.env` with the runtime identity's credentials.
+1. **Part 1** — `ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml` brings Infisical up (and locks the firewall down to its steady state) but stops there — it can't seed Infisical or bring up Semaphore yet, since `vault_infisical_bootstrap_client_*`/`vault_semaphore_admin_*` are still `"changeme"` placeholders and the identities they'd need don't exist. Its closing `debug` message points you here.
+2. **You complete this runbook** (steps 1–6) — entirely manual, through Infisical's UI; nothing in Ansible can mint Infisical's own first credentials before Infisical exists to mint them.
+3. **Part 2** — `ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge_part2.yml` (run in step 6 below) seeds Infisical from `vault.yml` using the `bootstrap` identity and brings Semaphore up using the `runtime` identity — both created in step 5. (`seed.yml` still gates on `vault_infisical_bootstrap_client_*` ≠ `"changeme"` as a safety net and will skip with instructions if you run Part 2 before finishing steps 1–5.)
 
 **Before you start:** confirm you can reach the edge node over Tailscale —
 `tailscale status` should list `homelab-edge`, then browse to
@@ -514,7 +548,7 @@ Caddy route — Tailscale is the only path in (see
    once. Keep the two identities' credentials separate; do not reuse one pair
    for both roles.
 
-6. **Write the credentials into the vault and re-run bootstrap:**
+6. **Write the credentials into the vault and run Part 2:**
    ```bash
    ansible-vault edit inventories/group_vars/all/vault.yml
    ```
@@ -525,15 +559,14 @@ Caddy route — Tailscale is the only path in (see
    vault_infisical_runtime_client_id: "<runtime identity client ID>"
    vault_infisical_runtime_client_secret: "<runtime identity client secret>"
    ```
-   Save, verify the vault re-encrypted (`head -1 ...vault.yml` → `$ANSIBLE_VAULT;`), then re-run:
+   Save, verify the vault re-encrypted (`head -1 ...vault.yml` → `$ANSIBLE_VAULT;`), then run Part 2:
    ```bash
-   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
-     --tags infisical,seed,semaphore
+   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge_part2.yml
    ```
    This authenticates as the bootstrap identity, pushes every `[seed → ...]`
    secret from `vault.yml` into its mapped `/production/<folder>/<KEY>` path
-   (additive — existing keys are never touched), and re-renders Semaphore's
-   `.env` with the runtime identity's credentials.
+   (additive — existing keys are never touched), then renders and brings up
+   Semaphore with the runtime identity's credentials.
 
 7. **Now run Phase 2** — `deploy_edge.yml` resolves its application secrets
    (`cloudflare/TUNNEL_TOKEN`, `pihole/WEB_PASSWORD`) from Infisical via the
@@ -555,7 +588,10 @@ Caddy route — Tailscale is the only path in (see
 > untouched. Adding a brand-new service later just means adding its
 > `vault_<service>_<field>` entries to `vault.yml`, its mapping to
 > `_infisical_seed_map` in `roles/infisical/tasks/seed.yml`, its folder in
-> Infisical, and re-running with `--tags infisical,seed`.
+> Infisical, and re-running:
+> ```bash
+> ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge_part2.yml --tags infisical,seed
+> ```
 
 ---
 
@@ -605,7 +641,7 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 - Pulls latest repo from GitHub
 - Resolves application secrets (`cloudflare/TUNNEL_TOKEN`, `pihole/WEB_PASSWORD`) from Infisical at runtime via `roles/infisical/tasks/lookup.yml` — this node never has `vault.yml`; see [Secrets](./CLAUDE.md#secrets)
 - Deploys fail2ban (SSH and Pi-hole jails)
-- Re-asserts Tailscale in subnet-router mode (already brought up and joined during Phase 1 — see [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does); idempotent here, a no-op once joined)
+- Re-asserts Tailscale in subnet-router mode (already brought up and joined during Phase 1 — see [What the Bootstrap Playbooks Do](#what-the-bootstrap-playbooks-do); idempotent here, a no-op once joined)
 - Installs and configures Unbound as a host systemd service (port 5335, DNSSEC-validating recursive resolver)
 - Ships logs via Grafana Alloy (→ Loki once Phase 3 is up)
 - Renders edge service configs (cloudflared, Pi-hole custom DNS, Caddy reverse proxy)

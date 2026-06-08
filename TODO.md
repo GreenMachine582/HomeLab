@@ -382,3 +382,50 @@ Validation and remediation tasks identified by cross-referencing all documentati
   run-order-dependent breakage). Affects every node (role runs on all of them) — re-verify
   svc-01/02/03 and observe once provisioned; a fleet-wide `update_all`/redeploy will pick up the
   role change and stop re-breaking forwarding on each run.
+
+---
+
+## Bootstrap Restructuring (identified 2026-06-08)
+
+- [x] **#38 — Split `bootstrap_edge.yml` into two playbooks around the Infisical first-run checkpoint** ✅ 2026-06-08
+  Done — `bootstrap_edge.yml` is now Part 1 only (preflight, hostname/base packages, `users` /
+  `base_hardening` / `docker` / `tailscale` roles, Ansible install + repo clone + secret-file
+  copies, Infisical bring-up, firewall) and a new `bootstrap_edge_part2.yml` holds the Infisical
+  seed + Semaphore bring-up, run after the manual org/admin/project/identity setup (`BOOTSTRAP.md`
+  "First-run Infisical Setup"). Two correctness issues the naive split would've hit, both fixed:
+  - **Role-default scoping** — `seed.yml` references `infisical_seed_project_slug`/
+    `infisical_seed_environment` from `roles/infisical/defaults/main.yml`, which only land in
+    scope in the original because `include_role: name: infisical` runs earlier in the *same play*.
+    Part 2 instead `include_vars`s the role's `defaults/main.yml` directly — single source of
+    truth stays the role, no re-running its tasks.
+  - **LAN-vs-Tailscale reachability** — the original seed task reached Infisical over
+    `ansible_host` (LAN IP) *before* the firewall locked :8222 to Tailscale-only. With the split,
+    Part 1's firewall step has already run by the time Part 2's seed runs, so Part 2 looks up
+    `tailscale ip -4` on the edge and builds `infisical_api_url` from that instead — consistent
+    with the Tailscale-connectivity prerequisite `BOOTSTRAP.md` already states for this step.
+  `BOOTSTRAP.md` ("Phase 1", "What the Bootstrap Playbooks Do", "First-run Infisical Setup"),
+  `docs/TROUBLESHOOTING.md`, `docs/NETWORK.md`, `README.md`, and `CLAUDE.md` all updated to
+  describe the new two-playbook flow and commands.
+
+- [ ] **#39 — Automate Infisical project/environment/folder/identity creation via its REST API**
+  `BOOTSTRAP.md` "First-run Infisical Setup" currently makes the operator manually click through
+  5 steps in the UI: (1) create org + admin account, (2) create the `homelab` project, (3) create
+  the `production` environment, (4) create 9 folders that must exactly match the naming convention
+  in `vault.yml.example`, (5) create 2 Universal Auth machine identities (`bootstrap` write,
+  `runtime` read-only) and copy their client ID/secret pairs. Only step 1 is *inherently* manual —
+  Infisical can't have an admin before something creates one. Steps 2-5 are all doable through
+  Infisical's REST API (https://infisical.com/docs/api-reference/overview/introduction) once an
+  authenticated admin session/token exists — automating them also kills a whole class of "folder
+  name doesn't exactly match the convention" typo bugs that the seed task, runtime lookups, and
+  this runbook currently all have to agree on by hand.
+  **Plan** (lives in the new Part 2 playbook from #38): prompt for, or read from a local untracked
+  file, the admin email/password created in step 1; authenticate against Infisical's auth API;
+  drive the REST API to create the project, environment, the 9 folders (sourced from
+  `vault.yml.example`'s naming-convention block so there's one source of truth), and the two
+  Universal Auth identities with their client secrets; print the resulting credentials for the
+  operator to drop into `vault.yml` (writing directly to the encrypted vault file is out of scope —
+  too fragile). End state: the manual runbook shrinks from 8 steps to "create org+admin → run
+  Part 2 → copy 4 values into vault → re-run with `--tags seed,semaphore`".
+  ⚠️ Verify exact endpoint paths/payloads against the deployed Infisical version before
+  implementing — the API has moved across releases (the existing `roles/infisical/tasks/seed.yml`
+  already carries this same caveat for the v3 raw-secrets routes).

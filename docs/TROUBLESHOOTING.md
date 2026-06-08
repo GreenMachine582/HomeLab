@@ -348,26 +348,28 @@ port," not the containers themselves.
 
 ### Bootstrap keeps skipping the Infisical seed step
 
-This is expected on a fresh instance — not a failure. The seed step is gated on
+This is expected on a fresh instance — not a failure. Phase 1 is split into
+two playbooks (`bootstrap_edge.yml` Part 1, then `bootstrap_edge_part2.yml`)
+specifically because the seed step is gated on
 `vault_infisical_bootstrap_client_id/secret` actually being set (not the
-`"changeme"` placeholder), because that machine identity can only be minted
+`"changeme"` placeholder), and that machine identity can only be minted
 *from inside an already-initialised Infisical* — org, admin account, project,
 environment, and the identity itself all have to exist first. Nothing in
 Ansible can automate a system into having created its own credentials before it
-existed.
+existed. (`seed.yml`'s gate also acts as a safety net inside Part 2 itself, in
+case you run it before finishing the manual setup.)
 
 Complete [BOOTSTRAP.md → First-run Infisical Setup](../BOOTSTRAP.md#first-run-infisical-setup)
 (create the org/project/folders/identities, write the resulting
 `vault_infisical_bootstrap_client_*`/`vault_infisical_runtime_client_*` values
-into the vault), then re-run:
+into the vault), then run Part 2:
 
 ```bash
-ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
-  --tags infisical,seed,semaphore
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge_part2.yml
 ```
 
 The `debug` message printed when the seed is skipped (`roles/infisical/tasks/seed.yml`)
-repeats these exact steps and the re-run command.
+repeats these exact steps and the run command.
 
 ### Seed task fails with an authentication or 4xx/5xx error
 
@@ -377,12 +379,12 @@ curl -sf http://127.0.0.1:8222/api/status
 
 # Re-run just the seed step with verbose output
 cd /opt/homelab
-ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge_part2.yml \
   --tags infisical,seed -vvv
 ```
 
 Likely causes:
-- **Wrong/revoked credentials** — the bootstrap identity was disabled after a previous seed (step 7 of the runbook tells you to do exactly this). Re-enable it in the Infisical UI for a deliberate re-seed, then disable it again afterward.
+- **Wrong/revoked credentials** — the bootstrap identity was disabled after a previous seed (step 8 of the runbook tells you to do exactly this). Re-enable it in the Infisical UI for a deliberate re-seed, then disable it again afterward.
 - **Project/environment/folder slug mismatch** — `infisical_seed_project_slug` / `infisical_seed_environment` (`roles/infisical/defaults/main.yml`, default `homelab` / `production`) must match what you created in the UI exactly, and the nine folders must match the "Secret naming convention" block in `vault.yml.example`.
 - **API shape drift** — the seed task's endpoint paths (Universal Auth login, `/v3/secrets/raw/...`) are version-pinned assumptions, flagged with a `⚠️` comment at the top of `seed.yml`. Check them against the deployed Infisical version's API reference if errors mention unexpected fields or 404s on routes that should exist.
 
