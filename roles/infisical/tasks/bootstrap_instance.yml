@@ -82,7 +82,7 @@
     status_code: [200, 400, 401, 403, 409]
   register: _infisical_bootstrap_result
   failed_when: false
-  no_log: true
+  no_log: false  # TEMP — debugging live bootstrap failure; restore to `true` once root-caused (prints vault_infisical_admin_email/password)
   become: false
   tags: [infisical, bootstrap]
 
