@@ -96,6 +96,22 @@
     _infisical_bootstrap_fresh: "{{ _infisical_bootstrap_result.status == 200 }}"
   tags: [infisical, bootstrap]
 
+# TEMP DEBUG — the SKIPPED message below assumes a real HTTP rejection (e.g.
+# 400 "already initialised"). status == -1 means the request never received an
+# HTTP response at all (connection refused/reset, timeout, TLS error, etc.) —
+# an entirely different problem that the "already initialised" framing hides.
+# Surfaces ONLY status/msg/url/elapsed — never `body`/`json`, which carry the
+# admin email+password on the request side and the instance-admin token on a
+# 200 response — so the real transport-level error is visible without leaking
+# anything. Remove this task once the create-secret/bootstrap-call failure is
+# root-caused.
+- name: "Infisical bootstrap | TEMP DEBUG — show raw bootstrap-call result (not body/json)"
+  ansible.builtin.debug:
+    msg: "status={{ _infisical_bootstrap_result.status }} | msg={{ _infisical_bootstrap_result.msg | default('(no msg)') }} | url={{ _infisical_bootstrap_result.url | default('n/a') }} | elapsed={{ _infisical_bootstrap_result.elapsed | default('n/a') }}"
+  when: not _infisical_bootstrap_fresh
+  no_log: false
+  tags: [infisical, bootstrap]
+
 - name: "Infisical bootstrap | SKIPPED — instance already initialised"
   ansible.builtin.debug:
     msg: >-
