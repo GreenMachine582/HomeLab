@@ -262,7 +262,7 @@
 
     - name: "Infisical bootstrap | Write runtime lookup credentials from freshly-minted values"
       ansible.builtin.template:
-        src: "{{ playbook_dir }}/../roles/infisical/templates/runtime_auth.yml.j2"
+        src: runtime_auth.yml.j2
         dest: "{{ infisical_runtime_auth_path }}"
         owner: "{{ infisical_service_user }}"
         group: "{{ infisical_service_user }}"
