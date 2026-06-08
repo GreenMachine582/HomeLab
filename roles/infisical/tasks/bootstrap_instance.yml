@@ -96,15 +96,6 @@
     _infisical_bootstrap_fresh: "{{ _infisical_bootstrap_result.status == 200 }}"
   tags: [infisical, bootstrap]
 
-# TEMP DEBUG — the SKIPPED message below assumes a real HTTP rejection (e.g.
-# 400 "already initialised"). status == -1 means the request never received an
-# HTTP response at all (connection refused/reset, timeout, TLS error, etc.) —
-# an entirely different problem that the "already initialised" framing hides.
-# Surfaces ONLY status/msg/url/elapsed — never `body`/`json`, which carry the
-# admin email+password on the request side and the instance-admin token on a
-# 200 response — so the real transport-level error is visible without leaking
-# anything. Remove this task once the create-secret/bootstrap-call failure is
-# root-caused.
 - name: "Infisical bootstrap | TEMP DEBUG — show raw bootstrap-call result (not body/json)"
   ansible.builtin.debug:
     msg: "status={{ _infisical_bootstrap_result.status }} | msg={{ _infisical_bootstrap_result.msg | default('(no msg)') }} | url={{ _infisical_bootstrap_result.url | default('n/a') }} | elapsed={{ _infisical_bootstrap_result.elapsed | default('n/a') }}"
@@ -331,11 +322,32 @@
     # once the create-secret failure is root-caused.
     - name: "Infisical bootstrap | TEMP DEBUG — show create-secret status/msg (not body/values)"
       ansible.builtin.debug:
-        msg: "{{ item.item.item.key }} -> status={{ item.status | default('n/a') }} | msg={{ item.msg | default('(no msg)') }} | url={{ item.url | default('n/a') }}"
+        msg: "{{ item.item.item.key }} -> status={{ item.status | default('n/a') }} | error={{ item.json.error | default('') }} | message={{ item.json.message | default(item.msg | default('(no msg)')) }} | url={{ item.url | default('n/a') }}"
       loop: "{{ _infisical_seed_create_DEBUG.results }}"
       loop_control:
         label: "{{ item.item.item.key | default('?') }}"
       when: item.skipped is not defined or not item.skipped
+      no_log: false
+
+    # TEMP DEBUG — the very next task fails (censored — a genuine templating/
+    # filter error, not the special "undefined variable in option" fatal that
+    # bypasses no_log) while building its client_id/client_secret map from
+    # these three responses. Surfaces ONLY each response's top-level key
+    # names — never values, so no client secrets/tokens leak — to confirm
+    # whether `.json.identity.id` / `.json.clientSecret` are the right paths
+    # for the deployed Infisical version's response shapes. Remove once the
+    # map-building task is root-caused.
+    - name: "Infisical bootstrap | TEMP DEBUG — show identity/universal-auth/client-secret response shapes (key names only)"
+      ansible.builtin.debug:
+        msg: >-
+          {{ _infisical_identities.results[idx].item.name }}:
+          identity keys={{ (_infisical_identities.results[idx].json | default({}, true)).keys() | list }},
+          universal_auth keys={{ (_infisical_universal_auth.results[idx].json | default({}, true)).keys() | list }},
+          client_secret keys={{ (_infisical_client_secrets.results[idx].json | default({}, true)).keys() | list }}
+      loop: "{{ range(0, _infisical_identities.results | length) | list }}"
+      loop_control:
+        loop_var: idx
+        label: "{{ _infisical_identities.results[idx].item.name }}"
       no_log: false
 
     - name: "Infisical bootstrap | Build name -> {clientId, clientSecret} map for the summary"
