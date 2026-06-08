@@ -108,7 +108,6 @@
     - { name: net.ipv4.conf.all.send_redirects,       value: "0" }
     - { name: net.ipv4.conf.all.accept_source_route,  value: "0" }
     - { name: net.ipv4.tcp_syncookies,                value: "1" }
-    - { name: net.ipv4.ip_forward,                    value: "0" }
     - { name: kernel.dmesg_restrict,                  value: "1" }
   tags: [security, kernel]
 

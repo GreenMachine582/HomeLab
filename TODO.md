@@ -340,3 +340,45 @@ Validation and remediation tasks identified by cross-referencing all documentati
 
   ntfy topic and Discord webhook already available (`vault_ntfy_token`, `vault_discord_alerts_webhook`).
   **Prerequisite:** Phase 3 (ntfy on homelab-observe) and Phase 4 (n8n webhook wired) must be live.
+
+---
+
+## Security / Firewall (identified 2026-06-08)
+
+- [ ] **#36 — Legacy SSH port 22 UFW rule never gets removed**
+  `roles/firewall/tasks/main.yml` ("Firewall | Keep legacy SSH port 22 open (transition safety)",
+  ~line 56) unconditionally (re-)adds `22/tcp ALLOW IN Anywhere` whenever `ssh_port | int != 22`,
+  with the comment "SSH legacy - remove after new port confirmed" — but nothing ever flips that
+  condition off. Confirmed still present (`ufw status numbered` rules [2]/[9]) on homelab-edge
+  after a successful Phase 1 bootstrap and live SSH on the new port (2189). Worse: even a manual
+  `ufw delete` of the rule would be re-added on the very next firewall/bootstrap run, since the
+  task's only gate is `ssh_port | int != 22` — true forever once `ssh_port` is customized.
+  Fix options: (a) add a var (e.g. `ssh_legacy_port_22_enabled`, defaulted `true`, flipped to
+  `false` in `group_vars`/`host_vars` once the new port is confirmed across all nodes) that gates
+  the task and explicitly removes the rule (`state: absent`) when false, or (b) delete the task
+  entirely now that the new port is proven working on the edge — re-add manually if a future port
+  migration needs the same transition safety net. Either way, update the stale "Keep port 22 open
+  during transition — remove once new SSH port confirmed on all nodes" comment (line 55).
+
+- [x] **#37 — `base_hardening` sets `net.ipv4.ip_forward=0`, silently breaking Docker port forwarding on re-runs**
+  `roles/base_hardening/tasks/main.yml` ("Security | Apply kernel hardening sysctls", ~line 111)
+  hardened `net.ipv4.ip_forward` to `"0"` with `reload: true` (applied immediately to the running
+  kernel via `sysctl -p`, not just on next boot). Docker requires `ip_forward=1` for bridge
+  networking / published-port forwarding and force-enables it whenever its daemon (re)starts — so
+  a *first-ever* bootstrap ends up fine (role order is `base_hardening` → `docker`: hardening sets
+  it to `0`, Docker then installs/starts and forces it back to `1`). But on *any later* run where
+  Docker is already active (a second bootstrap pass, `deploy_edge.yml`, `bootstrap_node.yml`, …),
+  the docker role's "enable and start" task is a no-op — nothing re-asserts `1` after hardening
+  flips it back to `0`. It silently sticks at `0`, breaking inbound reachability to *every*
+  Docker-published container port on that node. **Confirmed live on homelab-edge** — SSH/ping/
+  loopback curl all worked (host-terminated, no forwarding needed), but
+  `Test-NetConnection <tailscale-ip> -Port 8222` failed at the TCP level (forwarded-to-container
+  traffic silently dropped before UFW or the container ever saw it). Running
+  `sudo sysctl -w net.ipv4.ip_forward=1` (equivalently `sudo systemctl restart docker`) restored
+  `:8222` reachability immediately — confirming this as the root cause.
+  **Fixed:** removed `net.ipv4.ip_forward` from the sysctl hardening loop in
+  `roles/base_hardening/tasks/main.yml` — it isn't meaningful "hardening" on a Docker host (Docker
+  requires and force-sets it; fighting that produces exactly this kind of intermittent,
+  run-order-dependent breakage). Affects every node (role runs on all of them) — re-verify
+  svc-01/02/03 and observe once provisioned; a fleet-wide `update_all`/redeploy will pick up the
+  role change and stop re-breaking forwarding on each run.
