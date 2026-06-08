@@ -7,6 +7,11 @@
 # steps, zero manual copy-paste. Included by bootstrap_edge.yml, on the edge
 # node itself, before the firewall role runs (so 127.0.0.1:8222 is reachable).
 #
+# Call via `include_role: { name: infisical, tasks_from: bootstrap_instance.yml }`
+# (not include_tasks) — same rule as lookup.yml — so the role's defaults
+# (infisical_seed_organization_name, infisical_seed_folders,
+# infisical_seed_identities, infisical_runtime_auth_path, ...) load alongside it.
+#
 # ── Why this is gated on the bootstrap call's own result ─────────────────────
 # POST /v1/admin/bootstrap (https://infisical.com/docs/self-hosting/guides/automated-bootstrapping)
 # is a one-shot, unauthenticated "Programmatic Provisioning" endpoint: called
@@ -82,7 +87,7 @@
     status_code: [200, 400, 401, 403, 409]
   register: _infisical_bootstrap_result
   failed_when: false
-  no_log: false  # TEMP — debugging live bootstrap failure; restore to `true` once root-caused (prints vault_infisical_admin_email/password)
+  no_log: true
   become: false
   tags: [infisical, bootstrap]
 

@@ -307,7 +307,9 @@
     # un-firewalled. The instance bootstrap, every identity, and the entire
     # application-secret seed all happen right here, in this one window.
     - name: "Infisical | Bootstrap instance (org, admin, project, environment, folders, runtime identity, application secrets)"
-      ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/infisical/tasks/bootstrap_instance.yml"
+      ansible.builtin.include_role:
+        name: infisical
+        tasks_from: bootstrap_instance.yml
       vars:
         infisical_api_url: "http://127.0.0.1:8222/api"
       tags: [infisical, bootstrap]
