@@ -305,6 +305,23 @@
       become: false
       tags: [infisical]
 
+    # Port-open ≠ HTTP-ready: on a Pi, Infisical runs DB migrations AFTER
+    # binding its port, resetting every connection until migrations finish.
+    # Retry until we get any real HTTP response (status != -1), which proves
+    # the app is serving — then the bootstrap call below can proceed safely.
+    - name: "Infisical | Wait for API to serve HTTP (post-migration readiness)"
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8222/api/status"
+        method: GET
+        timeout: 10
+      register: _infisical_api_ready
+      until: (_infisical_api_ready.status | default(-1)) != -1
+      retries: 60
+      delay: 10
+      failed_when: false
+      become: false
+      tags: [infisical]
+
     # Runs here — pre-firewall — so 127.0.0.1:8222 is reachable directly, with
     # no Tailscale-IP lookup dance: this is the ONLY point in the node's life
     # where its own loopback can reach Infisical's API unauthenticated AND
