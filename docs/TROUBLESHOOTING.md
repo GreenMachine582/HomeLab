@@ -25,9 +25,10 @@ Common issues, diagnostic commands, and recovery procedures. Organised by area.
     * [Node not appearing in Tailscale admin console](#node-not-appearing-in-tailscale-admin-console)
     * [Cannot reach a node over Tailscale](#cannot-reach-a-node-over-tailscale)
   * [Infisical & Semaphore](#infisical--semaphore)
-    * [Bootstrap keeps skipping the Infisical seed step](#bootstrap-keeps-skipping-the-infisical-seed-step)
-    * [Seed task fails with an authentication or 4xx/5xx error](#seed-task-fails-with-an-authentication-or-4xx5xx-error)
+    * [Bootstrap playbook reports Infisical already initialised — nothing provisioned or seeded](#bootstrap-playbook-reports-infisical-already-initialised--nothing-provisioned-or-seeded)
+    * [Bootstrap instance/seed step fails with an authentication or 4xx/5xx error](#bootstrap-instanceseed-step-fails-with-an-authentication-or-4xx5xx-error)
     * [Vault → Infisical conversion status](#vault--infisical-conversion-status)
+    * [Outstanding hardening tasks (not yet implemented)](#outstanding-hardening-tasks-not-yet-implemented)
   * [Cloudflare Tunnel](#cloudflare-tunnel)
     * [External services not reachable](#external-services-not-reachable)
   * [Monitoring Stack](#monitoring-stack)
@@ -442,6 +443,28 @@ scope for this change. Until that lands:
   secret added by hand via the Infisical UI. If a converted role (currently
   only `deploy_edge.yml`) needs to read it at runtime, also add its
   `<folder>/<KEY>` path to that play's `infisical_lookup_keys`
+
+### Outstanding hardening tasks (not yet implemented)
+
+These were in scope for the original Infisical/Semaphore design but explicitly
+deferred. Tracked here so they have a permanent home.
+
+1. **Disaster-recovery test** — the full `deploy → seed → backup → destroy →
+   restore → verify decrypt → verify deploy` rehearsal has not been run against
+   live infrastructure. The procedure is documented above under
+   [Restoring a PostgreSQL backup](#restoring-a-postgresql-backup); run it once
+   on the first real bootstrap and record whether it passes.
+
+2. **Infisical audit logging → Loki** — Infisical's audit log should be shipped
+   to Loki via the existing `alloy` role so secret access and edits are
+   observable, with Alertmanager rules for unexpected machine-identity auth or
+   bulk reads. Not started; requires Infisical-side audit-log config, an `alloy`
+   scrape addition, and new Alertmanager rules.
+
+3. **Negative connectivity test** — a script asserting that Infisical (port 8222)
+   and Semaphore (port 3010) are unreachable from outside the Tailscale network.
+   The UFW enforcement (`tailscale_cgnat_range` source rules) is in place; nothing
+   automatically verifies it. Add to `scripts/test_connectivity.sh`.
 
 ---
 
