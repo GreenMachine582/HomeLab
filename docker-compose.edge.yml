@@ -71,6 +71,7 @@ services:
     volumes:
       - pihole_data:/etc/pihole
       - pihole_dnsmasq:/etc/dnsmasq.d
+      - ./pihole/etc-pihole/custom.list:/etc/pihole/custom.list:ro
     networks:
       - edge_net
 
