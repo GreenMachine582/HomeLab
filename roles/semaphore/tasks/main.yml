@@ -67,9 +67,32 @@
   when: not _semaphore_env_stat.stat.exists
   tags: [semaphore]
 
-- name: "Semaphore | Load read-only Infisical runtime identity credentials (node-local — see roles/infisical/tasks/bootstrap_instance.yml)"
-  ansible.builtin.include_vars:
-    file: "{{ infisical_runtime_auth_path }}"
+- name: "Semaphore | Stat runtime auth file (must exist before slurp)"
+  ansible.builtin.stat:
+    path: "{{ infisical_runtime_auth_path }}"
+  register: _semaphore_auth_stat
+  tags: [semaphore]
+
+- name: "Semaphore | FAIL — runtime auth file missing (Phase 1 bootstrap must complete first)"
+  ansible.builtin.fail:
+    msg: >-
+      {{ infisical_runtime_auth_path }} does not exist on this node.
+      Run bootstrap_edge.yml (Phase 1) to completion before this role can
+      load runtime Infisical credentials.
+  when: not _semaphore_auth_stat.stat.exists
+  tags: [semaphore]
+
+- name: "Semaphore | Slurp read-only Infisical runtime identity credentials from node-local file"
+  ansible.builtin.slurp:
+    src: "{{ infisical_runtime_auth_path }}"
+  register: _semaphore_runtime_auth_raw
+  no_log: true
+  tags: [semaphore]
+
+- name: "Semaphore | Parse runtime identity credentials into vars"
+  ansible.builtin.set_fact:
+    infisical_runtime_client_id: "{{ (_semaphore_runtime_auth_raw.content | b64decode | from_yaml).infisical_runtime_client_id }}"
+    infisical_runtime_client_secret: "{{ (_semaphore_runtime_auth_raw.content | b64decode | from_yaml).infisical_runtime_client_secret }}"
   no_log: true
   tags: [semaphore]
 
