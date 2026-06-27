@@ -94,7 +94,8 @@
   ansible.builtin.stat:
     path: "{{ infisical_runtime_auth_path }}"
   register: _infisical_runtime_auth_stat
-  become: false
+  become: true
+  become_user: "{{ infisical_service_user }}"
   tags: [infisical, bootstrap]
 
 - name: "Infisical bootstrap | SKIPPED — runtime credentials already exist (instance already bootstrapped)"
@@ -134,16 +135,16 @@
       organization: "{{ infisical_seed_organization_name }}"
     status_code: [200, 400, 401, 403, 409]
   register: _infisical_bootstrap_result
-  # Retry ONLY transport-level failures (-1). We only ever reach this call
-  # when infisical_runtime_auth_path is absent (see the stat task above), so
-  # -1 here can only mean "still starting up" — never "already initialised
-  # and crashing" (that would require the file to already exist). The moment
-  # we get a genuine HTTP response, stop, whether it's 200 (fresh — proceed)
-  # or 400/401/403/409 (rejected — see the SKIPPED tasks below): this
-  # endpoint is one-shot, so spinning past a real response would risk
-  # masking the true status or, worse, double-posting.
-  until: (_infisical_bootstrap_result.status | default(-1)) != -1
-  retries: 10
+  # Retry until a DEFINITIVE response arrives. On a Raspberry Pi, Infisical
+  # may respond with 5xx transiently while its backend (Postgres, Redis) is
+  # still initialising — those are indistinguishable from "still starting up"
+  # and must be retried, just like -1 (connection reset). Only stop on the
+  # statuses we know how to act on: 200 (fresh — proceed with provisioning)
+  # or 400/401/403/409 (already initialised — skip). This task is only ever
+  # reached when infisical_runtime_auth_path is absent (see stat above), so
+  # neither -1 nor 5xx can mean "already initialised and crashing" here.
+  until: (_infisical_bootstrap_result.status | default(-1)) in [200, 400, 401, 403, 409]
+  retries: 20
   delay: 6
   failed_when: false
   no_log: true
@@ -332,6 +333,7 @@
         owner: "{{ infisical_service_user }}"
         group: "{{ infisical_service_user }}"
         mode: "0600"
+      become: true
       vars:
         _runtime_client_id: "{{ _infisical_identities.results[0].json.identity.id }}"
         _runtime_client_secret: "{{ _infisical_client_secrets.results[0].json.clientSecret }}"
