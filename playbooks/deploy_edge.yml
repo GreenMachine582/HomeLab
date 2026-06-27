@@ -10,35 +10,30 @@
 #     --limit homelab-edge
 #
 # Tags:
-#   --tags repo        Git pull only
-#   --tags fail2ban    fail2ban only
-#   --tags tailscale   Tailscale only
-#   --tags docker      Docker Compose stack only
-#   --tags pihole      Pi-hole + Unbound only
-#   --tags caddy       Caddy reverse proxy config only
-#   --tags alloy       Grafana Alloy log shipper only
-#   --tags unbound     Unbound recursive resolver (host service) only
-#   --tags verify      Health checks only (no deploy)
+#   --tags repo            Git pull only
+#   --tags fail2ban        fail2ban only
+#   --tags tailscale       Tailscale only
+#   --tags deploy-service  Install deploy-service + deploy homelab-edge-services
+#   --tags docker          Same as deploy-service (alias for backwards compat)
+#   --tags pihole          Unbound only (Pi-hole itself managed by deploy-service)
+#   --tags alloy           Grafana Alloy log shipper only
+#   --tags unbound         Unbound recursive resolver (host service) only
+#   --tags verify          Health checks only (no deploy)
 #
-# Requires: roles/fail2ban, roles/tailscale, roles/alloy, roles/unbound, roles/edge_services
-# Note: base_hardening runs in bootstrap_edge.yml (Phase 1) only.
-#       Run playbooks/update_all.yml for OS package upgrades.
+# Requires: roles/fail2ban, roles/tailscale, roles/alloy, roles/unbound
+# No longer requires: roles/edge_services (config files are static in
+#   homelab-edge-services; secrets injected by deploy-service from Infisical)
 #
-# Secrets: this node carries no vault.yml (see CLAUDE.md "Secrets" —
-# semaphore_infisical_implementation.md Task 2). The application secrets this
-# play needs (cloudflare/TUNNEL_TOKEN, pihole/WEB_PASSWORD) are resolved at
-# runtime from Infisical via roles/infisical/tasks/lookup.yml, using the
-# READ-ONLY runtime machine identity whose credentials were written, once,
-# during Phase 1 bootstrap to /home/homelab/.infisical_runtime_auth.yml.
+# Secrets: deploy-service fetches TUNNEL_TOKEN, PIHOLE_WEB_PASSWORD, and
+# IP_OBSERVE/IP_SVC_0* directly from Infisical using the node-local runtime
+# identity at /home/homelab/.infisical_runtime_auth.yml. This playbook no
+# longer calls roles/infisical/tasks/lookup.yml — secrets never touch Ansible
+# variable space.
 
 - name: "Deploy | Edge | Firewall, fail2ban, and services"
   hosts: edge
   become: true
   gather_facts: true
-
-  vars:
-    compose_file: "docker-compose.edge.yml"
-    compose_dir: "{{ homelab_repo_path }}"
 
   pre_tasks:
     - name: "Repo | Update to latest"
@@ -52,53 +47,40 @@
       become_user: homelab
       tags: [repo]
 
-    # ── Secrets ───────────────────────────────────────────────────────────────
-    # No vault.yml lives on this node by design (CLAUDE.md "Secrets" —
-    # semaphore_infisical_implementation.md Task 2: "don't copy vault.yml to the
-    # edge"). The handful of application secrets this playbook needs were already
-    # seeded into Infisical during Phase 1 bootstrap (roles/infisical/tasks/bootstrap_instance.yml)
-    # — resolve them at runtime through the READ-ONLY runtime identity instead.
-    # This is the reference conversion for Task #5; camunda/observe/svc roles
-    # still read straight from vault.yml (deferred — see TROUBLESHOOTING.md
-    # "Vault → Infisical conversion status").
-    - name: "Secrets | Fetch application secrets from Infisical (read-only runtime identity)"
-      ansible.builtin.include_role:
-        name: infisical
-        tasks_from: lookup.yml
-      vars:
-        infisical_lookup_keys:
-          - cloudflare/TUNNEL_TOKEN
-          - pihole/WEB_PASSWORD
-      tags: [always]
+    # ── deploy-service ────────────────────────────────────────────────────────
+    # Installed into an isolated virtualenv to satisfy PEP 668 (Raspberry Pi OS
+    # Bookworm marks the system Python as externally managed). Editable install
+    # means the code is always current after a git pull — no reinstall needed.
+    # python3-venv is installed by bootstrap_edge.yml. The venv is created via
+    # `python3 -m venv` (built-in module) rather than the standalone `virtualenv`
+    # binary, which is not installed; `creates:` makes the command task a no-op
+    # on re-runs. pip is then pointed directly at the venv's own executable.
+    - name: "deploy-service | Ensure python3-venv is present"
+      ansible.builtin.apt:
+        name: python3-venv
+        state: present
+        cache_valid_time: 3600
+      tags: [deploy-service, docker]
 
-    - name: "Preflight | Assert required secrets resolved"
-      ansible.builtin.assert:
-        that:
-          - infisical_secrets['cloudflare/TUNNEL_TOKEN'] is defined
-          - infisical_secrets['pihole/WEB_PASSWORD'] is defined
-          - github_org is defined
-        fail_msg: >-
-          Required secret unresolved — check that Phase 1 provisioned and
-          seeded Infisical successfully (bootstrap_edge.yml --tags
-          infisical,bootstrap — see "Infisical bootstrap | Summary" in its
-          output, or re-run with -vvv; it's a no-op against an
-          already-initialised instance, see TROUBLESHOOTING.md "Bootstrap
-          playbook reports Infisical already initialised"), that the runtime
-          identity has read access to the homelab/production project, and that
-          Infisical itself is reachable at {{ infisical_runtime_api_url }}.
-      tags: [always]
+    - name: "deploy-service | Create virtualenv"
+      ansible.builtin.command:
+        cmd: python3 -m venv /opt/deploy-service-venv
+        creates: /opt/deploy-service-venv/bin/python3
+      tags: [deploy-service, docker]
 
-    - name: "Preflight | Verify compose file exists on node"
-      ansible.builtin.stat:
-        path: "{{ compose_dir }}/{{ compose_file }}"
-      register: _compose_file
-      tags: [always]
+    - name: "deploy-service | Install into virtualenv (idempotent)"
+      ansible.builtin.pip:
+        name: "file://{{ homelab_repo_path }}/deploy-service"
+        editable: true
+        state: present
+        executable: /opt/deploy-service-venv/bin/pip
+      tags: [deploy-service, docker]
 
-    - name: "Preflight | Abort if compose file missing"
-      ansible.builtin.fail:
-        msg: "{{ compose_file }} not found in {{ compose_dir }} — repo may not have cloned correctly"
-      when: not _compose_file.stat.exists
-      tags: [always]
+    - name: "deploy-service | Deploy homelab-edge-services"
+      ansible.builtin.command:
+        cmd: /opt/deploy-service-venv/bin/deploy-service deploy homelab-edge-services --config {{ homelab_repo_path }}/services.yml
+      become: false
+      tags: [deploy-service, docker]
 
   roles:
     - role: fail2ban
@@ -115,46 +97,7 @@
     - role: unbound
       tags: [unbound]
 
-    - role: edge_services
-      tags: [docker, pihole]
-      vars:
-        pihole_web_password: "{{ infisical_secrets['pihole/WEB_PASSWORD'] }}"
-        cloudflared_tunnel_token: "{{ infisical_secrets['cloudflare/TUNNEL_TOKEN'] }}"
-
   post_tasks:
-    - name: "Docker | Pull latest images"
-      ansible.builtin.command:
-        cmd: docker compose -f {{ compose_file }} pull
-        chdir: "{{ compose_dir }}"
-      environment:
-        TUNNEL_TOKEN: "{{ infisical_secrets['cloudflare/TUNNEL_TOKEN'] }}"
-        PIHOLE_WEB_PASSWORD: "{{ infisical_secrets['pihole/WEB_PASSWORD'] }}"
-        TZ: "{{ timezone }}"
-      become: false
-      no_log: true
-      tags: [docker]
-      changed_when: true
-
-    - name: "Docker | Apply edge stack"
-      ansible.builtin.command:
-        cmd: docker compose -f {{ compose_file }} up -d --remove-orphans
-        chdir: "{{ compose_dir }}"
-      environment:
-        TUNNEL_TOKEN: "{{ infisical_secrets['cloudflare/TUNNEL_TOKEN'] }}"
-        PIHOLE_WEB_PASSWORD: "{{ infisical_secrets['pihole/WEB_PASSWORD'] }}"
-        TZ: "{{ timezone }}"
-      become: false
-      no_log: true
-      tags: [docker]
-      changed_when: true
-
-    - name: "Docker | Prune unused images"
-      ansible.builtin.command:
-        cmd: docker image prune -f
-      become: false
-      tags: [docker]
-      changed_when: true
-
     - name: "Verify | Unbound service is active"
       ansible.builtin.systemd:
         name: unbound
@@ -196,11 +139,11 @@
       become: false
       tags: [verify, docker]
 
-    - name: "Verify | All edge containers are running"
+    - name: "Verify | All appliance containers are running"
       ansible.builtin.command:
         cmd: >
           docker inspect --format="{{ '{{' }}.Name{{ '}}' }}={{ '{{' }}.State.Status{{ '}}' }}"
-          caddy pihole pihole-exporter node-exporter portainer-agent
+          caddy pihole pihole-exporter portainer-agent
       register: container_statuses
       changed_when: false
       failed_when: "'restarting' in container_statuses.stdout or 'exited' in container_statuses.stdout"

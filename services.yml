@@ -1,0 +1,46 @@
+---
+# services.yml — service repo registry for deploy-service
+#
+# Each entry maps a repo name to its deployment configuration.
+# deploy-service reads this file (default: /opt/homelab/services.yml) and uses
+# it to clone/pull the service repo, inject secrets from Infisical, and run
+# the appropriate deploy mechanism.
+#
+# Schema reference: repo_split_breif.md §6.2
+# deploy-service CLI: deploy-service/deploy_service/cli.py
+
+repos:
+  homelab-edge-services:
+    repo: github.com/GreenMachine582/homelab-edge-services
+    ref: main
+    path: /srv/services/homelab-edge-services
+    target_node: homelab-edge
+    deployment:
+      type: compose
+    deploy:
+      compose_files: [docker-compose.yml]
+      # MUST be rolling — cloudflared is the Cloudflare Tunnel (remote access
+      # lifeline). deploy-service enforces `up -d --remove-orphans` and never
+      # calls `docker compose down` for this stack.
+      strategy: rolling
+    secrets:
+      infisical:
+        # deploy-service reads /home/homelab/.infisical_runtime_auth.yml,
+        # authenticates with Infisical at http://localhost:8222, fetches each
+        # path, and injects the result as the named env var into docker compose.
+        # Secrets are never written to disk or the service repo checkout.
+        - path: /production/cloudflare/TUNNEL_TOKEN
+          env: TUNNEL_TOKEN
+        - path: /production/pihole/WEB_PASSWORD
+          env: PIHOLE_WEB_PASSWORD
+        - path: /production/network/IP_OBSERVE
+          env: IP_OBSERVE
+        - path: /production/network/IP_SVC_01
+          env: IP_SVC_01
+        - path: /production/network/IP_SVC_02
+          env: IP_SVC_02
+        - path: /production/network/IP_SVC_03
+          env: IP_SVC_03
+    rollback:
+      strategy: git
+    services: [cloudflared, caddy, pihole, pihole-exporter, portainer-agent]
