@@ -16,7 +16,7 @@
 # environment: production
 # folders:
 #   /camunda  /n8n  /discord  /cloudflare  /pihole  /grafana
-#   /ntfy     /greentechhub   /deploy
+#   /ntfy     /greentechhub   /deploy      /network
 #
 # Mapping rule:  vault_<service>_<field>  →  /production/<service-folder>/<FIELD>
 #   e.g. vault_camunda_db_password  →  /production/camunda/DB_PASSWORD
@@ -48,6 +48,10 @@
 #   vault_greentechhub_db_password    → /production/greentechhub/DB_PASSWORD
 #   vault_django_secret_key           → /production/greentechhub/DJANGO_SECRET_KEY
 #   vault_deploy_webhook_secret       → /production/deploy/WEBHOOK_SECRET
+#   vault_network_ip_observe          → /production/network/IP_OBSERVE
+#   vault_network_ip_svc_01           → /production/network/IP_SVC_01
+#   vault_network_ip_svc_02           → /production/network/IP_SVC_02
+#   vault_network_ip_svc_03           → /production/network/IP_SVC_03
 
 # ══════════════════════════════════════════════════════════════════════════════
 # [bootstrap] — read directly by Ansible; never seeded into Infisical
@@ -159,3 +163,13 @@ vault_django_secret_key: "changeme"
 # Without it any caller who knows the URL can trigger a deploy.
 # Must match the DEPLOY_SECRET GitHub Actions secret (repo Settings → Secrets).
 vault_deploy_webhook_secret: "changeme"
+
+# ── Network — node IPs (non-secret; seeded into Infisical for deploy-service) ─
+# Matches ip_* vars in overrides.yml. deploy-service fetches these from
+# /production/network/IP_* at deploy time and injects them as env vars into
+# service stacks (e.g. Caddy reverse-proxy backends in homelab-edge-services).
+# Use EDIT_BEFORE_USE to mark the real values need to be set (same as main.yml).
+vault_network_ip_observe: "EDIT_BEFORE_USE"
+vault_network_ip_svc_01:  "EDIT_BEFORE_USE"
+vault_network_ip_svc_02:  "EDIT_BEFORE_USE"
+vault_network_ip_svc_03:  "EDIT_BEFORE_USE"

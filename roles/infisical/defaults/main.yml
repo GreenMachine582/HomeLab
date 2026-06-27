@@ -41,6 +41,7 @@ infisical_seed_folders:
   - ntfy
   - greentechhub
   - deploy
+  - network
 
 # Project role slug — ⚠️ verify against the deployed Infisical version; this is
 # a built-in project role name and may differ across releases. read-only:
