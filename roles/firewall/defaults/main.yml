@@ -11,10 +11,9 @@ firewall_rules: []
 # Should match ssh_port in group_vars/all/main.yml.
 ssh_port: 22
 
-# Transition safety net for SSH port migrations: keeps legacy port 22 open
-# alongside ssh_port so a botched port change can't lock you out. Defaults to
-# true so every newly-bootstrapped node gets the net; flip to false in
-# group_vars/host_vars per node once its new port is confirmed reachable —
-# the paired removal task then cleans the rule up via Ansible (no manual
-# `ufw delete` needed). See roles/firewall/tasks/main.yml.
-ssh_legacy_port_22_enabled: true
+# Port sshd was previously listening on. Set to the old port during a migration
+# so UFW keeps it open alongside ssh_port (preventing lockout). Defaults to
+# ssh_port so the safety-net tasks are a no-op when no migration is in progress.
+# Pass ssh_old_port_cleanup=true once the new port is confirmed to remove the rule.
+ssh_old_port: "{{ ssh_port }}"
+ssh_old_port_cleanup: false

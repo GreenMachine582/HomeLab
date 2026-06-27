@@ -24,6 +24,7 @@ locale: "en_US.UTF-8"
 
 # ── SSH hardening ─────────────────────────────────────────────────────────────
 ssh_port: 22
+ssh_old_port: "{{ ssh_port }}"   # set to current port when migrating; default = no migration
 ssh_permit_root_login: "no"
 ssh_password_authentication: "no"
 ssh_pubkey_authentication: "yes"

@@ -42,6 +42,21 @@
       APT::Periodic::AutocleanInterval "7";
   tags: [updates]
 
+# Probe the target port first. If sshd is already listening there, skip the
+# port-change task entirely — safe for Phase 2 re-runs and idempotent bootstraps.
+- name: "Security | Probe target SSH port {{ ssh_port }}"
+  ansible.builtin.wait_for:
+    port: "{{ ssh_port }}"
+    host: "{{ ansible_host | default(inventory_hostname) }}"
+    state: started
+    timeout: 3
+  delegate_to: localhost
+  become: false
+  register: _ssh_port_probe
+  ignore_errors: true
+  changed_when: false
+  tags: [ssh, security]
+
 - name: "Security | Harden SSH config"
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
@@ -51,7 +66,6 @@
     backup: true
     validate: "sshd -t -f %s"
   loop:
-    - { regexp: '^#?Port',                         line: "Port {{ ssh_port }}" }
     - { regexp: '^#?PermitRootLogin',              line: "PermitRootLogin {{ ssh_permit_root_login }}" }
     - { regexp: '^#?PasswordAuthentication',        line: "PasswordAuthentication {{ ssh_password_authentication }}" }
     - { regexp: '^#?PubkeyAuthentication',          line: "PubkeyAuthentication {{ ssh_pubkey_authentication }}" }
@@ -64,18 +78,31 @@
   register: sshd_config
   tags: [ssh, security]
 
+# Skipped when probe succeeded (sshd already on target port).
+- name: "Security | Update SSH port in sshd_config"
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?Port'
+    line: "Port {{ ssh_port }}"
+    state: present
+    backup: true
+    validate: "sshd -t -f %s"
+  register: _sshd_port_config
+  when: _ssh_port_probe is failed
+  tags: [ssh, security]
+
 # Restart sshd in the background over the current SSH session.
 # Avoids reconnecting before sshd starts listening on the new port.
-- name: "Security | Restart sshd to apply new port (async, non-blocking)"
+- name: "Security | Restart sshd to apply config changes (async, non-blocking)"
   ansible.builtin.systemd:
     name: ssh
     state: restarted
   async: 30
   poll: 0
-  when: sshd_config.changed
+  when: sshd_config.changed or (_sshd_port_config.changed | default(false))
   tags: [ssh, security]
 
-# Check from the controller that sshd is listening on the new port.
+# Check from the controller that sshd is listening on the target port.
 - name: "Security | Wait for sshd on {{ ssh_port }}"
   ansible.builtin.wait_for:
     port: "{{ ssh_port }}"
@@ -85,7 +112,7 @@
     timeout: 60
   delegate_to: localhost
   become: false
-  when: sshd_config.changed
+  when: sshd_config.changed or (_sshd_port_config.changed | default(false))
   tags: [ssh, security]
 
 # Update Ansible to use the new SSH port for remaining tasks.
