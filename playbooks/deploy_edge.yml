@@ -101,6 +101,14 @@
       become: false
       tags: [deploy-service, docker]
 
+    - name: "Pihole | Set web admin password via pihole setpassword (v6 ignores WEBPASSWORD env var)"
+      ansible.builtin.command:
+        cmd: docker exec pihole sh -c 'pihole setpassword "$WEBPASSWORD"'
+      become: false
+      no_log: true
+      changed_when: true
+      tags: [deploy-service, docker, pihole]
+
   roles:
     - role: fail2ban
       tags: [fail2ban]
