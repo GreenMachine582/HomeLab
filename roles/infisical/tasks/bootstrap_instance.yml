@@ -310,6 +310,15 @@
         label: "{{ item.item.name }}"
       register: _infisical_universal_auth
 
+    - name: "Infisical bootstrap | TEMP DEBUG — Universal Auth response structure (keys only, no values)"
+      ansible.builtin.debug:
+        msg: >-
+          UA top-level keys={{ _infisical_universal_auth.results[0].json.keys() | list }}
+          | identityUniversalAuth keys={{ _infisical_universal_auth.results[0].json.identityUniversalAuth.keys() | list
+            if 'identityUniversalAuth' in _infisical_universal_auth.results[0].json else 'KEY MISSING — update clientId path' }}
+      no_log: false
+      tags: [infisical, bootstrap, debug]
+
     - name: "Infisical bootstrap | Generate a client secret for each identity"
       ansible.builtin.uri:
         url: "{{ infisical_api_url }}/v1/auth/universal-auth/identities/{{ item.json.identity.id }}/client-secrets"
@@ -335,7 +344,7 @@
         mode: "0600"
       become: true
       vars:
-        _runtime_client_id: "{{ _infisical_identities.results[0].json.identity.id }}"
+        _runtime_client_id: "{{ _infisical_universal_auth.results[0].json.identityUniversalAuth.clientId }}"
         _runtime_client_secret: "{{ _infisical_client_secrets.results[0].json.clientSecret }}"
 
     - name: "Infisical bootstrap | Grant each identity access to the project"
