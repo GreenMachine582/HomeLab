@@ -61,7 +61,7 @@ homelab_users:
     ssh_key: "{{ vault_deploy_ssh_pubkey }}"
     sudo_passwordless: false
     sudo_commands:
-      - /usr/bin/ansible-playbook
+      - "{{ homelab_repo_path }}/scripts/deploy_edge.sh"
 
 # ── SSH hardening ─────────────────────────────────────────────────────────────
 ssh_permit_root_login: "no"
