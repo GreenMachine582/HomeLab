@@ -164,12 +164,14 @@ vault_django_secret_key: "changeme"
 # Must match the DEPLOY_SECRET GitHub Actions secret (repo Settings → Secrets).
 vault_deploy_webhook_secret: "changeme"
 
-# ── Network — node IPs (non-secret; seeded into Infisical for deploy-service) ─
-# Matches ip_* vars in overrides.yml. deploy-service fetches these from
-# /production/network/IP_* at deploy time and injects them as env vars into
-# service stacks (e.g. Caddy reverse-proxy backends in homelab-edge-services).
-# Use EDIT_BEFORE_USE to mark the real values need to be set (same as main.yml).
-vault_network_ip_observe: "EDIT_BEFORE_USE"
-vault_network_ip_svc_01:  "EDIT_BEFORE_USE"
-vault_network_ip_svc_02:  "EDIT_BEFORE_USE"
-vault_network_ip_svc_03:  "EDIT_BEFORE_USE"
+# ── Network — node IPs (OPTIONAL; non-secret) ────────────────────────────────
+# These are seeded into Infisical under /production/network/IP_* so
+# deploy-service can inject them as env vars into service stacks (e.g. Caddy
+# reverse-proxy backends in homelab-edge-services). They are NOT secrets.
+# If omitted here, the seed task falls back to ip_*/ip_svc_0* from overrides.yml
+# automatically — you do NOT need to add them to your vault.yml unless you want
+# them to differ from your overrides.yml values (rare).
+# vault_network_ip_observe: "192.168.50.11"
+# vault_network_ip_svc_01:  "192.168.50.20"
+# vault_network_ip_svc_02:  "192.168.50.21"
+# vault_network_ip_svc_03:  "192.168.50.22"

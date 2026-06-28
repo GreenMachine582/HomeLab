@@ -388,10 +388,10 @@
           greentechhub/DB_PASSWORD: "{{ vault_greentechhub_db_password }}"
           greentechhub/DJANGO_SECRET_KEY: "{{ vault_django_secret_key }}"
           deploy/WEBHOOK_SECRET: "{{ vault_deploy_webhook_secret }}"
-          network/IP_OBSERVE: "{{ vault_network_ip_observe }}"
-          network/IP_SVC_01:  "{{ vault_network_ip_svc_01 }}"
-          network/IP_SVC_02:  "{{ vault_network_ip_svc_02 }}"
-          network/IP_SVC_03:  "{{ vault_network_ip_svc_03 }}"
+          network/IP_OBSERVE: "{{ vault_network_ip_observe | default(ip_observe) }}"
+          network/IP_SVC_01:  "{{ vault_network_ip_svc_01  | default(ip_svc_01) }}"
+          network/IP_SVC_02:  "{{ vault_network_ip_svc_02  | default(ip_svc_02) }}"
+          network/IP_SVC_03:  "{{ vault_network_ip_svc_03  | default(ip_svc_03) }}"
 
     - name: "Infisical bootstrap | Check which application-secret keys already exist"
       ansible.builtin.uri:
