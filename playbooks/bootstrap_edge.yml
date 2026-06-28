@@ -274,6 +274,7 @@
         state: present
       loop: "{{ _own_host_keys.stdout_lines | select('match', '^[^#]') | list }}"
       no_log: true
+      become_user: homelab
       tags: [ansible]
 
     - name: "Repo | Deploy GitHub deploy key"
@@ -299,12 +300,30 @@
               IdentitiesOnly yes
       tags: [repo]
 
+    - name: "Repo | Scan GitHub host key"
+      ansible.builtin.command:
+        cmd: ssh-keyscan -t ed25519 github.com
+      register: _github_hostkey
+      changed_when: false
+      delegate_to: localhost
+      become: false
+      tags: [repo]
+
+    - name: "Repo | Add GitHub to homelab known_hosts"
+      ansible.builtin.known_hosts:
+        name: github.com
+        key: "{{ _github_hostkey.stdout }}"
+        path: /home/homelab/.ssh/known_hosts
+        state: present
+      become_user: homelab
+      tags: [repo]
+
     - name: "Repo | Clone homelab repo"
       ansible.builtin.git:
         repo: "git@github.com:{{ github_org }}/homelab.git"
         dest: "{{ homelab_repo_path }}"
         version: "{{ homelab_repo_branch }}"
-        accept_hostkey: true
+        accept_hostkey: false
         key_file: /home/homelab/.ssh/github
       become_user: homelab
       tags: [repo]

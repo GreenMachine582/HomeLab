@@ -11,8 +11,8 @@
 #   sudo scripts/deploy.sh deploy_edge homelab-edge --check         # dry-run
 #   sudo scripts/deploy.sh deploy_edge homelab-edge --tags alloy --extra-vars "x=1"
 #
-# Runs as root (deploy user sudo rule). git pull is delegated to homelab, who
-# owns the repo and holds /home/homelab/.ssh/github.
+# Runs via deploy user sudo rule. Both git pull and ansible-playbook run as
+# homelab (via runuser) so they share homelab's known_hosts and SSH keys.
 
 set -euo pipefail
 
@@ -26,4 +26,4 @@ esac
 
 runuser -u homelab -- git -C "$REPO" pull --ff-only
 
-exec ansible-playbook "$REPO/playbooks/${PLAYBOOK_STEM}.yml" --limit "$LIMIT" "$@"
+exec runuser -u homelab -- ansible-playbook "$REPO/playbooks/${PLAYBOOK_STEM}.yml" --limit "$LIMIT" "$@"
