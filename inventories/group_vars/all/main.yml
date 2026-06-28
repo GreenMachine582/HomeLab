@@ -24,7 +24,11 @@ ip_svc_01:  "EDIT_BEFORE_USE"
 ip_svc_02:  "EDIT_BEFORE_USE"
 ip_svc_03:  "EDIT_BEFORE_USE"
 
-tailscale_ip_edge: "EDIT_BEFORE_USE"
+tailscale_ip_edge:    "EDIT_BEFORE_USE"
+tailscale_ip_observe: "EDIT_BEFORE_USE"
+tailscale_ip_svc_01:  "EDIT_BEFORE_USE"
+tailscale_ip_svc_02:  "EDIT_BEFORE_USE"
+tailscale_ip_svc_03:  "EDIT_BEFORE_USE"
 
 # ── System ────────────────────────────────────────────────────────────────────
 ssh_port: 22

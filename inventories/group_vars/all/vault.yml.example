@@ -52,6 +52,11 @@
 #   vault_network_ip_svc_01           → /production/network/IP_SVC_01
 #   vault_network_ip_svc_02           → /production/network/IP_SVC_02
 #   vault_network_ip_svc_03           → /production/network/IP_SVC_03
+#   (sourced from overrides.yml, not vault — no vault_ prefix)
+#   tailscale_ip_observe              → /production/network/TAILSCALE_IP_OBSERVE
+#   tailscale_ip_svc_01               → /production/network/TAILSCALE_IP_SVC_01
+#   tailscale_ip_svc_02               → /production/network/TAILSCALE_IP_SVC_02
+#   tailscale_ip_svc_03               → /production/network/TAILSCALE_IP_SVC_03
 
 # ══════════════════════════════════════════════════════════════════════════════
 # [bootstrap] — read directly by Ansible; never seeded into Infisical
