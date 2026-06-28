@@ -30,6 +30,98 @@
 # longer calls roles/infisical/tasks/lookup.yml — secrets never touch Ansible
 # variable space.
 
+# ── Probe play ─────────────────────────────────────────────────────────────────
+# Runs on localhost. Detects the reachable SSH endpoint (Tailscale preferred over
+# LAN) and the SSH key location (repo .ssh/ for PC/WSL, ~/.ssh/ for edge node),
+# then injects ansible_host, ansible_port, and ansible_ssh_private_key_file into
+# homelab-edge via add_host before the main play connects.
+# No fallback port needed — SSH is already on ssh_port after Phase 1.
+- name: "Probe | Discover SSH endpoint and key for homelab-edge (Phase 2)"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/../inventories/group_vars/all/main.yml"
+    - "{{ playbook_dir }}/../inventories/group_vars/all/overrides.yml"
+
+  vars:
+    _tailscale_available: >-
+      {{ tailscale_ip_edge is defined
+         and tailscale_ip_edge | string != 'EDIT_BEFORE_USE' }}
+    _ssh_candidates: >-
+      {{
+        ([{'host': tailscale_ip_edge, 'port': ssh_port | int,
+           'label': 'Tailscale ' ~ tailscale_ip_edge ~ ':' ~ ssh_port}]
+         if _tailscale_available else [])
+        + [{'host': ip_edge, 'port': ssh_port | int,
+            'label': 'LAN ' ~ ip_edge ~ ':' ~ ssh_port}]
+      }}
+    _candidate_key_paths:
+      - "{{ playbook_dir }}/../.ssh/homelab"   # repo root .ssh/ — works from PC/WSL
+      - "~/.ssh/homelab"                        # user home .ssh/ — works from edge node
+
+  tasks:
+    - name: "Probe | Test TCP reachability"
+      ansible.builtin.wait_for:
+        host: "{{ item.host }}"
+        port: "{{ item.port }}"
+        state: started
+        timeout: 5
+      register: _probe_results
+      ignore_errors: true
+      changed_when: false
+      loop: "{{ _ssh_candidates }}"
+      loop_control:
+        label: "{{ item.label }}"
+
+    - name: "Probe | Collect reachable endpoints"
+      ansible.builtin.set_fact:
+        _successful_probes: >-
+          {{ _probe_results.results | selectattr('failed', 'equalto', false) | list }}
+
+    - name: "Probe | Fail if homelab-edge unreachable"
+      ansible.builtin.fail:
+        msg: >-
+          Cannot reach homelab-edge on any candidate
+          ({{ _ssh_candidates | map(attribute='label') | list | join(', ') }}).
+          Check ip_edge / tailscale_ip_edge / ssh_port in overrides.yml.
+      when: _successful_probes | length == 0
+
+    - name: "Probe | Stat candidate SSH key paths"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ _candidate_key_paths }}"
+      register: _key_stat
+
+    - name: "Probe | Set SSH key path"
+      ansible.builtin.set_fact:
+        _ssh_key_path: >-
+          {{ (_key_stat.results | selectattr('stat.exists') | list | first).item
+             | default('') }}
+
+    - name: "Probe | Fail if no SSH key found"
+      ansible.builtin.fail:
+        msg: >-
+          SSH key not found at any candidate path
+          ({{ _candidate_key_paths | join(', ') }}).
+          On PC/WSL ensure the repo .ssh/ dir has the key (BOOTSTRAP.md § 1.4).
+          On the edge node ensure Phase 1 bootstrap completed successfully.
+      when: _ssh_key_path == ''
+
+    - name: "Probe | Show winner"
+      ansible.builtin.debug:
+        msg: "Connecting via {{ _successful_probes[0].item.label }} using key {{ _ssh_key_path }}"
+
+    - name: "Probe | Inject connection parameters"
+      ansible.builtin.add_host:
+        name: homelab-edge
+        groups: edge
+        ansible_host: "{{ _successful_probes[0].item.host }}"
+        ansible_port: "{{ _successful_probes[0].item.port }}"
+        ansible_ssh_private_key_file: "{{ _ssh_key_path }}"
+      changed_when: false
+
 - name: "Deploy | Edge | Firewall, fail2ban, and services"
   hosts: edge
   become: true
