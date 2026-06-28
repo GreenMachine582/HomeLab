@@ -24,6 +24,6 @@ case $# in
   *) PLAYBOOK_STEM=$1; LIMIT=$2; shift 2 ;;
 esac
 
-runuser -u homelab -- git -C "$REPO" pull --ff-only
-
-exec runuser -u homelab -- ansible-playbook "$REPO/playbooks/${PLAYBOOK_STEM}.yml" --limit "$LIMIT" "$@"
+HOMELAB_HOME="$(getent passwd homelab | cut -d: -f6)"
+HOME="$HOMELAB_HOME" runuser -u homelab -- git -C "$REPO" pull --ff-only
+exec runuser -u homelab -- env HOME="$HOMELAB_HOME" ansible-playbook "$REPO/playbooks/${PLAYBOOK_STEM}.yml" --limit "$LIMIT" "$@"
