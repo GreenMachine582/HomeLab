@@ -7,6 +7,10 @@
 
 set -euo pipefail
 
+# SSH port used by all homelab nodes (overrides.yml ssh_port value).
+# Override at runtime: SSH_PORT=2189 bash scripts/test_connectivity.sh
+SSH_PORT="${SSH_PORT:-22}"
+
 PASS=0
 FAIL=0
 
@@ -50,10 +54,10 @@ else
 fi
 
 # ── SSH reachability ──────────────────────────────────────────────────────────
-bold "=== SSH (port 22) ==="
-check "SSH homelab-observe" "nc -z -w3 192.168.1.11 22"
-check "SSH homelab-svc-01"  "nc -z -w3 192.168.1.20 22"
-check "SSH homelab-svc-02"  "nc -z -w3 192.168.1.21 22"
+bold "=== SSH (port ${SSH_PORT}) ==="
+check "SSH homelab-observe" "nc -z -w3 192.168.1.11 ${SSH_PORT}"
+check "SSH homelab-svc-01"  "nc -z -w3 192.168.1.20 ${SSH_PORT}"
+check "SSH homelab-svc-02"  "nc -z -w3 192.168.1.21 ${SSH_PORT}"
 
 # ── Service endpoint checks ───────────────────────────────────────────────────
 bold "=== Service endpoints ==="

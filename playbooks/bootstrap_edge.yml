@@ -33,13 +33,13 @@
 # Candidate order (first reachable wins):
 #   1. Tailscale IP + ssh_port   — fully provisioned; fast path on re-runs
 #   2. LAN IP + ssh_port         — hardened SSH, Tailscale not yet on this path
-#   3. Tailscale IP + port 22    — defensive edge case; omitted when ssh_port == 22
-#   4. LAN IP + port 22          — fresh OS install; omitted when ssh_port == 22
+#   3. Tailscale IP + fallback_ssh_port — omitted when ssh_port == fallback_ssh_port
+#   4. LAN IP + fallback_ssh_port       — fresh OS install; omitted when ssh_port == fallback_ssh_port
 # Tailscale candidates are skipped when tailscale_ip_edge is EDIT_BEFORE_USE.
 #
 # Note: vars_files loads main.yml which contains vault refs (e.g. {{ vault_ntfy_token }}).
 # Those are stored as unevaluated strings and never resolved here — the probe play
-# only touches ip_edge, ssh_port, tailscale_ip_edge, so no vault password is needed.
+# only touches ip_edge, ssh_port, fallback_ssh_port, tailscale_ip_edge, so no vault password is needed.
 - name: "Probe | Discover reachable SSH endpoint for homelab-edge"
   hosts: localhost
   connection: local
@@ -53,7 +53,7 @@
     _tailscale_available: >-
       {{ tailscale_ip_edge is defined
          and tailscale_ip_edge | string != 'EDIT_BEFORE_USE' }}
-    _has_custom_port: "{{ ssh_port | int != 22 }}"
+    _has_custom_port: "{{ ssh_port | int != fallback_ssh_port | int }}"
     _ssh_candidates: >-
       {{
         ([{'host': tailscale_ip_edge, 'port': ssh_port | int,
@@ -61,11 +61,11 @@
          if _tailscale_available else [])
         + [{'host': ip_edge, 'port': ssh_port | int,
             'label': 'LAN ' ~ ip_edge ~ ':' ~ ssh_port}]
-        + ([{'host': tailscale_ip_edge, 'port': 22,
-             'label': 'Tailscale ' ~ tailscale_ip_edge ~ ':22'}]
+        + ([{'host': tailscale_ip_edge, 'port': fallback_ssh_port | int,
+             'label': 'Tailscale ' ~ tailscale_ip_edge ~ ':' ~ fallback_ssh_port}]
            if _tailscale_available and _has_custom_port else [])
-        + ([{'host': ip_edge, 'port': 22,
-             'label': 'LAN ' ~ ip_edge ~ ':22'}]
+        + ([{'host': ip_edge, 'port': fallback_ssh_port | int,
+             'label': 'LAN ' ~ ip_edge ~ ':' ~ fallback_ssh_port}]
            if _has_custom_port else [])
       }}
 

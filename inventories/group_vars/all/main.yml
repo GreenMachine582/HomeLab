@@ -28,6 +28,7 @@ tailscale_ip_edge: "EDIT_BEFORE_USE"
 
 # ── System ────────────────────────────────────────────────────────────────────
 ssh_port: 22
+fallback_ssh_port: 22
 timezone: "Australia/Sydney"
 locale: "en_AU.UTF-8"
 
