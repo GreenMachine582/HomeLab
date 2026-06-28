@@ -16,7 +16,7 @@
 # environment: production
 # folders:
 #   /camunda  /n8n  /discord  /cloudflare  /pihole  /grafana
-#   /ntfy     /greentechhub   /deploy      /network
+#   /ntfy     /greentechhub   /deploy      /network  /semaphore
 #
 # Mapping rule:  vault_<service>_<field>  →  /production/<service-folder>/<FIELD>
 #   e.g. vault_camunda_db_password  →  /production/camunda/DB_PASSWORD
@@ -48,6 +48,8 @@
 #   vault_greentechhub_db_password    → /production/greentechhub/DB_PASSWORD
 #   vault_django_secret_key           → /production/greentechhub/DJANGO_SECRET_KEY
 #   vault_deploy_webhook_secret       → /production/deploy/WEBHOOK_SECRET
+#   vault_semaphore_admin_user        → /production/semaphore/ADMIN_USER
+#   vault_semaphore_admin_password    → /production/semaphore/ADMIN_PASSWORD
 #   vault_network_ip_observe          → /production/network/IP_OBSERVE
 #   vault_network_ip_svc_01           → /production/network/IP_SVC_01
 #   vault_network_ip_svc_02           → /production/network/IP_SVC_02
@@ -85,6 +87,9 @@ vault_infisical_admin_password: "changeme"
 vault_infisical_encryption_key: "changeme"
 
 # ── Semaphore admin account ───────────────────────────────────────────────────
+# Also seeded into Infisical as /production/semaphore/ADMIN_{USER,PASSWORD}.
+# The semaphore role reads these directly from vault.yml during Phase 1 bootstrap
+# (Semaphore starts before Infisical seeding is complete — see env.j2 comment).
 vault_semaphore_admin_user: "admin"
 vault_semaphore_admin_password: "changeme"
 

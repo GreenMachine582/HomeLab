@@ -405,6 +405,8 @@
           network/TAILSCALE_IP_SVC_01:  "{{ tailscale_ip_svc_01 }}"
           network/TAILSCALE_IP_SVC_02:  "{{ tailscale_ip_svc_02 }}"
           network/TAILSCALE_IP_SVC_03:  "{{ tailscale_ip_svc_03 }}"
+          semaphore/ADMIN_USER:     "{{ vault_semaphore_admin_user }}"
+          semaphore/ADMIN_PASSWORD: "{{ vault_semaphore_admin_password }}"
 
     - name: "Infisical bootstrap | Check which application-secret keys already exist"
       ansible.builtin.uri:
