@@ -192,27 +192,27 @@
     - (_infisical_bootstrap_result.status | default(-1)) == -1
   tags: [infisical, bootstrap]
 
-- name: "Infisical bootstrap | SKIPPED — instance already initialised but runtime credentials are missing (stuck state)"
-  ansible.builtin.debug:
+- name: "Infisical bootstrap | FAIL — stuck state: instance initialised but runtime credentials missing"
+  ansible.builtin.fail:
     msg: >-
-      Skipping instance bootstrap: Infisical rejected the call with a real
-      HTTP status ({{ _infisical_bootstrap_result.status | default('n/a') }},
-      not 200) — meaning the org/admin already exist — yet
-      {{ infisical_runtime_auth_path }} doesn't exist on this node. That
-      combination means a PREVIOUS run got partway through one-shot
-      provisioning and died before minting the "runtime" identity (or the
-      org/admin were created some other way, e.g. the old manual UI wizard,
-      before this automation existed). Either way Ansible can't safely
-      provision into a non-empty instance, and POST /v1/admin/bootstrap can't
-      be called again to get a fresh token (see "Why this is gated on
-      infisical_runtime_auth_path" in the header — it crashes instead of
-      cleanly re-rejecting). This IS the genuinely stuck state —
-      TROUBLESHOOTING.md "Bootstrap playbook reports Infisical already
-      initialised" has the recovery: stop the stack and wipe its volumes —
-      `docker compose -f docker-compose.edge.yml rm -sf infisical
-      infisical-db infisical-redis` then remove the
-      infisical-db/infisical-redis volumes — and re-run this playbook against
-      the now-empty instance.
+      Infisical is already initialised (POST /v1/admin/bootstrap returned
+      {{ _infisical_bootstrap_result.status | default('n/a') }}) but
+      {{ infisical_runtime_auth_path }} does not exist on this node. A
+      previous bootstrap run created the org/admin and then died before
+      minting and writing the runtime machine identity. Ansible cannot safely
+      provision into a non-empty Infisical instance.
+
+      Recovery (one command, from your PC/WSL):
+        ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
+          --extra-vars infisical_reset=true
+
+      This stops infisical/infisical-db/infisical-redis, removes their named
+      volumes ({{ homelab_repo_path | basename }}_infisical_db_data /
+      _infisical_redis_data), removes any stale credentials file, then
+      re-provisions everything in one pass against the now-empty instance.
+      /opt/infisical/.env is preserved — its encryption key and DB/Redis
+      passwords carry over to the fresh Postgres container automatically.
+      See docs/TROUBLESHOOTING.md "Bootstrap instance/seed step fails".
   when:
     - not _infisical_bootstrap_fresh
     - not _infisical_runtime_auth_stat.stat.exists

@@ -388,6 +388,47 @@
                        # can't see infisical's defaults without this.
       tags: [infisical]
 
+    # ── Infisical reset (stuck state recovery) ───────────────────────────────
+    # Wipes Infisical containers and their named volumes so bootstrap_instance.yml
+    # sees a fresh instance (200 on bootstrap) rather than the stuck state (400 +
+    # no runtime_auth.yml). ONLY runs when explicitly requested:
+    #   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
+    #     --extra-vars infisical_reset=true
+    # /opt/infisical/.env is NOT removed — it holds ENCRYPTION_KEY (permanent,
+    # from vault_infisical_encryption_key) and the DB/Redis passwords. A fresh
+    # Postgres container initialised from those same env vars will have the right
+    # credentials. See roles/infisical/tasks/bootstrap_instance.yml for the full
+    # stuck-state rationale.
+    - name: "Infisical reset | Stop and remove Infisical containers"
+      ansible.builtin.command:
+        cmd: docker compose -f docker-compose.edge.yml rm -sf infisical infisical-db infisical-redis
+        chdir: "{{ homelab_repo_path }}"
+      become_user: homelab
+      failed_when: false
+      changed_when: true
+      when: infisical_reset | default(false) | bool
+      tags: [infisical]
+
+    - name: "Infisical reset | Remove named DB and Redis volumes"
+      ansible.builtin.command:
+        cmd: >
+          docker volume rm
+          {{ homelab_repo_path | basename }}_infisical_db_data
+          {{ homelab_repo_path | basename }}_infisical_redis_data
+      failed_when: false
+      changed_when: true
+      when: infisical_reset | default(false) | bool
+      tags: [infisical]
+
+    - name: "Infisical reset | Remove stale runtime credentials file"
+      ansible.builtin.file:
+        path: "{{ infisical_runtime_auth_path }}"
+        state: absent
+      become: true
+      become_user: "{{ infisical_service_user }}"
+      when: infisical_reset | default(false) | bool
+      tags: [infisical]
+
     - name: "Docker | Bring up Infisical (db, redis, app)"
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.edge.yml up -d infisical-db infisical-redis infisical

@@ -142,7 +142,7 @@ services:
       - no-new-privileges:true
 
   infisical:
-    image: infisical/infisical:latest
+    image: infisical/infisical:v0.161.9
     container_name: infisical
     restart: unless-stopped
     env_file:
