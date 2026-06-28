@@ -25,10 +25,9 @@
 #   homelab-edge-services; secrets injected by deploy-service from Infisical)
 #
 # Secrets: deploy-service fetches TUNNEL_TOKEN, PIHOLE_WEB_PASSWORD, and
-# IP_OBSERVE/IP_SVC_0* directly from Infisical using the node-local runtime
-# identity at /home/homelab/.infisical_runtime_auth.yml. This playbook no
-# longer calls roles/infisical/tasks/lookup.yml — secrets never touch Ansible
-# variable space.
+# IP_*/TAILSCALE_IP_* from Infisical for docker-compose env injection.
+# Additionally, lookup.yml is called once to resolve pihole/WEB_PASSWORD so
+# pihole setpassword can be run post-compose (Pi-hole v6 ignores WEBPASSWORD).
 
 - name: "Deploy | Edge | Firewall, fail2ban, and services"
   hosts: edge
@@ -101,12 +100,22 @@
       become: false
       tags: [deploy-service, docker]
 
-    - name: "Pihole | Set web admin password via pihole setpassword (v6 ignores WEBPASSWORD env var)"
-      ansible.builtin.command:
-        cmd: docker exec pihole sh -c 'pihole setpassword "$WEBPASSWORD"'
-      become: false
+    - name: "Pihole | Fetch password from Infisical and apply via pihole setpassword"
       no_log: true
-      changed_when: true
+      block:
+        - name: "Pihole | Fetch pihole/WEB_PASSWORD from Infisical"
+          ansible.builtin.include_role:
+            name: infisical
+            tasks_from: lookup.yml
+          vars:
+            infisical_lookup_keys:
+              - pihole/WEB_PASSWORD
+
+        - name: "Pihole | Set web admin password (Pi-hole v6 ignores WEBPASSWORD env var)"
+          ansible.builtin.command:
+            cmd: docker exec pihole pihole setpassword "{{ infisical_secrets['pihole/WEB_PASSWORD'] }}"
+          become: false
+          changed_when: true
       tags: [deploy-service, docker, pihole]
 
   roles:
