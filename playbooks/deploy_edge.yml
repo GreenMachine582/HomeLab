@@ -47,6 +47,16 @@
       become_user: homelab
       tags: [repo]
 
+    - name: "Users | Keep deploy sudoers rule current (points at wrapper script, not ansible-playbook directly)"
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/deploy
+        content: "deploy ALL=(ALL) NOPASSWD: {{ homelab_repo_path }}/scripts/deploy_edge.sh\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "visudo -cf %s"
+      tags: [users, repo]
+
     # ── deploy-service ────────────────────────────────────────────────────────
     # Installed into an isolated virtualenv to satisfy PEP 668 (Raspberry Pi OS
     # Bookworm marks the system Python as externally managed). Editable install
