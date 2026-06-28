@@ -44,12 +44,12 @@ def _load_runtime_creds() -> tuple[str, str, str]:
         creds = yaml.safe_load(f)
     client_id = creds.get("infisical_runtime_client_id")
     client_secret = creds.get("infisical_runtime_client_secret")
-    project_slug = creds.get("infisical_runtime_project_slug")
+    project_id = creds.get("infisical_runtime_project_id")
     if not client_id or not client_secret:
         sys.exit(f"[deploy-service] Missing client_id or client_secret in {path}")
-    if not project_slug:
-        sys.exit(f"[deploy-service] Missing infisical_runtime_project_slug in {path} — re-run Phase 1 bootstrap")
-    return client_id, client_secret, project_slug
+    if not project_id:
+        sys.exit(f"[deploy-service] Missing infisical_runtime_project_id in {path} — re-run Phase 1 bootstrap")
+    return client_id, client_secret, project_id
 
 
 def _login(client_id: str, client_secret: str) -> str:
@@ -64,7 +64,7 @@ def _login(client_id: str, client_secret: str) -> str:
     return token
 
 
-def _fetch_secret(token: str, secret_path: str, project_slug: str) -> str:
+def _fetch_secret(token: str, secret_path: str, project_id: str) -> str:
     """secret_path is e.g. '/production/cloudflare/TUNNEL_TOKEN'."""
     parts = secret_path.strip("/").split("/")
     if len(parts) < 3:
@@ -75,7 +75,7 @@ def _fetch_secret(token: str, secret_path: str, project_slug: str) -> str:
     env = parts[0]
 
     qs = urllib.parse.urlencode({
-        "projectSlug": project_slug,
+        "workspaceId": project_id,
         "environment": env,
         "secretPath": folder,
     })
@@ -91,7 +91,7 @@ def fetch(secret_specs: list[dict]) -> dict[str, str]:
     if not secret_specs:
         return {}
 
-    client_id, client_secret, project_slug = _load_runtime_creds()
+    client_id, client_secret, project_id = _load_runtime_creds()
     token = _login(client_id, client_secret)
 
     env_vars: dict[str, str] = {}
@@ -99,5 +99,5 @@ def fetch(secret_specs: list[dict]) -> dict[str, str]:
         path = spec["path"]
         env_name = spec["env"]
         print(f"  fetching {path} → {env_name}")
-        env_vars[env_name] = _fetch_secret(token, path, project_slug)
+        env_vars[env_name] = _fetch_secret(token, path, project_id)
     return env_vars
