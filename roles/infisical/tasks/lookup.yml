@@ -44,7 +44,7 @@
 
     - name: "Infisical lookup | Fetch each requested secret"
       ansible.builtin.uri:
-        url: "{{ infisical_runtime_api_url }}/v3/secrets/raw/{{ item | basename }}?workspaceId={{ infisical_runtime_project_id }}&environment={{ infisical_seed_environment }}&secretPath=/{{ item | dirname }}"
+        url: "{{ infisical_runtime_api_url }}/v3/secrets/raw/{{ item | basename }}?projectSlug={{ infisical_runtime_project_slug }}&environment={{ infisical_seed_environment }}&secretPath=/{{ item | dirname }}"
         method: GET
         headers:
           Authorization: "Bearer {{ _infisical_lookup_auth.json.accessToken }}"

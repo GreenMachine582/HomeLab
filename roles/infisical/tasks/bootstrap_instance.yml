@@ -243,6 +243,15 @@
         status_code: [200, 201]
       register: _infisical_project
 
+    - name: "Infisical bootstrap | TEMP DEBUG — project creation response structure (keys only)"
+      ansible.builtin.debug:
+        msg: >-
+          project top-level keys={{ _infisical_project.json.keys() | list }}
+          | nested keys={{ _infisical_project.json[_infisical_project.json.keys() | list | first].keys() | list
+            if _infisical_project.json else 'empty response' }}
+      no_log: false
+      tags: [infisical, bootstrap, debug]
+
     - name: "Infisical bootstrap | Capture project ID and slug"
       ansible.builtin.set_fact:
         _infisical_project_id:   "{{ _infisical_project.json.project.id   | default(_infisical_project.json.workspace.id) }}"
@@ -411,7 +420,7 @@
 
     - name: "Infisical bootstrap | Check which application-secret keys already exist"
       ansible.builtin.uri:
-        url: "{{ infisical_api_url }}/v3/secrets/raw/{{ item.key | basename }}?workspaceId={{ _infisical_project_id }}&environment={{ infisical_seed_environment }}&secretPath=/{{ item.key | dirname }}"
+        url: "{{ infisical_api_url }}/v3/secrets/raw/{{ item.key | basename }}?projectSlug={{ _infisical_project_slug }}&environment={{ infisical_seed_environment }}&secretPath=/{{ item.key | dirname }}"
         method: GET
         headers:
           Authorization: "Bearer {{ _infisical_admin_token }}"
@@ -429,7 +438,7 @@
           Authorization: "Bearer {{ _infisical_admin_token }}"
         body_format: json
         body:
-          workspaceId: "{{ _infisical_project_id }}"
+          projectSlug: "{{ _infisical_project_slug }}"
           environment: "{{ infisical_seed_environment }}"
           secretPath: "/{{ item.item.key | dirname }}"
           secretValue: "{{ item.item.value }}"
@@ -448,7 +457,7 @@
     # once the create-secret failure is root-caused.
     - name: "Infisical bootstrap | TEMP DEBUG — show create-secret status/msg (not body/values)"
       ansible.builtin.debug:
-        msg: "{{ item.item.item.key }} -> status={{ item.status | default('n/a') }} | workspaceId={{ _infisical_project_id }} | error={{ item.json.error | default('') }} | message={{ item.json.message | default(item.msg | default('(no msg)')) }} | url={{ item.url | default('n/a') }}"
+        msg: "{{ item.item.item.key }} -> status={{ item.status | default('n/a') }} | projectSlug={{ _infisical_project_slug }} | error={{ item.json.error | default('') }} | message={{ item.json.message | default(item.msg | default('(no msg)')) }} | url={{ item.url | default('n/a') }}"
       loop: "{{ _infisical_seed_create_DEBUG.results }}"
       loop_control:
         label: "{{ item.item.item.key | default('?') }}"
