@@ -14,7 +14,7 @@
 # debug message for what's next (Phase 2).
 #
 # Usage:
-#   ansible-playbook -i inventories/bootstrap.yml playbooks/bootstrap_edge.yml
+#   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
 #
 # Requires: roles/users, roles/base_hardening, roles/docker, roles/tailscale,
 #           roles/infisical, roles/firewall, roles/semaphore
@@ -27,7 +27,7 @@
 # tailscale_ip_edge from overrides.yml, probes up to four (host, port) candidates
 # in "most-configured first" order, and injects the winning ansible_host /
 # ansible_port into homelab-edge via add_host. The static vars (ansible_user,
-# key path, python interpreter, become password) stay in bootstrap.yml and merge
+# key path, python interpreter, become password) stay in bootstrap.ini and merge
 # from inventory as normal — only host and port change per-run.
 #
 # Candidate order (first reachable wins):

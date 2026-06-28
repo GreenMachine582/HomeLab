@@ -59,7 +59,7 @@
 
 # ── Bootstrap credentials ─────────────────────────────────────────────────────
 # admin sudo password — set in RPi Imager (BOOTSTRAP.md § 0.3); used only during Phase 1
-# Wired via bootstrap.yml: ansible_become_password={{ vault_admin_become_password }}
+# Wired via bootstrap.ini: ansible_become_password={{ vault_admin_become_password }}
 vault_admin_become_password: "changeme"
 
 # ── SSH public keys ───────────────────────────────────────────────────────────

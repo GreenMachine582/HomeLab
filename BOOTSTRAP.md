@@ -386,7 +386,7 @@ Does](#what-the-bootstrap-playbook-does) for the full breakdown.
 Make sure the SSH key is loaded in `ssh-agent` (step 1.7) before running.
 
 ```bash
-ansible-playbook -i inventories/bootstrap.yml \
+ansible-playbook -i inventories/bootstrap.ini \
   playbooks/bootstrap_edge.yml
 ```
 

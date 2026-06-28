@@ -165,7 +165,7 @@ The bootstrap playbook uses the `admin` user whose sudo password is read from th
 
 ```bash
 ansible-vault edit inventories/group_vars/all/vault.yml
-ansible-playbook -i inventories/bootstrap.yml playbooks/bootstrap_edge.yml
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
 ```
 
 After bootstrap, subsequent playbooks use the `homelab` user with passwordless sudo.
@@ -384,7 +384,7 @@ curl -sf http://127.0.0.1:8222/api/status
 # Re-run just the provision-and-seed step with verbose output (only does
 # anything against a FRESH/uninitialised instance — see the skip behavior above)
 cd /opt/homelab
-ansible-playbook -i inventories/bootstrap.yml playbooks/bootstrap_edge.yml \
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
   --tags infisical,bootstrap -vvv
 ```
 
@@ -612,7 +612,7 @@ docker exec -it infisical-db psql -U infisical -d infisical -c "\dt"
 > mismatched key leaves every secret in the restored database permanently
 > undecryptable. If Infisical itself is unrecoverable, fall back to wiping it
 > and re-running the bootstrap playbook
-> (`ansible-playbook -i inventories/bootstrap.yml playbooks/bootstrap_edge.yml`):
+> (`ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml`):
 > its one-shot `POST /v1/admin/bootstrap` call detects the fresh, empty
 > instance and automatically re-provisions everything from scratch — org,
 > admin, project, environment, folders, the read-only `runtime` identity —
@@ -698,7 +698,7 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
 2. Boot the edge node and find its IP (check router DHCP)
 3. From your PC, run the bootstrap playbook (see `BOOTSTRAP.md` Phase 1):
    ```bash
-   ansible-playbook -i inventories/bootstrap.yml playbooks/bootstrap_edge.yml
+   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
    ```
    This single pass brings Infisical (and Semaphore) back up, and handles
    either recovery path automatically — no credentials to copy anywhere

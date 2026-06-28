@@ -22,7 +22,7 @@ Node IPs are defined in `inventories/group_vars/all/overrides.yml` (gitignored �
 
 ### Deployment Phases
 
-1. **Phase 1** — PC → `homelab-edge` via `inventories/bootstrap.yml` (one-time, uses `admin` user)
+1. **Phase 1** — PC → `homelab-edge` via `inventories/bootstrap.ini` (one-time, uses `admin` user)
 2. **Phase 2** — `homelab-edge` deploys itself via `inventories/prod.yml`
 3. **Phase 3** — `homelab-edge` deploys all other nodes
 4. **Phase 4** — GitHub Actions → POST to n8n/Camunda webhook → n8n SSHes to edge as `deploy` user → runs `ansible-playbook`. GitHub never connects directly to the homelab.
@@ -37,7 +37,7 @@ Services are split across four compose files by concern:
 
 ### Ansible Structure
 
-- `inventories/bootstrap.yml` — Phase 1 only; connects as `admin`; `ansible_host`/`ansible_port` are probe-injected at runtime by `bootstrap_edge.yml` — no manual editing required
+- `inventories/bootstrap.ini` — Phase 1 only; connects as `admin`; `ansible_host`/`ansible_port` are probe-injected at runtime by `bootstrap_edge.yml` — no manual editing required
 - `inventories/prod.yml` — Phase 2+; connects as `homelab` (passwordless sudo); YAML format supports Jinja2 so `ansible_host`/`ansible_port` resolve from `group_vars/all/main.yml`
 - `inventories/group_vars/all/main.yml` — applied to all nodes (users, SSH, Docker config, observability agents); IPs are `EDIT_BEFORE_USE` placeholders
 - `inventories/group_vars/all/overrides.yml` — gitignored; holds real IPs/subnet overriding `main.yml` placeholders (copy from `overrides.yml.example`)
@@ -92,14 +92,14 @@ Semaphore (web UI over this repo's playbooks, edge-only, Tailscale-only) reads s
 
 ```bash
 # Test connectivity (Phase 1 bootstrap inventory — from PC, uses admin user)
-ansible -i inventories/bootstrap.yml edge_bootstrap -m ping
+ansible -i inventories/bootstrap.ini edge_bootstrap -m ping
 
 # Phase 1: Bootstrap the edge node from your PC — one pass, zero manual steps.
 # Base system, Infisical (fully provisioned AND seeded via its REST API — org,
 # admin, project, environment, folders, read-only runtime identity, every
 # application secret), firewall, and Semaphore all come up in this single run.
 # Nothing is printed for you to copy anywhere — see BOOTSTRAP.md § Phase 1.
-ansible-playbook -i inventories/bootstrap.yml playbooks/bootstrap_edge.yml
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
 
 # Phase 2: Deploy edge services (run on edge as homelab user)
 ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
