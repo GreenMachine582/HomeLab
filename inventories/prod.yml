@@ -10,10 +10,8 @@
 all:
   vars:
     ansible_user: homelab
-    # ~/.ssh/homelab is the default key path for playbooks that don't have a probe play.
-    # deploy_edge.yml (Phase 2) has a probe pre-play that detects the key location
-    # automatically — no symlink required. Other playbooks run from the edge node where
-    # ~/.ssh/homelab = /home/homelab/.ssh/homelab (copied there by Phase 1 bootstrap).
+    # ~/.ssh/homelab = /home/homelab/.ssh/homelab on the edge node (copied by Phase 1 bootstrap).
+    # Phase 2+ playbooks run from the edge node — this path is always correct.
     ansible_ssh_private_key_file: ~/.ssh/homelab
     ansible_python_interpreter: /usr/bin/python3
     ansible_port: "{{ ssh_port }}"
