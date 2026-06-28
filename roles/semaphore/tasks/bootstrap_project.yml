@@ -1,0 +1,301 @@
+---
+# roles/semaphore/tasks/bootstrap_project.yml
+# Initialises the Semaphore project via REST API immediately after the
+# container starts: key store (homelab-ssh + none), repository (/repo local
+# bind-mount), prod inventory, default environment, and task templates.
+#
+# Called by bootstrap_edge.yml after "Docker | Bring up Semaphore (db, app)".
+# Idempotent — each resource is GET-checked before POST.
+#
+# Auth: POST /api/auth/login → 204 + session cookie (Set-Cookie: semaphore=…).
+# All tasks inside the no_log block to protect admin password, SSH private key,
+# and the ephemeral session cookie from appearing in logs.
+
+- name: "Semaphore bootstrap | Wait for API port to accept connections"
+  ansible.builtin.wait_for:
+    host: "{{ semaphore_api_url | urlsplit('hostname') }}"
+    port: "{{ semaphore_api_url | urlsplit('port') | int }}"
+    timeout: 60
+  tags: [semaphore]
+
+- name: "Semaphore bootstrap | Wait for API to serve HTTP (/api/ping)"
+  ansible.builtin.uri:
+    url: "{{ semaphore_api_url }}/api/ping"
+    method: GET
+    status_code: 200
+  register: _sem_ping
+  retries: 12
+  delay: 5
+  until: _sem_ping.status == 200
+  tags: [semaphore]
+
+- name: "Semaphore bootstrap | Project, keys, repository, inventory, environment, and task templates"
+  no_log: true
+  tags: [semaphore]
+  block:
+
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    - name: "Semaphore bootstrap | Log in as admin"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/auth/login"
+        method: POST
+        body_format: json
+        body:
+          auth: "{{ vault_semaphore_admin_user }}"
+          password: "{{ vault_semaphore_admin_password }}"
+        status_code: 204
+      register: _sem_login
+
+    # ── Project ───────────────────────────────────────────────────────────────
+    - name: "Semaphore bootstrap | Get existing projects"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/projects"
+        method: GET
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        status_code: 200
+      register: _sem_projects
+
+    - name: "Semaphore bootstrap | Create project '{{ semaphore_project_name }}'"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/projects"
+        method: POST
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        body_format: json
+        body:
+          name: "{{ semaphore_project_name }}"
+          alert: false
+          alert_chat: ""
+          max_parallel_tasks: 0
+        status_code: 201
+      register: _sem_project_created
+      when: not (_sem_projects.json | selectattr('name', 'equalto', semaphore_project_name) | list)
+
+    - name: "Semaphore bootstrap | Resolve project ID"
+      ansible.builtin.set_fact:
+        _sem_project_id: >-
+          {{ (_sem_projects.json | selectattr('name', 'equalto', semaphore_project_name) | list | first).id
+             if (_sem_projects.json | selectattr('name', 'equalto', semaphore_project_name) | list)
+             else _sem_project_created.json.id }}
+
+    # ── Keys ──────────────────────────────────────────────────────────────────
+    - name: "Semaphore bootstrap | Get existing keys"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/keys"
+        method: GET
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        status_code: 200
+      register: _sem_keys
+
+    - name: "Semaphore bootstrap | Slurp homelab SSH private key (only if homelab-ssh key absent)"
+      ansible.builtin.slurp:
+        src: "{{ semaphore_ansible_ssh_key_path }}"
+      register: _sem_privkey
+      when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
+
+    - name: "Semaphore bootstrap | Create homelab-ssh key"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/keys"
+        method: POST
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        body_format: json
+        body:
+          name: "homelab-ssh"
+          project_id: "{{ _sem_project_id }}"
+          type: ssh
+          ssh:
+            login: homelab
+            passphrase: ""
+            private_key: "{{ _sem_privkey.content | b64decode }}"
+        status_code: 201
+      register: _sem_ssh_key_created
+      when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
+
+    - name: "Semaphore bootstrap | Resolve homelab-ssh key ID"
+      ansible.builtin.set_fact:
+        _sem_key_id: >-
+          {{ (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list | first).id
+             if (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
+             else _sem_ssh_key_created.json.id }}
+
+    - name: "Semaphore bootstrap | Create none key (for local repo — no SSH auth needed)"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/keys"
+        method: POST
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        body_format: json
+        body:
+          name: "none"
+          project_id: "{{ _sem_project_id }}"
+          type: none
+        status_code: 201
+      register: _sem_none_key_created
+      when: not (_sem_keys.json | selectattr('name', 'equalto', 'none') | list)
+
+    - name: "Semaphore bootstrap | Resolve none key ID"
+      ansible.builtin.set_fact:
+        _sem_none_key_id: >-
+          {{ (_sem_keys.json | selectattr('name', 'equalto', 'none') | list | first).id
+             if (_sem_keys.json | selectattr('name', 'equalto', 'none') | list)
+             else _sem_none_key_created.json.id }}
+
+    # ── Repository ────────────────────────────────────────────────────────────
+    # The homelab repo is bind-mounted read-only at /repo inside the Semaphore
+    # container (docker-compose.edge.yml). Semaphore git-clones /repo to its
+    # workspace on each run — a local git operation, no SSH key needed.
+    - name: "Semaphore bootstrap | Get existing repositories"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/repositories"
+        method: GET
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        status_code: 200
+      register: _sem_repos
+
+    - name: "Semaphore bootstrap | Create homelab repository (local /repo bind-mount)"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/repositories"
+        method: POST
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        body_format: json
+        body:
+          name: "{{ semaphore_project_name }}"
+          project_id: "{{ _sem_project_id }}"
+          git_url: /repo
+          git_branch: "{{ homelab_repo_branch }}"
+          ssh_key_id: "{{ _sem_none_key_id }}"
+        status_code: 201
+      register: _sem_repo_created
+      when: not (_sem_repos.json | selectattr('name', 'equalto', semaphore_project_name) | list)
+
+    - name: "Semaphore bootstrap | Resolve repository ID"
+      ansible.builtin.set_fact:
+        _sem_repo_id: >-
+          {{ (_sem_repos.json | selectattr('name', 'equalto', semaphore_project_name) | list | first).id
+             if (_sem_repos.json | selectattr('name', 'equalto', semaphore_project_name) | list)
+             else _sem_repo_created.json.id }}
+
+    # ── Inventory ─────────────────────────────────────────────────────────────
+    - name: "Semaphore bootstrap | Get existing inventories"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/inventory"
+        method: GET
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        status_code: 200
+      register: _sem_inventories
+
+    - name: "Semaphore bootstrap | Create prod inventory (file: /repo/inventories/prod.yml)"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/inventory"
+        method: POST
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        body_format: json
+        body:
+          name: prod
+          project_id: "{{ _sem_project_id }}"
+          type: file
+          inventory: /repo/inventories/prod.yml
+          ssh_key_id: "{{ _sem_key_id }}"
+        status_code: 201
+      register: _sem_inventory_created
+      when: not (_sem_inventories.json | selectattr('name', 'equalto', 'prod') | list)
+
+    - name: "Semaphore bootstrap | Resolve inventory ID"
+      ansible.builtin.set_fact:
+        _sem_inventory_id: >-
+          {{ (_sem_inventories.json | selectattr('name', 'equalto', 'prod') | list | first).id
+             if (_sem_inventories.json | selectattr('name', 'equalto', 'prod') | list)
+             else _sem_inventory_created.json.id }}
+
+    # ── Environment ───────────────────────────────────────────────────────────
+    # Empty environment — vault.yml never reaches the edge, and ansible.cfg
+    # deliberately omits vault_password_file so Ansible runs without it here.
+    - name: "Semaphore bootstrap | Get existing environments"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/environment"
+        method: GET
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        status_code: 200
+      register: _sem_environments
+
+    - name: "Semaphore bootstrap | Create default environment"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/environment"
+        method: POST
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        body_format: json
+        body:
+          name: default
+          project_id: "{{ _sem_project_id }}"
+          json: "{}"
+          env: ""
+        status_code: 201
+      register: _sem_environment_created
+      when: not (_sem_environments.json | selectattr('name', 'equalto', 'default') | list)
+
+    - name: "Semaphore bootstrap | Resolve environment ID"
+      ansible.builtin.set_fact:
+        _sem_environment_id: >-
+          {{ (_sem_environments.json | selectattr('name', 'equalto', 'default') | list | first).id
+             if (_sem_environments.json | selectattr('name', 'equalto', 'default') | list)
+             else _sem_environment_created.json.id }}
+
+    # ── Task templates ────────────────────────────────────────────────────────
+    - name: "Semaphore bootstrap | Get existing task templates"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/templates"
+        method: GET
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        status_code: 200
+      register: _sem_templates_existing
+
+    - name: "Semaphore bootstrap | Note existing template names"
+      ansible.builtin.set_fact:
+        _sem_existing_template_names: "{{ _sem_templates_existing.json | map(attribute='name') | list }}"
+
+    - name: "Semaphore bootstrap | Create task templates (skip existing)"
+      ansible.builtin.uri:
+        url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/templates"
+        method: POST
+        headers:
+          Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
+        body_format: json
+        body:
+          name: "{{ item.name }}"
+          project_id: "{{ _sem_project_id }}"
+          playbook: "{{ item.playbook }}"
+          description: "{{ item.description }}"
+          type: ""
+          inventory_id: "{{ _sem_inventory_id }}"
+          environment_id: "{{ _sem_environment_id }}"
+          repository_id: "{{ _sem_repo_id }}"
+          ssh_key_id: "{{ _sem_key_id }}"
+          allow_override_args_in_task: false
+          suppress_success_alerts: true
+          app: ansible
+        status_code: 201
+      loop: "{{ semaphore_task_templates }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.name not in _sem_existing_template_names
+
+- name: "Semaphore bootstrap | Project '{{ semaphore_project_name }}' fully initialised"
+  ansible.builtin.debug:
+    msg: >-
+      Semaphore project '{{ semaphore_project_name }}' is ready — key store
+      (homelab-ssh + none), repository (/repo → {{ homelab_repo_branch }}),
+      prod inventory, default environment, and
+      {{ semaphore_task_templates | length }} task templates all provisioned.
+      No manual UI setup required.
+  no_log: false
+  tags: [semaphore]

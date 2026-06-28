@@ -10,3 +10,29 @@ semaphore_service_user: homelab
 semaphore_admin_email: "admin@homelab.local"
 semaphore_db_user: semaphore
 semaphore_db_name: semaphore
+
+# ── API project bootstrap (tasks/bootstrap_project.yml) ─────────────────────
+# Called by bootstrap_edge.yml after the Semaphore container comes up.
+# Creates project, SSH key store, repository, inventory, environment, and
+# task templates via the Semaphore REST API so no manual UI setup is required.
+semaphore_api_url: "http://127.0.0.1:3010"
+semaphore_project_name: homelab
+
+# Path to the homelab user's Ansible SSH private key ON THE EDGE HOST.
+# Slurped and uploaded to Semaphore's internal key store so Semaphore can
+# inject it as an SSH agent key when running Ansible tasks against nodes.
+semaphore_ansible_ssh_key_path: /home/homelab/.ssh/homelab
+
+semaphore_task_templates:
+  - name: "Deploy Edge"
+    playbook: "playbooks/deploy_edge.yml"
+    description: "Phase 2 — edge services"
+  - name: "Apply Firewall"
+    playbook: "playbooks/apply_firewall.yml"
+    description: "Update UFW rules on all nodes"
+  - name: "Update All"
+    playbook: "playbooks/update_all.yml"
+    description: "OS upgrades + Docker image pulls"
+  - name: "Health Check"
+    playbook: "playbooks/healthcheck.yml"
+    description: "Verify all services are running"

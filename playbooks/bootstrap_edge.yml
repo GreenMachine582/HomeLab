@@ -526,6 +526,12 @@
       changed_when: true
       tags: [semaphore]
 
+    - name: "Semaphore | Bootstrap project, inventory, key store, and task templates via API"
+      ansible.builtin.include_role:
+        name: semaphore
+        tasks_from: bootstrap_project.yml
+      tags: [semaphore]
+
   post_tasks:
     - name: "Meta | Bootstrap complete"
       ansible.builtin.debug:
@@ -539,8 +545,11 @@
           "Infisical bootstrap | Summary" message above for counts). Semaphore
           is up too, already authenticated against Infisical via that same
           runtime identity — read straight from the node-local credentials
-          file, never from vault.yml. The firewall is configured (ports 8222
-          and 3010 are Tailscale-only — find the edge's tailnet IP via
+          file, never from vault.yml. The Semaphore project is fully
+          initialised (key store, repository, prod inventory, environment,
+          and task templates) — no setup wizard, no clicking. The firewall
+          is configured (ports 8222 and 3010 are Tailscale-only — find the
+          edge's tailnet IP via
           `tailscale status` or the admin console, then browse to
           http://<that-ip>:8222 for Infisical and http://<that-ip>:3010 for
           Semaphore). Phase 1 is done. Run Phase 2 next:
