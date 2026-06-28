@@ -257,18 +257,6 @@
         _infisical_project_id:   "{{ _infisical_project.json.project.id   | default(_infisical_project.json.workspace.id) }}"
         _infisical_project_slug: "{{ _infisical_project.json.project.slug | default(_infisical_project.json.workspace.slug | default(infisical_seed_project_slug)) }}"
 
-    - name: "Infisical bootstrap | Create the {{ infisical_seed_environment }} environment"
-      ansible.builtin.uri:
-        url: "{{ infisical_api_url }}/v1/workspace/{{ _infisical_project_id }}/environments"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ _infisical_admin_token }}"
-        body_format: json
-        body:
-          name: "{{ infisical_seed_environment | capitalize }}"
-          slug: "{{ infisical_seed_environment }}"
-        status_code: [200, 201]
-
     - name: "Infisical bootstrap | Create application secret folders"
       ansible.builtin.uri:
         url: "{{ infisical_api_url }}/v1/folders"
