@@ -61,7 +61,7 @@ homelab_users:
     ssh_key: "{{ vault_deploy_ssh_pubkey }}"
     sudo_passwordless: false
     sudo_commands:
-      - "{{ homelab_repo_path }}/scripts/deploy_edge.sh"
+      - "{{ homelab_repo_path }}/scripts/deploy.sh"
 
 # ── SSH hardening ─────────────────────────────────────────────────────────────
 ssh_permit_root_login: "no"

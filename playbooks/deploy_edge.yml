@@ -50,7 +50,7 @@
     - name: "Users | Keep deploy sudoers rule current (points at wrapper script, not ansible-playbook directly)"
       ansible.builtin.copy:
         dest: /etc/sudoers.d/deploy
-        content: "deploy ALL=(ALL) NOPASSWD: {{ homelab_repo_path }}/scripts/deploy_edge.sh\n"
+        content: "deploy ALL=(ALL) NOPASSWD: {{ homelab_repo_path }}/scripts/deploy.sh\n"
         owner: root
         group: root
         mode: "0440"

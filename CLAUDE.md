@@ -72,7 +72,7 @@ Services are split across four compose files by concern:
 
 - `admin` — manual SSH access, passworded sudo
 - `homelab` — Ansible automation, passwordless sudo, in `docker` group
-- `deploy` — webhook/CI triggered deploys, restricted sudo to `scripts/deploy_edge.sh` only (pulls repo then execs ansible-playbook)
+- `deploy` — webhook/CI triggered deploys, restricted sudo to `scripts/deploy.sh` only (pulls repo then execs ansible-playbook)
 
 ### Secrets
 
@@ -180,7 +180,7 @@ Required GitHub secrets (`Settings → Secrets and variables → Actions`):
 
 **Flow:** GitHub POST → n8n/Camunda validates `X-Deploy-Secret` header → SSHes to `homelab-edge` as `deploy` user → runs `ansible-playbook` against `inventories/prod.yml`.
 
-The `deploy` user has sudo restricted to `scripts/deploy_edge.sh` only — the script pulls the repo then execs `ansible-playbook deploy_edge.yml`, so the play is always current before Ansible loads it. No direct ansible-playbook access, no root access, no homelab credentials stored in GitHub.
+The `deploy` user has sudo restricted to `scripts/deploy.sh` only — the script pulls the repo then execs `ansible-playbook deploy_edge.yml`, so the play is always current before Ansible loads it. No direct ansible-playbook access, no root access, no homelab credentials stored in GitHub.
 
 ## Important Constraints
 
