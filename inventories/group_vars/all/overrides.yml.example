@@ -18,3 +18,5 @@ ip_svc_02:  "EDIT_BEFORE_USE"   # homelab-svc-02 static DHCP IP
 ip_svc_03:  "EDIT_BEFORE_USE"   # homelab-svc-03 static DHCP IP
 
 ssh_port: 22   # SSH port for all hosts (default: 22)
+
+tailscale_ip_edge: "EDIT_BEFORE_USE"   # homelab-edge Tailscale IP (100.x.x.x)

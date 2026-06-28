@@ -56,7 +56,7 @@ homelab/
   NODES.md                    # Hardware and service details per node
 
   inventories/
-    bootstrap.ini             # Phase 1: bootstrap edge from PC
+    bootstrap.yml             # Phase 1: bootstrap edge from PC
     prod.yml                  # All nodes, production groups
 
   group_vars/

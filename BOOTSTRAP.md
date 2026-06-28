@@ -26,8 +26,7 @@ steps are kept to the absolute minimum.
     * [1.7 Load SSH Key into Agent](#17-load-ssh-key-into-agent)
     * [1.8 Set Up Tailscale OAuth Client](#18-set-up-tailscale-oauth-client)
     * [1.9 Create Ansible Vault and Override Config](#19-create-ansible-vault-and-override-config)
-    * [1.10 Configure Bootstrap Inventory](#110-configure-bootstrap-inventory)
-    * [1.11 Run the Bootstrap Playbook](#111-run-the-bootstrap-playbook)
+    * [1.10 Run the Bootstrap Playbook](#110-run-the-bootstrap-playbook)
     * [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does)
   * [Phase 2: Edge → Self-Deploy](#phase-2-edge--self-deploy)
   * [Phase 3: Edge → Other Nodes](#phase-3-edge--other-nodes)
@@ -194,7 +193,7 @@ pwd
 ping homelab-edge.local
 ```
 
-If mDNS is not available, check your router's DHCP lease table or use a network scanner. You'll need this IP in [step 1.10](#110-configure-bootstrap-inventory).
+If mDNS is not available, check your router's DHCP lease table or use a network scanner. You'll need this IP in [step 1.9](#19-create-ansible-vault-and-override-config) (`ip_edge` in `overrides.yml`).
 
 ---
 
@@ -372,34 +371,7 @@ Edit `overrides.yml` and fill in your actual IPs and `lan_subnet`. These overrid
 
 ---
 
-### 1.10 Configure Bootstrap Inventory
-
-Edit `inventories/bootstrap.ini` and replace `EDIT_BEFORE_USE` with the DHCP IP found in step 1.3:
-
-```ini
-homelab-edge ansible_host=192.168.x.x ansible_user=admin ...
-```
-
-> **Re-running after bootstrap:** If the node has already been bootstrapped and SSH is on the non-standard port, add `ansible_port=2189` (or your `ssh_port` value) to the host line before running.
-
-Verify Ansible can reach the node:
-
-```bash
-ansible -i inventories/bootstrap.ini edge_bootstrap -m ping
-```
-
-Expected:
-
-```
-homelab-edge | SUCCESS => {
-    "changed": false,
-    "ping": "pong"
-}
-```
-
----
-
-### 1.11 Run the Bootstrap Playbook
+### 1.10 Run the Bootstrap Playbook
 
 One playbook, one pass, zero manual steps in between. It brings Infisical up
 and fully provisions **and seeds** it via its REST API (org, admin account,
@@ -414,7 +386,7 @@ Does](#what-the-bootstrap-playbook-does) for the full breakdown.
 Make sure the SSH key is loaded in `ssh-agent` (step 1.7) before running.
 
 ```bash
-ansible-playbook -i inventories/bootstrap.ini \
+ansible-playbook -i inventories/bootstrap.yml \
   playbooks/bootstrap_edge.yml
 ```
 

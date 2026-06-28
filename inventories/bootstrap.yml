@@ -1,0 +1,25 @@
+---
+# inventories/bootstrap.yml
+# Phase 1 only — used from your PC to bootstrap homelab-edge from a fresh OS install.
+# After bootstrap is complete, all subsequent deploys use prod.yml from the edge node.
+# See BOOTSTRAP.md § Phase 1 for setup instructions.
+#
+# ansible_host and ansible_port are NOT set here. The probe pre-play in
+# bootstrap_edge.yml discovers the reachable (host, port) automatically from
+# ip_edge, tailscale_ip_edge, and ssh_port in overrides.yml, then injects them
+# via add_host. No manual editing of this file is ever required.
+#
+# ansible_ssh_private_key_file assumes the repo is at ~/homelab in WSL
+# (see BOOTSTRAP.md § 1.2). Update the path if your repo is elsewhere,
+# or omit it if ssh-agent has the key loaded (§ 1.7).
+
+all:
+  children:
+    edge_bootstrap:
+      hosts:
+        homelab-edge:
+          ansible_user: admin
+          ansible_ssh_private_key_file: ~/homelab/.ssh/homelab-edge
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_become_password: "{{ vault_admin_become_password }}"

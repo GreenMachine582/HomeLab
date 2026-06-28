@@ -14,13 +14,111 @@
 # debug message for what's next (Phase 2).
 #
 # Usage:
-#   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
+#   ansible-playbook -i inventories/bootstrap.yml playbooks/bootstrap_edge.yml
 #
 # Requires: roles/users, roles/base_hardening, roles/docker, roles/tailscale,
 #           roles/infisical, roles/firewall, roles/semaphore
 # Then:     ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 #           (Phase 2 — see BOOTSTRAP.md § "Phase 2: Edge -> Self-Deploy")
 # See: BOOTSTRAP.md § Phase 1
+
+# ── Probe play ─────────────────────────────────────────────────────────────────
+# Runs on localhost (no SSH connection yet). Loads ip_edge, ssh_port, and
+# tailscale_ip_edge from overrides.yml, probes up to four (host, port) candidates
+# in "most-configured first" order, and injects the winning ansible_host /
+# ansible_port into homelab-edge via add_host. The static vars (ansible_user,
+# key path, python interpreter, become password) stay in bootstrap.yml and merge
+# from inventory as normal — only host and port change per-run.
+#
+# Candidate order (first reachable wins):
+#   1. Tailscale IP + ssh_port   — fully provisioned; fast path on re-runs
+#   2. LAN IP + ssh_port         — hardened SSH, Tailscale not yet on this path
+#   3. Tailscale IP + port 22    — defensive edge case; omitted when ssh_port == 22
+#   4. LAN IP + port 22          — fresh OS install; omitted when ssh_port == 22
+# Tailscale candidates are skipped when tailscale_ip_edge is EDIT_BEFORE_USE.
+#
+# Note: vars_files loads main.yml which contains vault refs (e.g. {{ vault_ntfy_token }}).
+# Those are stored as unevaluated strings and never resolved here — the probe play
+# only touches ip_edge, ssh_port, tailscale_ip_edge, so no vault password is needed.
+- name: "Probe | Discover reachable SSH endpoint for homelab-edge"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/../inventories/group_vars/all/main.yml"
+    - "{{ playbook_dir }}/../inventories/group_vars/all/overrides.yml"
+
+  vars:
+    _tailscale_available: >-
+      {{ tailscale_ip_edge is defined
+         and tailscale_ip_edge | string != 'EDIT_BEFORE_USE' }}
+    _has_custom_port: "{{ ssh_port | int != 22 }}"
+    _ssh_candidates: >-
+      {{
+        ([{'host': tailscale_ip_edge, 'port': ssh_port | int,
+           'label': 'Tailscale ' ~ tailscale_ip_edge ~ ':' ~ ssh_port}]
+         if _tailscale_available else [])
+        + [{'host': ip_edge, 'port': ssh_port | int,
+            'label': 'LAN ' ~ ip_edge ~ ':' ~ ssh_port}]
+        + ([{'host': tailscale_ip_edge, 'port': 22,
+             'label': 'Tailscale ' ~ tailscale_ip_edge ~ ':22'}]
+           if _tailscale_available and _has_custom_port else [])
+        + ([{'host': ip_edge, 'port': 22,
+             'label': 'LAN ' ~ ip_edge ~ ':22'}]
+           if _has_custom_port else [])
+      }}
+
+  tasks:
+    - name: "Probe | Assert ip_edge is set in overrides.yml"
+      ansible.builtin.assert:
+        that: ip_edge | string != 'EDIT_BEFORE_USE'
+        fail_msg: >-
+          ip_edge is still EDIT_BEFORE_USE. Set it in overrides.yml
+          (the Pi's current LAN IP) then re-run. See BOOTSTRAP.md § 1.3.
+
+    - name: "Probe | Show candidates"
+      ansible.builtin.debug:
+        msg: "Probing: {{ _ssh_candidates | map(attribute='label') | list | join(' → ') }}"
+
+    - name: "Probe | Test TCP reachability"
+      ansible.builtin.wait_for:
+        host: "{{ item.host }}"
+        port: "{{ item.port }}"
+        state: started
+        timeout: 5
+      register: _probe_results
+      ignore_errors: true
+      changed_when: false
+      loop: "{{ _ssh_candidates }}"
+      loop_control:
+        label: "{{ item.label }}"
+
+    - name: "Probe | Collect successes"
+      ansible.builtin.set_fact:
+        _successful_probes: >-
+          {{ _probe_results.results | selectattr('failed', 'equalto', false) | list }}
+
+    - name: "Probe | Fail if nothing reachable"
+      ansible.builtin.fail:
+        msg: >-
+          No SSH endpoint reachable for homelab-edge.
+          Tried: {{ _ssh_candidates | map(attribute='label') | list | join(', ') }}.
+          Check the node is powered on, ip_edge is correct in overrides.yml,
+          and the network is reachable. See BOOTSTRAP.md § 1.3.
+      when: _successful_probes | length == 0
+
+    - name: "Probe | Show winner"
+      ansible.builtin.debug:
+        msg: "Connecting via: {{ _successful_probes[0].item.label }}"
+
+    - name: "Probe | Inject ansible_host and ansible_port"
+      ansible.builtin.add_host:
+        name: homelab-edge
+        groups: edge_bootstrap
+        ansible_host: "{{ _successful_probes[0].item.host }}"
+        ansible_port: "{{ _successful_probes[0].item.port }}"
+      changed_when: false
 
 - name: "Bootstrap | Edge | Base system, users, and access"
   hosts: edge_bootstrap
