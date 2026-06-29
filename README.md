@@ -173,7 +173,7 @@ Three separate system users are created by the bootstrap playbook:
 |-----------|---------------------------|----------------|----------------------------------|
 | `admin`   | Manual maintenance        | `homelab-edge` | Yes (password)                   |
 | `homelab` | Ansible automation        | `homelab`      | Yes (passwordless)               |
-| `deploy`  | Webhook-triggered deploys | `deploy`       | `/usr/bin/ansible-playbook` only |
+| `deploy`  | Webhook-triggered deploys | `deploy`       | `scripts/deploy.sh` only         |
 
 Separation ensures a webhook or script compromise cannot escalate beyond running approved playbooks.
 
@@ -234,9 +234,9 @@ Full stack reference (Prometheus, Loki, Grafana, Alertmanager, Uptime Kuma) is i
 | Uptime Kuma  | `http://uptime.homelab.local:3001`       |
 | Portainer    | `http://portainer.homelab.local:9000`    |
 
-**Tailscale-only (no LAN DNS entry, no Caddy route — see [docs/NETWORK.md](./docs/NETWORK.md)):**
+**Infisical & Semaphore (LAN via Caddy or Tailscale direct — see [docs/NETWORK.md](./docs/NETWORK.md)):**
 
-| Service   | URL                            | Notes                                             |
-|-----------|--------------------------------|---------------------------------------------------|
-| Infisical | `http://<edge-tailscale-ip>:8222` | Secrets manager — canonical app-secret store     |
-| Semaphore | `http://<edge-tailscale-ip>:3010` | Web UI over the playbooks in this repo            |
+| Service   | URL                                          | Notes                                              |
+|-----------|----------------------------------------------|----------------------------------------------------|
+| Infisical | `https://infisical.homelab.local:8443` (LAN) | Or Tailscale: `http://<edge-tailscale-ip>:8222`    |
+| Semaphore | `https://semaphore.homelab.local:8444` (LAN) | Or Tailscale: `http://<edge-tailscale-ip>:3010`    |
