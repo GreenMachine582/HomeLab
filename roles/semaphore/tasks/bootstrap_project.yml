@@ -117,7 +117,10 @@
 
     - name: "Semaphore bootstrap | TEMP DEBUG — homelab-ssh key creation response (status+error only, no body)"
       ansible.builtin.debug:
-        msg: "status={{ _sem_ssh_key_created.status | default('n/a') }} | error={{ _sem_ssh_key_created.json.error | default('') }} | message={{ _sem_ssh_key_created.json.message | default(_sem_ssh_key_created.msg | default('(no msg)')) }}"
+        msg: >-
+          status={{ _sem_ssh_key_created.status | default('n/a') }}
+          | json={{ _sem_ssh_key_created.json | default('(no json)') }}
+          | msg={{ _sem_ssh_key_created.msg | default('(no msg)') }}
       no_log: false
       when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
 
