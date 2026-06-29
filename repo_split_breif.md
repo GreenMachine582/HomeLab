@@ -1,6 +1,6 @@
 # Homelab Repo Split — Planning Brief (v6)
 
-**Status:** Design complete. All open decisions closed except one small build task (bootstrap-lock signaling) before Phase 1 of §8 begins.
+**Status:** `homelab-edge-services` live (§8 Phase 4 underway — edge complete). Remaining Phase 4: `homelab-observe-services`, svc-01 splits. Phase 5 cleanup in progress.
 **Origin repo:** https://github.com/GreenMachine582/HomeLab
 **Purpose of this doc:** Final design reference ahead of implementation.
 
@@ -59,6 +59,8 @@ homelab/
 ```
 
 Node roles today: `homelab-edge` (active), `homelab-observe` (active), `homelab-svc-01` (active — Camunda 8, Elasticsearch, n8n, discord-gateway), `homelab-svc-02` (planned), `homelab-svc-03` (future, Jellyfin).
+
+> **Current state (post-edge-split):** `roles/edge_services/` has been deleted; `docker-compose.edge.yml` now contains only Infisical + Semaphore (bootstrap tier). The network appliance services run in `homelab-edge-services`. The compose file rename (`docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml`) remains deferred — the service strip achieves the same isolation without requiring a reference update across bootstrap roles.
 
 ---
 
@@ -155,9 +157,9 @@ repos:
         # http://localhost:8222, fetches each path, and injects the result
         # as the named env var before running docker compose up.
         # Secrets are never written to the service repo or to disk.
-        - path: /production/cloudflare/TUNNEL_TOKEN
+        - path: /prod/cloudflare/TUNNEL_TOKEN
           env: TUNNEL_TOKEN
-        - path: /production/pihole/WEB_PASSWORD
+        - path: /prod/pihole/WEB_PASSWORD
           env: PIHOLE_WEB_PASSWORD
     rollback:
       strategy: git
@@ -279,7 +281,8 @@ This resolves the original open question from v1: the schema in §6 already supp
 1. **Phase 1 — build the mechanism, in place.** Build `deploy-service` and `services.yml` inside the existing `HomeLab` monorepo, without moving anything yet. Confirm the webhook auth (custom headers, validated by n8n) and secrets injection path work end-to-end against a no-op or trivial target. Also in this phase: rename `docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml` and strip the network appliance services from it (they'll exist temporarily in neither compose until `homelab-edge-services` is stood up in Phase 4 — on a live node, coordinate this rename with a deploy window). Update `roles/infisical`, `roles/semaphore`, and `bootstrap_edge.yml` to reference the new filename.
 2. **Phase 2 — convert one service.** Extract BottleBot into its own repo (it's new, has no production dependents, and was always going to be standalone).
 3. **Phase 3 — prove the mechanism against it.** Deploy BottleBot through `deploy-service` end-to-end: webhook → (Camunda or n8n, per §6.4) → `deploy-service` → pull/layer-env/hooks/compose-up/healthcheck. BottleBot is a "custom application" per §6.1, so confirm its image-based rollback works by deliberately rolling back to a previous `ghcr.io` tag at least once.
-4. **Phase 4 — convert the rest, one at a time.** `homelab-observe-services`, `homelab-edge-services` (network appliance tier only — see §10), then svc-01's split (`camunda-platform`, `n8n-automation`, `discord-gateway`), each validated against the proven mechanism before moving to the next. For `homelab-edge-services`, validate that `deploy-service` correctly fetches TUNNEL_TOKEN and PIHOLE_WEB_PASSWORD from Infisical and that the rolling strategy (`up -d --remove-orphans`) keeps cloudflared alive through the deploy.
+4. **Phase 4 — convert the rest, one at a time.** ✅ `homelab-edge-services` (network appliance tier — live). Remaining: `homelab-observe-services`, then svc-01's split (`camunda-platform`, `n8n-automation`, `discord-gateway`), each validated against the proven mechanism before moving to the next.
+   > Note: the `docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml` rename described in Phase 1 was intentionally deferred — the appliance service strip achieves the same isolation without requiring a filename change and reference update across bootstrap roles. The rename can be revisited in Phase 5.
 5. **Phase 5 — retire the old path.** Once all services are migrated and stable, remove the old direct `ansible-playbook`-driven deploy logic for services (bootstrap-level Ansible roles stay, per §4). Specifically: delete `roles/edge_services/`, delete `playbooks/deploy_edge.yml`, update `playbooks/update_all.yml` and `playbooks/backup.yml` to cover bootstrap-tier services only (Infisical, Semaphore).
 6. **Throughout:** keep README/BOOTSTRAP.md/NODES.md updated as structure stabilizes, rather than as a single end-of-migration step.
 
@@ -295,13 +298,13 @@ The current `docker-compose.edge.yml` bundles two tiers that have different owne
 
 | Container(s) | Tier | After split |
 |---|---|---|
-| `cloudflared` | Network appliance | → `homelab-edge-services` |
-| `caddy` | Network appliance | → `homelab-edge-services` |
-| `pihole`, `pihole-exporter` | Network appliance | → `homelab-edge-services` |
-| `portainer-agent` | Network appliance | → `homelab-edge-services` |
-| `node-exporter` | Host observability (bootstrap) | → `docker-compose.bootstrap-edge.yml` |
-| `infisical`, `infisical-db`, `infisical-redis` | Bootstrap control plane | → `docker-compose.bootstrap-edge.yml` |
-| `semaphore`, `semaphore-db` | Bootstrap control plane | → `docker-compose.bootstrap-edge.yml` |
+| `cloudflared` | Network appliance | ✅ `homelab-edge-services` |
+| `caddy` | Network appliance | ✅ `homelab-edge-services` |
+| `pihole`, `pihole-exporter` | Network appliance | ✅ `homelab-edge-services` |
+| `portainer-agent` | Network appliance | ✅ `homelab-edge-services` |
+| `node-exporter` | Host observability (bootstrap) | managed by `roles/node_exporter` (host service — not in either compose) |
+| `infisical`, `infisical-db`, `infisical-redis` | Bootstrap control plane | `docker-compose.edge.yml` (stays) |
+| `semaphore`, `semaphore-db` | Bootstrap control plane | `docker-compose.edge.yml` (stays) |
 
 Infisical and Semaphore are prerequisites for `deploy-service` — Infisical supplies secrets and Semaphore provides the UI that drives deployments. Managing them via `deploy-service` would be circular. They must remain bootstrap-resident.
 
@@ -356,8 +359,8 @@ Cloudflared maintains the Cloudflare Tunnel. If it exits, all remote access via 
 
 | Role / playbook | Retirement trigger | Replacement |
 |---|---|---|
-| `roles/edge_services/` | `homelab-edge-services` stable | Delete; templates migrated to service repo as static config |
-| `playbooks/deploy_edge.yml` | `homelab-edge-services` stable | `deploy-service deploy homelab-edge-services` |
+| `roles/edge_services/` | `homelab-edge-services` stable | ✅ Deleted — templates are now static config files in `homelab-edge-services` |
+| `playbooks/deploy_edge.yml` | All services migrated (Phase 5) | Retained for now — calls `deploy-service deploy homelab-edge-services`; Semaphore "Deploy Edge" template references it |
 | `playbooks/update_all.yml` (service sections) | All services migrated | Narrows to bootstrap-tier only (Infisical, Semaphore image updates) |
 | `playbooks/backup.yml` (service sections) | All services migrated | Narrows to bootstrap-tier DBs; each service repo owns its own backup |
 

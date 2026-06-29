@@ -1,6 +1,0 @@
-ingress:
-{% for rule in cloudflared_ingress %}
-  - hostname: {{ rule.hostname }}
-    service: {{ rule.service }}
-{% endfor %}
-  - service: http_status:404

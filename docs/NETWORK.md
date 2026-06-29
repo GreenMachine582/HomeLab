@@ -150,7 +150,7 @@ ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge
 Pi-hole on `homelab-edge` (`ip_edge`) is the DNS server for all LAN clients. Set it as the primary DNS on your 
 router's DHCP config.
 
-Internal hostnames are driven by `pihole_custom_dns` in `group_vars/edge.yml` and rendered via `roles/edge_services/templates/pihole/custom.list.j2`. Do not edit `/etc/pihole/custom.list` directly — it is overwritten on every deploy.
+Internal hostnames are configured as static entries in the `homelab-edge-services` repo (Pi-hole's `custom.list`). Do not edit `/etc/pihole/custom.list` directly — it is overwritten on every `deploy-service` deploy of `homelab-edge-services`.
 
 | Hostname                     | Resolves to   | Port |
 |------------------------------|---------------|------|

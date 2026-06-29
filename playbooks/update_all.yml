@@ -66,10 +66,18 @@
       tags: [os]
 
     # ── Docker image pulls ────────────────────────────────────────────────────
-    - name: "Docker | Pull latest images (edge)"
+    - name: "Docker | Pull latest images (edge bootstrap stack)"
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.edge.yml pull
         chdir: "{{ homelab_repo_path }}"
+      when: "'edge' in group_names"
+      changed_when: true
+      tags: [docker]
+
+    - name: "Docker | Update homelab-edge-services (deploy-service rolling redeploy)"
+      ansible.builtin.command:
+        cmd: /opt/deploy-service-venv/bin/deploy-service deploy homelab-edge-services --config {{ homelab_repo_path }}/services.yml
+      become: false
       when: "'edge' in group_names"
       changed_when: true
       tags: [docker]

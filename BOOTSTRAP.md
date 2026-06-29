@@ -556,17 +556,15 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 **What `deploy_edge.yml` does:**
 
 - Pulls latest repo from GitHub
-- Resolves application secrets (`cloudflare/TUNNEL_TOKEN`, `pihole/WEB_PASSWORD`) from Infisical at runtime via `roles/infisical/tasks/lookup.yml` — this node never has `vault.yml`; see [Secrets](./CLAUDE.md#secrets)
 - Deploys fail2ban (SSH and Pi-hole jails)
 - Re-asserts Tailscale in subnet-router mode (already brought up and joined during Phase 1 — see [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does); idempotent here, a no-op once joined)
 - Installs and configures Unbound as a host systemd service (port 5335, DNSSEC-validating recursive resolver)
 - Ships logs via Grafana Alloy (→ Loki once Phase 3 is up)
-- Renders edge service configs (cloudflared, Pi-hole custom DNS, Caddy reverse proxy)
-- Pulls and starts Docker Compose stack:
+- Runs `deploy-service deploy homelab-edge-services` — fetches `TUNNEL_TOKEN`, `PIHOLE_WEB_PASSWORD`, and node IPs from Infisical and starts the network appliance stack:
   - `cloudflared` (Cloudflare Tunnel — external ingress)
-  - Pi-hole (DNS, port 53 — upstream is Unbound on the host via `host.docker.internal#5335`)
   - Caddy (LAN reverse proxy for `*.homelab.local`)
-  - `node-exporter` and `pihole-exporter` (metrics)
+  - Pi-hole (DNS, port 53 — upstream is Unbound on the host via `host.docker.internal#5335`)
+  - `pihole-exporter` (metrics)
   - Portainer Agent
 
 > **Firewall note:** UFW rules are applied by `bootstrap_edge.yml` (Phase 1) and persist. To update rules after adding new services run: `ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge`

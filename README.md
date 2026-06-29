@@ -96,23 +96,20 @@ homelab/
     cadvisor/                 # Container metrics (svc nodes)
     alloy/                    # Grafana Alloy (logs → Loki)
     users/                    # System user creation (admin, homelab, deploy)
-    edge_services/            # cloudflared, Caddy (LAN reverse proxy), Pi-hole, Unbound
     infisical/                # Infisical .env rendering + seed (secrets manager, Tailscale-only)
     semaphore/                # Semaphore .env rendering (Ansible web UI, Tailscale-only)
     observe_services/         # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma
     camunda/                  # Camunda 8 + n8n + discord-gateway env rendering
 
   # Docker Compose stacks (at repo root, deployed per-node)
-  docker-compose.edge.yml     # cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter,
-                              # portainer-agent, Infisical (+ Postgres, Redis), Semaphore (+ Postgres)
+  docker-compose.edge.yml     # Infisical (+ Postgres, Redis), Semaphore (+ Postgres) — bootstrap tier only
+                              # homelab-edge-services (separate repo): cloudflared, Caddy, Pi-hole, pihole-exporter, portainer-agent
   docker-compose.observe.yml  # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer
   docker-compose.svc01.yml    # Camunda 8, Elasticsearch, n8n, discord-gateway, Portainer Agent
 
   # Jinja2 templates live inside each role at roles/<role>/templates/
   # Key templates:
   #   roles/alloy/templates/config.alloy.j2
-  #   roles/edge_services/templates/cloudflared/config.yml.j2
-  #   roles/edge_services/templates/pihole/custom.list.j2
   #   roles/observe_services/templates/prometheus/prometheus.yml.j2
   #   roles/observe_services/templates/alertmanager/alertmanager.yml.j2
   #   roles/observe_services/templates/loki/loki.yml.j2

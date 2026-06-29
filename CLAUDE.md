@@ -31,7 +31,8 @@ Node IPs are defined in `inventories/group_vars/all/overrides.yml` (gitignored �
 
 Services are split across four compose files by concern:
 
-- `docker-compose.edge.yml` — cloudflared, Caddy, Pi-hole, Unbound, node-exporter, pihole-exporter, portainer-agent, Infisical (+ Postgres, Redis), Semaphore (+ Postgres) (runs on `homelab-edge`)
+- `docker-compose.edge.yml` — Infisical (+ Postgres, Redis), Semaphore (+ Postgres) (runs on `homelab-edge`)
+- `homelab-edge-services` (separate repo, deployed via `deploy-service`) — cloudflared, Caddy, Pi-hole, pihole-exporter, portainer-agent (runs on `homelab-edge`)
 - `docker-compose.svc01.yml` — Camunda, Elasticsearch, n8n, discord-gateway, Portainer Agent (runs on `homelab-svc-01`)
 - `docker-compose.observe.yml` — Prometheus, Loki, Grafana, Alertmanager, ntfy, Portainer Server (runs on `homelab-observe`)
 
@@ -60,7 +61,6 @@ Services are split across four compose files by concern:
 | `node_exporter` | Prometheus node exporter (port 9100) | all nodes |
 | `cadvisor` | Container metrics exporter (port 8080) | svc nodes |
 | `unbound` | Unbound recursive resolver as host systemd service (port 5335); Pi-hole upstream | edge |
-| `edge_services` | cloudflared, Caddy, Pi-hole config templates | edge |
 | `infisical` | Self-hosted secrets manager — node-generated `.env`, container bring-up, additive seed from `vault.yml`, runtime lookup helper (`tasks/lookup.yml`) used by `deploy_edge.yml` (Tailscale-only) | edge |
 | `semaphore` | Web UI over this repo's playbooks — read-only repo bind mount + writable workspace volume (Tailscale-only) | edge |
 | `observe_services` | Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma | observe |
@@ -146,9 +146,6 @@ Config files are rendered by Ansible roles from Jinja2 templates. Templates live
 
 Key templates and their data sources:
 - `roles/alloy/templates/config.alloy.j2` ← `inventories/group_vars/all.yml` (`alloy_loki_endpoint`, `alloy_scrape_systemd_units`)
-- `roles/edge_services/templates/caddy/Caddyfile.j2` ← `inventories/group_vars/edge.yml` (`caddy_routes`)
-- `roles/edge_services/templates/cloudflared/config.yml.j2` ← `inventories/group_vars/edge.yml` (`cloudflared_ingress`)
-- `roles/edge_services/templates/pihole/custom.list.j2` ← `inventories/group_vars/edge.yml` (`pihole_custom_dns`)
 - `roles/observe_services/templates/prometheus/prometheus.yml.j2` ← `inventories/group_vars/observe.yml` (`prometheus_scrape_targets`)
 - `roles/observe_services/templates/alertmanager/alertmanager.yml.j2` ← `inventories/group_vars/observe.yml` (`alertmanager_receivers`, `alertmanager_routes`)
 - `roles/observe_services/templates/loki/loki.yml.j2` ← `inventories/group_vars/observe.yml` (`loki_retention`)

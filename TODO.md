@@ -50,8 +50,7 @@ open work.
   **Files to create/update:**
   - `roles/authentik/` — new role (tasks + templates for Authentik config file)
   - `docker-compose.svc01.yml` — add `authentik-server`, `authentik-worker`, `redis`
-  - `docker-compose.edge.yml` — add `authentik-outpost` container
-  - `roles/edge_services/templates/caddy/Caddyfile.j2` — add LAN bypass + forward_auth blocks
+  - `homelab-edge-services` — add `authentik-outpost` container and update Caddyfile with LAN bypass + forward_auth blocks
   - `inventories/group_vars/edge.yml` — add `authentik_outpost_url`; update `caddy_routes` structure;
     add `auth.homelab.local` to `pihole_custom_dns`; add Authentik ingress to `cloudflared_ingress`
   - `inventories/group_vars/all/vault.yml` + `vault.yml.example` — add:

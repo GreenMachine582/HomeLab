@@ -1,107 +1,4 @@
 services:
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
-    volumes:
-      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
-    networks:
-      - edge_net
-
-  caddy:
-    image: caddy:2
-    container_name: caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - edge_net
-
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: node-exporter
-    pid: host
-    restart: unless-stopped
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--path.rootfs=/rootfs'
-    networks:
-      - edge_net
-
-#  ssh-exporter:
-#    build: ./ssh_exporter
-#    container_name: ssh-exporter
-#    ports:
-#      - "9312:9312"
-#    restart: unless-stopped
-#    networks:
-#      - edge_net
-
-  pihole:
-    image: pihole/pihole:latest
-    container_name: pihole
-    restart: unless-stopped
-    cap_add:
-      - NET_ADMIN
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      TZ: "${TZ:-Australia/Sydney}"
-      WEBPASSWORD: "${PIHOLE_WEB_PASSWORD}"
-      PIHOLE_DNS_1: "host.docker.internal#5335"   # Unbound on host (systemd service)
-      PIHOLE_DNS_2: "no"                           # No fallback — Unbound is the only upstream
-      DNSSEC: "true"
-      INTERFACE: "eth0"
-    ports:
-      - "53:53/tcp"
-      - "53:53/udp"
-      # Caddy owns port 80 — Pi-hole admin on 8080 (LAN: http://ip_edge:8080/admin)
-      - "8080:80"
-    volumes:
-      - pihole_data:/etc/pihole
-      - pihole_dnsmasq:/etc/dnsmasq.d
-      - ./pihole/etc-pihole/custom.list:/etc/pihole/custom.list:ro
-    networks:
-      - edge_net
-
-  pihole-exporter:
-    image: ekofr/pihole-exporter:latest
-    container_name: pihole-exporter
-    restart: unless-stopped
-    environment:
-      PIHOLE_HOSTNAME: pihole
-      PIHOLE_PASSWORD: "${PIHOLE_WEB_PASSWORD}"
-      PORT: "9617"
-    ports:
-      - "9617:9617"
-    networks:
-      - edge_net
-    depends_on:
-      - pihole
-
-  portainer-agent:
-    image: portainer/agent:latest
-    container_name: portainer-agent
-    restart: unless-stopped
-    ports:
-      - "9001:9001"   # Portainer Server on homelab-observe connects here
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /var/lib/docker/volumes:/var/lib/docker/volumes
-    networks:
-      - edge_net
-
   # ── Infisical (self-hosted secrets manager) ──────────────────────────────────
   # Tailscale-only — no public ingress, no Caddy vhost (see UFW rules in
   # group_vars/edge.yml and docs/NETWORK.md "Tailscale-only routing"). High
@@ -203,7 +100,7 @@ services:
       - semaphore_workspace:/tmp/workspace
     networks:
       - semaphore_net
-      - edge_net      # so semaphore can reach infisical and the deploy targets
+      - edge_net      # so semaphore can reach infisical
     depends_on:
       - semaphore-db
       - infisical
@@ -219,10 +116,6 @@ networks:
     driver: bridge
 
 volumes:
-  caddy_data: {}
-  caddy_config: {}
-  pihole_data: {}
-  pihole_dnsmasq: {}
   infisical_db_data: {}
   infisical_redis_data: {}
   semaphore_db_data: {}
