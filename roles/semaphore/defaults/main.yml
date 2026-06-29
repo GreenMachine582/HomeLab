@@ -23,6 +23,8 @@ semaphore_project_name: homelab
 # inject it as an SSH agent key when running Ansible tasks against nodes.
 semaphore_ansible_ssh_key_path: /home/homelab/.ssh/homelab
 
+infisical_runtime_auth_path: /home/homelab/.infisical_runtime_auth.yml
+
 semaphore_task_templates:
   - name: "Deploy Edge"
     playbook: "playbooks/deploy_edge.yml"
