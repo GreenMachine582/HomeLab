@@ -104,15 +104,30 @@
         body_format: json
         body:
           name: "homelab-ssh"
-          project_id: "{{ _sem_project_id }}"
+          project_id: "{{ _sem_project_id | int }}"
           type: ssh
           ssh:
             login: homelab
             passphrase: ""
             private_key: "{{ _sem_privkey.content | b64decode }}"
-        status_code: 201
+        status_code: [200, 201]
       register: _sem_ssh_key_created
+      failed_when: false
       when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
+
+    - name: "Semaphore bootstrap | TEMP DEBUG — homelab-ssh key creation response (status+error only, no body)"
+      ansible.builtin.debug:
+        msg: "status={{ _sem_ssh_key_created.status | default('n/a') }} | error={{ _sem_ssh_key_created.json.error | default('') }} | message={{ _sem_ssh_key_created.json.message | default(_sem_ssh_key_created.msg | default('(no msg)')) }}"
+      no_log: false
+      when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
+
+    - name: "Semaphore bootstrap | FAIL — homelab-ssh key creation failed (see TEMP DEBUG above)"
+      ansible.builtin.fail:
+        msg: "homelab-ssh key creation returned status {{ _sem_ssh_key_created.status | default('n/a') }} — see TEMP DEBUG output above for the API error"
+      when:
+        - not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
+        - (_sem_ssh_key_created.status | default(-1)) not in [200, 201]
+      no_log: false
 
     - name: "Semaphore bootstrap | Resolve homelab-ssh key ID"
       ansible.builtin.set_fact:
@@ -130,9 +145,9 @@
         body_format: json
         body:
           name: "none"
-          project_id: "{{ _sem_project_id }}"
+          project_id: "{{ _sem_project_id | int }}"
           type: none
-        status_code: 201
+        status_code: [200, 201]
       register: _sem_none_key_created
       when: not (_sem_keys.json | selectattr('name', 'equalto', 'none') | list)
 
@@ -165,11 +180,11 @@
         body_format: json
         body:
           name: "{{ semaphore_project_name }}"
-          project_id: "{{ _sem_project_id }}"
+          project_id: "{{ _sem_project_id | int }}"
           git_url: /repo
           git_branch: "{{ homelab_repo_branch }}"
-          ssh_key_id: "{{ _sem_none_key_id }}"
-        status_code: 201
+          ssh_key_id: "{{ _sem_none_key_id | int }}"
+        status_code: [200, 201]
       register: _sem_repo_created
       when: not (_sem_repos.json | selectattr('name', 'equalto', semaphore_project_name) | list)
 
@@ -199,11 +214,11 @@
         body_format: json
         body:
           name: prod
-          project_id: "{{ _sem_project_id }}"
+          project_id: "{{ _sem_project_id | int }}"
           type: file
           inventory: /repo/inventories/prod.yml
-          ssh_key_id: "{{ _sem_key_id }}"
-        status_code: 201
+          ssh_key_id: "{{ _sem_key_id | int }}"
+        status_code: [200, 201]
       register: _sem_inventory_created
       when: not (_sem_inventories.json | selectattr('name', 'equalto', 'prod') | list)
 
@@ -235,10 +250,10 @@
         body_format: json
         body:
           name: default
-          project_id: "{{ _sem_project_id }}"
+          project_id: "{{ _sem_project_id | int }}"
           json: "{}"
           env: ""
-        status_code: 201
+        status_code: [200, 201]
       register: _sem_environment_created
       when: not (_sem_environments.json | selectattr('name', 'equalto', 'default') | list)
 
@@ -272,18 +287,18 @@
         body_format: json
         body:
           name: "{{ item.name }}"
-          project_id: "{{ _sem_project_id }}"
+          project_id: "{{ _sem_project_id | int }}"
           playbook: "{{ item.playbook }}"
           description: "{{ item.description }}"
           type: ""
-          inventory_id: "{{ _sem_inventory_id }}"
-          environment_id: "{{ _sem_environment_id }}"
-          repository_id: "{{ _sem_repo_id }}"
-          ssh_key_id: "{{ _sem_key_id }}"
+          inventory_id: "{{ _sem_inventory_id | int }}"
+          environment_id: "{{ _sem_environment_id | int }}"
+          repository_id: "{{ _sem_repo_id | int }}"
+          ssh_key_id: "{{ _sem_key_id | int }}"
           allow_override_args_in_task: false
           suppress_success_alerts: true
           app: ansible
-        status_code: 201
+        status_code: [200, 201]
       loop: "{{ semaphore_task_templates }}"
       loop_control:
         label: "{{ item.name }}"
