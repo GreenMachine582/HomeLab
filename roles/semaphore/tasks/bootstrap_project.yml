@@ -46,6 +46,15 @@
         status_code: 204
       register: _sem_login
 
+    - name: "Semaphore bootstrap | TEMP DEBUG — login response cookies and headers"
+      ansible.builtin.debug:
+        msg: >-
+          cookies={{ _sem_login.cookies }}
+          | set_cookie={{ _sem_login['set-cookie'] | default('(none)') }}
+          | x_csrf_token={{ _sem_login.x_csrf_token | default('(none)') }}
+      no_log: false
+      tags: [semaphore]
+
     # ── Project ───────────────────────────────────────────────────────────────
     - name: "Semaphore bootstrap | Get existing projects"
       ansible.builtin.uri:
