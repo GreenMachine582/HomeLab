@@ -29,17 +29,17 @@ repos:
         # authenticates with Infisical at http://localhost:8222, fetches each
         # path, and injects the result as the named env var into docker compose.
         # Secrets are never written to disk or the service repo checkout.
-        - path: /production/cloudflare/TUNNEL_TOKEN
+        - path: /prod/cloudflare/TUNNEL_TOKEN
           env: TUNNEL_TOKEN
-        - path: /production/pihole/WEB_PASSWORD
+        - path: /prod/pihole/WEB_PASSWORD
           env: PIHOLE_WEB_PASSWORD
-        - path: /production/network/IP_OBSERVE
+        - path: /prod/network/IP_OBSERVE
           env: IP_OBSERVE
-        - path: /production/network/IP_SVC_01
+        - path: /prod/network/IP_SVC_01
           env: IP_SVC_01
-        - path: /production/network/IP_SVC_02
+        - path: /prod/network/IP_SVC_02
           env: IP_SVC_02
-        - path: /production/network/IP_SVC_03
+        - path: /prod/network/IP_SVC_03
           env: IP_SVC_03
     rollback:
       strategy: git
