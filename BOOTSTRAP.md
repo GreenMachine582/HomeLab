@@ -574,6 +574,8 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 | Service | URL | Notes |
 |---|---|---|
 | Pi-hole admin | `http://<ip_edge>:8080/admin` | Password = `vault_pihole_web_password` |
+| Infisical | `https://infisical.homelab.local:8443` | LAN via Caddy (TLS); or Tailscale: `http://<edge-tailscale-ip>:8222` |
+| Semaphore | `https://semaphore.homelab.local:8444` | LAN via Caddy (TLS); or Tailscale: `http://<edge-tailscale-ip>:3010` |
 | Portainer Agent | `http://<ip_edge>:9001` | Portainer Server connects here in Phase 3 |
 | node-exporter metrics | `http://<ip_edge>:9100/metrics` | Scraped by Prometheus in Phase 3 |
 | pihole-exporter metrics | `http://<ip_edge>:9617/metrics` | Scraped by Prometheus in Phase 3 |

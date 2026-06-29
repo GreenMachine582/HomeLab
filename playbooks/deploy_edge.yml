@@ -15,7 +15,6 @@
 #   --tags tailscale       Tailscale only
 #   --tags deploy-service  Install deploy-service + deploy homelab-edge-services
 #   --tags docker          Same as deploy-service (alias for backwards compat)
-#   --tags pihole          Unbound only (Pi-hole itself managed by deploy-service)
 #   --tags alloy           Grafana Alloy log shipper only
 #   --tags unbound         Unbound recursive resolver (host service) only
 #   --tags verify          Health checks only (no deploy)
@@ -25,9 +24,9 @@
 #   homelab-edge-services; secrets injected by deploy-service from Infisical)
 #
 # Secrets: deploy-service fetches TUNNEL_TOKEN, PIHOLE_WEB_PASSWORD, and
-# IP_*/TAILSCALE_IP_* from Infisical for docker-compose env injection.
-# Additionally, lookup.yml is called once to resolve pihole/WEB_PASSWORD so
-# pihole setpassword can be run post-compose (Pi-hole v6 ignores WEBPASSWORD).
+# IP_*/TAILSCALE_IP_* from Infisical for docker-compose env injection. Pi-hole
+# password is set post-compose via homelab-edge-services scripts/post-deploy.sh
+# (called by deploy-service post_hook — see services.yml).
 
 - name: "Deploy | Edge | Firewall, fail2ban, and services"
   hosts: edge
@@ -99,24 +98,6 @@
         cmd: /opt/deploy-service-venv/bin/deploy-service deploy homelab-edge-services --config {{ homelab_repo_path }}/services.yml
       become: false
       tags: [deploy-service, docker]
-
-    - name: "Pihole | Fetch password from Infisical and apply via pihole setpassword"
-      no_log: true
-      block:
-        - name: "Pihole | Fetch pihole/WEB_PASSWORD from Infisical"
-          ansible.builtin.include_role:
-            name: infisical
-            tasks_from: lookup.yml
-          vars:
-            infisical_lookup_keys:
-              - pihole/WEB_PASSWORD
-
-        - name: "Pihole | Set web admin password (Pi-hole v6 ignores WEBPASSWORD env var)"
-          ansible.builtin.command:
-            cmd: docker exec pihole pihole setpassword "{{ infisical_secrets['pihole/WEB_PASSWORD'] }}"
-          become: false
-          changed_when: true
-      tags: [deploy-service, docker, pihole]
 
   roles:
     - role: fail2ban

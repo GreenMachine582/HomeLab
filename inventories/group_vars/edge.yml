@@ -12,8 +12,10 @@ ufw_rules:
   - { port: 8080,             proto: tcp, src: "{{ lan_subnet }}", comment: "Pi-hole admin direct (fallback if Caddy is down)" }
   - { port: 9001,             proto: tcp, src: "{{ ip_observe }}", comment: "Portainer Agent (from observe)" }
   - { port: 9100,             proto: tcp, src: "{{ lan_subnet }}", comment: "node-exporter (Prometheus scrape)" }
-  - { port: 8222,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Infisical UI/API (Tailscale only)" }
-  - { port: 3010,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Semaphore UI (Tailscale only)" }
+  - { port: 8222,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Infisical direct port (Tailscale only — non-browser clients)" }
+  - { port: 3010,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Semaphore direct port (Tailscale only — non-browser clients)" }
+  - { port: 8443,             proto: tcp, src: "{{ lan_subnet }}", comment: "Caddy HTTPS — infisical.homelab.local (LAN)" }
+  - { port: 8444,             proto: tcp, src: "{{ lan_subnet }}", comment: "Caddy HTTPS — semaphore.homelab.local (LAN)" }
 
 # ── fail2ban ──────────────────────────────────────────────────────────────────
 fail2ban_jails:
@@ -37,45 +39,6 @@ tailscale_advertise_routes:
   - "{{ lan_subnet }}"   # Subnet router — convenience for non-Tailscale LAN devices
 tailscale_accept_routes: false
 tailscale_exit_node: false
-
-# ── Pi-hole ───────────────────────────────────────────────────────────────────
-pihole_web_password: "{{ vault_pihole_web_password }}"
-pihole_dns_port: 53
-pihole_web_port: 80
-pihole_upstream_dns: "127.0.0.1#5335"   # Unbound
-pihole_domain: homelab.local
-pihole_interface: eth0
-pihole_dnssec: true
-pihole_rev_server: false
-
-# All .homelab.local hostnames resolve to ip_edge — Caddy receives and proxies
-# to the correct backend. See caddy_routes below.
-pihole_custom_dns:
-  - { hostname: "pihole.homelab.local",       ip: "{{ ip_edge }}" }
-  - { hostname: "grafana.homelab.local",       ip: "{{ ip_edge }}" }
-  - { hostname: "prometheus.homelab.local",    ip: "{{ ip_edge }}" }
-  - { hostname: "alertmanager.homelab.local",  ip: "{{ ip_edge }}" }
-  - { hostname: "uptime.homelab.local",        ip: "{{ ip_edge }}" }
-  - { hostname: "portainer.homelab.local",     ip: "{{ ip_edge }}" }
-  - { hostname: "n8n.homelab.local",           ip: "{{ ip_edge }}" }
-  - { hostname: "camunda.homelab.local",       ip: "{{ ip_edge }}" }
-  - { hostname: "greentechhub.homelab.local",  ip: "{{ ip_edge }}" }
-  - { hostname: "jellyfin.homelab.local",      ip: "{{ ip_edge }}" }
-
-# ── Caddy (LAN reverse proxy) ─────────────────────────────────────────────────
-# Maps each .homelab.local hostname to its backend service.
-# Pi-hole DNS resolves all entries above to ip_edge; Caddy routes by Host header.
-caddy_routes:
-  - { hostname: "pihole.homelab.local",       upstream: "pihole:80" }
-  - { hostname: "grafana.homelab.local",       upstream: "{{ ip_observe }}:3000" }
-  - { hostname: "prometheus.homelab.local",    upstream: "{{ ip_observe }}:9090" }
-  - { hostname: "alertmanager.homelab.local",  upstream: "{{ ip_observe }}:9093" }
-  - { hostname: "uptime.homelab.local",        upstream: "{{ ip_observe }}:3001" }
-  - { hostname: "portainer.homelab.local",     upstream: "{{ ip_observe }}:9000" }
-  - { hostname: "n8n.homelab.local",           upstream: "{{ ip_svc_01 }}:5678" }
-  - { hostname: "camunda.homelab.local",       upstream: "{{ ip_svc_01 }}:8080" }
-  - { hostname: "greentechhub.homelab.local",  upstream: "{{ ip_svc_02 }}:8000" }
-  - { hostname: "jellyfin.homelab.local",      upstream: "{{ ip_svc_03 }}:8096" }
 
 # ── Unbound ───────────────────────────────────────────────────────────────────
 unbound_port: 5335

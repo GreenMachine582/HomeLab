@@ -23,6 +23,9 @@ repos:
       # lifeline). deploy-service enforces `up -d --remove-orphans` and never
       # calls `docker compose down` for this stack.
       strategy: rolling
+      # Pi-hole v6 ignores WEBPASSWORD env var; the post-deploy script sets
+      # the password via `pihole setpassword` after compose up.
+      post_hook: [scripts/post-deploy.sh]
     secrets:
       infisical:
         # deploy-service reads /home/homelab/.infisical_runtime_auth.yml,
