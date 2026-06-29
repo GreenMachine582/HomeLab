@@ -30,7 +30,6 @@
   tags: [semaphore]
 
 - name: "Semaphore bootstrap | Project, keys, repository, inventory, environment, and task templates"
-  no_log: true
   tags: [semaphore]
   block:
 
@@ -102,6 +101,18 @@
       ansible.builtin.slurp:
         src: "{{ semaphore_ansible_ssh_key_path }}"
       register: _sem_privkey
+      when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
+
+    - name: "Semaphore bootstrap | TEMP DEBUG — SSH key POST body preview"
+      ansible.builtin.debug:
+        msg: >-
+          project_id={{ _sem_project_id | int }}
+          | project_id_type={{ _sem_project_id | type_debug }}
+          | key_name=homelab-ssh
+          | key_type=ssh
+          | login=homelab
+          | private_key_first50={{ (_sem_privkey.content | b64decode)[:50] | replace('\n', '\\n') }}
+      no_log: false
       when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
 
     - name: "Semaphore bootstrap | Create homelab-ssh key"
