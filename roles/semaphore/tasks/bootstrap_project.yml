@@ -111,6 +111,7 @@
             passphrase: ""
             private_key: "{{ _sem_privkey.content | b64decode }}"
         status_code: [200, 201]
+        return_content: true
       register: _sem_ssh_key_created
       failed_when: false
       when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
@@ -120,6 +121,7 @@
         msg: >-
           status={{ _sem_ssh_key_created.status | default('n/a') }}
           | json={{ _sem_ssh_key_created.json | default('(no json)') }}
+          | content={{ _sem_ssh_key_created.content | default('(no content)') }}
           | msg={{ _sem_ssh_key_created.msg | default('(no msg)') }}
       no_log: false
       when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
