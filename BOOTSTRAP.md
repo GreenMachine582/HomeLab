@@ -448,7 +448,7 @@ afterward.
 homelab ALL=(ALL) NOPASSWD:ALL
 
 # /etc/sudoers.d/deploy
-deploy ALL=(ALL) NOPASSWD: /usr/bin/ansible-playbook
+deploy ALL=(ALL) NOPASSWD: /opt/homelab/scripts/deploy.sh
 ```
 
 **How Infisical goes from a bare container to fully seeded with zero clicks:**
@@ -526,13 +526,10 @@ ssh -p <ssh_port> admin@<ip_edge>
 ```
 
 ```bash
-sudo su - homelab
+sudo /opt/homelab/scripts/deploy.sh
 ```
 
-```bash
-cd /opt/homelab
-ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
-```
+> `scripts/deploy.sh` git-pulls the repo first (so the playbook is always current before Ansible loads it), then runs `ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge` as the `homelab` user. No need to switch users or `cd` into the repo — the script handles it. Pass extra args after the defaults if needed (see `scripts/deploy.sh --help`).
 
 **Option B — run directly from your PC/WSL:**
 
@@ -674,8 +671,8 @@ Ansible deploys to all target nodes
 ```
 
 GitHub only needs to reach the n8n or Camunda endpoint — it never connects directly to the edge or any other node. All
-Ansible execution stays inside the homelab. No deploy script is needed — the `deploy` user's restricted sudo allows
-`ansible-playbook` directly.
+Ansible execution stays inside the homelab. The `deploy` user's restricted sudo allows only `scripts/deploy.sh` — the
+script git-pulls the repo and then runs `ansible-playbook` as `homelab`.
 
 ---
 
@@ -688,12 +685,11 @@ Ansible execution stays inside the homelab. No deploy script is needed — the `
 3. Add an **SSH** node pointing to `homelab-edge`, port `{{ ssh_port }}`, user `deploy`, using the `deploy` private key
 4. Commands:
    ```bash
-   cd /opt/homelab
-   sudo ansible-playbook playbooks/deploy_edge.yml
-   sudo ansible-playbook playbooks/deploy_observe.yml
-   sudo ansible-playbook playbooks/deploy_svc.yml
+   sudo /opt/homelab/scripts/deploy.sh                                  # edge (default)
+   sudo /opt/homelab/scripts/deploy.sh deploy_observe homelab-observe
+   sudo /opt/homelab/scripts/deploy.sh deploy_svc homelab-svc-01
    ```
-   > `deploy_edge.yml` pulls the latest repo at the start via `become_user: homelab`. No separate `git pull` needed.
+   > The script git-pulls the repo before running `ansible-playbook`, so the play is always current on every trigger.
 
 **Option B — Camunda:**
 
@@ -747,12 +743,10 @@ For ad-hoc deployments without going through GitHub or n8n, SSH to the edge as `
 ```bash
 ssh -p <ssh_port> -i .ssh/deploy deploy@homelab-edge
 
-cd /opt/homelab
-
 # Run whichever playbooks are needed
-sudo ansible-playbook playbooks/deploy_edge.yml
-sudo ansible-playbook playbooks/deploy_observe.yml
-sudo ansible-playbook playbooks/deploy_svc.yml
+sudo /opt/homelab/scripts/deploy.sh                                  # edge (default)
+sudo /opt/homelab/scripts/deploy.sh deploy_observe homelab-observe
+sudo /opt/homelab/scripts/deploy.sh deploy_svc homelab-svc-01
 ```
 
-The `deploy` user's sudo is restricted to `/usr/bin/ansible-playbook` only — no shell, no root access. The git pull happens automatically inside `deploy_edge.yml` via `become_user: homelab`. Deployments work even if GitHub or the automation endpoint is unavailable.
+The `deploy` user's sudo is restricted to `/opt/homelab/scripts/deploy.sh` only — no shell, no root access. The script git-pulls the repo before running `ansible-playbook`, so the play is always current. Deployments work even if GitHub or the automation endpoint is unavailable.
