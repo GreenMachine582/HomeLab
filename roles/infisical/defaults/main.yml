@@ -21,7 +21,7 @@ infisical_redis_port: 6379
 # bootstrap — using the one-shot call's instance-admin token, not a persisted
 # machine identity. See bootstrap_instance.yml's header for why.)
 infisical_seed_project_slug: homelab
-infisical_seed_environment: production
+infisical_seed_environment: prod
 
 # ── Instance bootstrap (see tasks/bootstrap_instance.yml) ───────────────────
 # Single source of truth for the org/project/folder/identity shape that
