@@ -10,6 +10,12 @@
 # Auth: POST /api/auth/login → 204 + session cookie (Set-Cookie: semaphore=…).
 # All tasks inside the no_log block to protect admin password, SSH private key,
 # and the ephemeral session cookie from appearing in logs.
+#
+# Body serialisation: POST bodies use | to_json instead of a YAML dict so that
+# integer IDs serialise as JSON integers, not strings. AnsibleUnsafeText (the
+# type {{ expr | int }} returns) is a str subclass — json.dumps() serialises it
+# as "1" not 1, and Go's json.Unmarshal rejects a JSON string for an int field,
+# returning 400 with an empty body.
 
 - name: "Semaphore bootstrap | Wait for API port to accept connections"
   ansible.builtin.wait_for:
@@ -30,6 +36,7 @@
   tags: [semaphore]
 
 - name: "Semaphore bootstrap | Project, keys, repository, inventory, environment, and task templates"
+  no_log: true
   tags: [semaphore]
   block:
 
@@ -44,15 +51,6 @@
           password: "{{ vault_semaphore_admin_password }}"
         status_code: 204
       register: _sem_login
-
-    - name: "Semaphore bootstrap | TEMP DEBUG — login response cookies and headers"
-      ansible.builtin.debug:
-        msg: >-
-          cookies={{ _sem_login.cookies }}
-          | set_cookie={{ _sem_login['set-cookie'] | default('(none)') }}
-          | x_csrf_token={{ _sem_login.x_csrf_token | default('(none)') }}
-      no_log: false
-      tags: [semaphore]
 
     # ── Project ───────────────────────────────────────────────────────────────
     - name: "Semaphore bootstrap | Get existing projects"
@@ -103,18 +101,6 @@
       register: _sem_privkey
       when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
 
-    - name: "Semaphore bootstrap | TEMP DEBUG — SSH key POST body preview"
-      ansible.builtin.debug:
-        msg: >-
-          project_id={{ _sem_project_id | int }}
-          | project_id_type={{ _sem_project_id | type_debug }}
-          | key_name=homelab-ssh
-          | key_type=ssh
-          | login=homelab
-          | private_key_first50={{ (_sem_privkey.content | b64decode)[:50] | replace('\n', '\\n') }}
-      no_log: false
-      when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
-
     - name: "Semaphore bootstrap | Create homelab-ssh key"
       ansible.builtin.uri:
         url: "{{ semaphore_api_url }}/api/project/{{ _sem_project_id }}/keys"
@@ -122,37 +108,10 @@
         headers:
           Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
         body_format: json
-        body:
-          name: "homelab-ssh"
-          project_id: "{{ _sem_project_id | int }}"
-          type: ssh
-          ssh:
-            login: homelab
-            passphrase: ""
-            private_key: "{{ _sem_privkey.content | b64decode }}"
+        body: "{{ {'name': 'homelab-ssh', 'project_id': _sem_project_id | int, 'type': 'ssh', 'ssh': {'login': 'homelab', 'passphrase': '', 'private_key': _sem_privkey.content | b64decode}} | to_json }}"
         status_code: [200, 201]
-        return_content: true
       register: _sem_ssh_key_created
-      failed_when: false
       when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
-
-    - name: "Semaphore bootstrap | TEMP DEBUG — homelab-ssh key creation response (status+error only, no body)"
-      ansible.builtin.debug:
-        msg: >-
-          status={{ _sem_ssh_key_created.status | default('n/a') }}
-          | json={{ _sem_ssh_key_created.json | default('(no json)') }}
-          | content={{ _sem_ssh_key_created.content | default('(no content)') }}
-          | msg={{ _sem_ssh_key_created.msg | default('(no msg)') }}
-      no_log: false
-      when: not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
-
-    - name: "Semaphore bootstrap | FAIL — homelab-ssh key creation failed (see TEMP DEBUG above)"
-      ansible.builtin.fail:
-        msg: "homelab-ssh key creation returned status {{ _sem_ssh_key_created.status | default('n/a') }} — see TEMP DEBUG output above for the API error"
-      when:
-        - not (_sem_keys.json | selectattr('name', 'equalto', 'homelab-ssh') | list)
-        - (_sem_ssh_key_created.status | default(-1)) not in [200, 201]
-      no_log: false
 
     - name: "Semaphore bootstrap | Resolve homelab-ssh key ID"
       ansible.builtin.set_fact:
@@ -168,10 +127,7 @@
         headers:
           Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
         body_format: json
-        body:
-          name: "none"
-          project_id: "{{ _sem_project_id | int }}"
-          type: none
+        body: "{{ {'name': 'none', 'project_id': _sem_project_id | int, 'type': 'none'} | to_json }}"
         status_code: [200, 201]
       register: _sem_none_key_created
       when: not (_sem_keys.json | selectattr('name', 'equalto', 'none') | list)
@@ -203,12 +159,7 @@
         headers:
           Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
         body_format: json
-        body:
-          name: "{{ semaphore_project_name }}"
-          project_id: "{{ _sem_project_id | int }}"
-          git_url: /repo
-          git_branch: "{{ homelab_repo_branch }}"
-          ssh_key_id: "{{ _sem_none_key_id | int }}"
+        body: "{{ {'name': semaphore_project_name, 'project_id': _sem_project_id | int, 'git_url': '/repo', 'git_branch': homelab_repo_branch, 'ssh_key_id': _sem_none_key_id | int} | to_json }}"
         status_code: [200, 201]
       register: _sem_repo_created
       when: not (_sem_repos.json | selectattr('name', 'equalto', semaphore_project_name) | list)
@@ -237,12 +188,7 @@
         headers:
           Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
         body_format: json
-        body:
-          name: prod
-          project_id: "{{ _sem_project_id | int }}"
-          type: file
-          inventory: /repo/inventories/prod.yml
-          ssh_key_id: "{{ _sem_key_id | int }}"
+        body: "{{ {'name': 'prod', 'project_id': _sem_project_id | int, 'type': 'file', 'inventory': '/repo/inventories/prod.yml', 'ssh_key_id': _sem_key_id | int} | to_json }}"
         status_code: [200, 201]
       register: _sem_inventory_created
       when: not (_sem_inventories.json | selectattr('name', 'equalto', 'prod') | list)
@@ -273,11 +219,7 @@
         headers:
           Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
         body_format: json
-        body:
-          name: default
-          project_id: "{{ _sem_project_id | int }}"
-          json: "{}"
-          env: ""
+        body: "{{ {'name': 'default', 'project_id': _sem_project_id | int, 'json': '{}', 'env': ''} | to_json }}"
         status_code: [200, 201]
       register: _sem_environment_created
       when: not (_sem_environments.json | selectattr('name', 'equalto', 'default') | list)
@@ -310,19 +252,7 @@
         headers:
           Cookie: "semaphore={{ _sem_login.cookies.semaphore }}"
         body_format: json
-        body:
-          name: "{{ item.name }}"
-          project_id: "{{ _sem_project_id | int }}"
-          playbook: "{{ item.playbook }}"
-          description: "{{ item.description }}"
-          type: ""
-          inventory_id: "{{ _sem_inventory_id | int }}"
-          environment_id: "{{ _sem_environment_id | int }}"
-          repository_id: "{{ _sem_repo_id | int }}"
-          ssh_key_id: "{{ _sem_key_id | int }}"
-          allow_override_args_in_task: false
-          suppress_success_alerts: true
-          app: ansible
+        body: "{{ {'name': item.name, 'project_id': _sem_project_id | int, 'playbook': item.playbook, 'description': item.description, 'type': '', 'inventory_id': _sem_inventory_id | int, 'environment_id': _sem_environment_id | int, 'repository_id': _sem_repo_id | int, 'ssh_key_id': _sem_key_id | int, 'allow_override_args_in_task': false, 'suppress_success_alerts': true, 'app': 'ansible'} | to_json }}"
         status_code: [200, 201]
       loop: "{{ semaphore_task_templates }}"
       loop_control:
