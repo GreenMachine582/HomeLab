@@ -25,5 +25,7 @@ case $# in
 esac
 
 HOMELAB_HOME="$(getent passwd homelab | cut -d: -f6)"
-HOME="$HOMELAB_HOME" runuser -u homelab -- git -C "$REPO" pull --ff-only
+HOME="$HOMELAB_HOME" GIT_SSH_COMMAND="ssh -i ${HOMELAB_HOME}/.ssh/github -o BatchMode=yes" \
+  runuser -u homelab -- git -C "$REPO" pull --ff-only
+cd "$REPO"
 exec runuser -u homelab -- env HOME="$HOMELAB_HOME" ansible-playbook "$REPO/playbooks/${PLAYBOOK_STEM}.yml" --limit "$LIMIT" "$@"
