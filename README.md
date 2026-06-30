@@ -234,9 +234,9 @@ Full stack reference (Prometheus, Loki, Grafana, Alertmanager, Uptime Kuma) is i
 | Uptime Kuma  | `http://uptime.homelab.local:3001`       |
 | Portainer    | `http://portainer.homelab.local:9000`    |
 
-**Infisical & Semaphore (LAN via Caddy or Tailscale direct — see [docs/NETWORK.md](./docs/NETWORK.md)):**
+**Infisical & Semaphore (LAN via Caddy, Tailscale HTTPS via Caddy, or Tailscale direct — see [docs/NETWORK.md](./docs/NETWORK.md)):**
 
-| Service   | URL                                          | Notes                                              |
-|-----------|----------------------------------------------|----------------------------------------------------|
-| Infisical | `https://infisical.homelab.local:8443` (LAN) | Or Tailscale: `http://<edge-tailscale-ip>:8222`    |
-| Semaphore | `https://semaphore.homelab.local:8444` (LAN) | Or Tailscale: `http://<edge-tailscale-ip>:3010`    |
+| Service   | URL                                          | Notes                                                                          |
+|-----------|----------------------------------------------|--------------------------------------------------------------------------------|
+| Infisical | `https://infisical.homelab.local:8443` (LAN) | Tailscale: `https://homelab-edge:8443` or `http://<edge-tailscale-ip>:8222`   |
+| Semaphore | `https://semaphore.homelab.local:8444` (LAN) | Tailscale: `https://homelab-edge:8444` or `http://<edge-tailscale-ip>:3010`   |
