@@ -65,6 +65,39 @@ See [docs/repo_split_brief.md](./docs/repo_split_brief.md) for full design ratio
 
 ---
 
+## Bootstrap Playbook Review
+
+`bootstrap_edge.yml` and `bootstrap_node.yml` share a large common base but have drifted in role order, firewall approach, and observability setup. Resolve before bootstrapping real nodes (Milestones A and B) so any fixes land in both playbooks at the same time.
+
+### Milestone F — Align bootstrap_edge.yml and bootstrap_node.yml
+
+- [ ] **F1** — Decide and enforce canonical role order for the common base.
+  Currently: `bootstrap_edge` runs `users → base_hardening`; `bootstrap_node` runs `base_hardening → users`. One is wrong — pick one and update the other. `base_hardening` first is safer (SSH hardening before user creation means keys are required before any account can log in).
+
+- [ ] **F2** — Verify `roles/docker` installs the Docker Compose plugin, OR add `roles/docker_compose` to `bootstrap_node.yml`'s role list.
+  `bootstrap_node.yml` requires `roles/docker` but not `roles/docker_compose`. If the deploy playbook's first task is `docker compose up` and the plugin isn't installed yet, it will fail. Check `roles/docker/tasks/main.yml` — if it doesn't install the plugin, add `roles/docker_compose` to both bootstrap playbooks.
+
+- [ ] **F3** — Decide `node-exporter` placement for `homelab-edge`.
+  `bootstrap_node.yml` deploys node-exporter inline immediately after Docker is ready. `bootstrap_edge.yml` doesn't — edge node-exporter comes from `docker-compose.edge.yml`, which only runs in Phase 2. This means Prometheus cannot scrape the edge node until Phase 2 completes.
+  - **Option A (keep):** Accept the gap; document it in `docs/MONITORING.md`.
+  - **Option B (align):** Add the same inline `community.docker.docker_container` task to `bootstrap_edge.yml` so all nodes are observable from the moment their bootstrap completes.
+
+- [ ] **F4** — Align the firewall pattern between the two playbooks.
+  `bootstrap_node.yml` applies UFW rules via inline `community.general.ufw` tasks. `bootstrap_edge.yml` uses `include_role: firewall`. The `firewall` role approach is preferred — it lets `ufw_rules` from group_vars drive rules declaratively and is idempotent. Update `bootstrap_node.yml` to use `include_role: firewall` with `firewall_rules: "{{ ufw_rules | default(ufw_rules_base | default([])) }}"`.
+
+- [ ] **F5** — Decide `alloy` (log shipping) placement.
+  Grafana Alloy is currently applied only in `deploy_observe.yml` and `deploy_svc.yml`, not at bootstrap time. This means no logs are shipped to Loki until the deploy playbook runs.
+  - **Option A (keep):** Accept the gap — logs flow after deploy, not from first boot. Reasonable given Loki itself isn't up until homelab-observe is deployed.
+  - **Option B (add to bootstrap_node):** Add `role: alloy` to `bootstrap_node.yml` so it's always in place. Alloy will queue-fail gracefully until Loki is reachable.
+
+- [ ] **F6** — Consider extracting the shared pre_tasks into `playbooks/tasks/base_system.yml`.
+  The identical block — `hostname`, `apt update_cache`, `base_packages install` — exists in both playbooks. Extract to a shared file and use `ansible.builtin.import_tasks: tasks/base_system.yml` in both. Lower priority if F1–F5 resolve the active drift; higher priority if further nodes are added.
+  > Note: `import_playbook` cannot be used to share the role list between the two playbooks — `bootstrap_edge` runs against a dynamically injected `edge_bootstrap` host, not the `prod.yml` inventory, so the host targets are incompatible.
+
+---
+
+## Phase 4 — Polyrepo Migration
+
 ### Milestone C — `homelab-observe-services`
 
 > **Prep** (can start before Phase 3 completes):
