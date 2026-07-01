@@ -1,0 +1,58 @@
+groups:
+  - name: node
+    rules:
+      - alert: NodeDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ '{{' }} $labels.job {{ '}}' }} is down"
+          description: "Scrape target {{ '{{' }} $labels.job {{ '}}' }} has been unreachable for more than 2 minutes."
+
+      - alert: HighCpuUsage
+        expr: 100 - (avg by(job) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ '{{' }} $labels.job {{ '}}' }}"
+          description: "CPU usage is above 85% for 10 minutes on {{ '{{' }} $labels.job {{ '}}' }}."
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory on {{ '{{' }} $labels.job {{ '}}' }}"
+          description: "Memory usage is above 85% for 10 minutes."
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ '{{' }} $labels.job {{ '}}' }}"
+          description: "Filesystem {{ '{{' }} $labels.mountpoint {{ '}}' }} has less than 15% free."
+
+      - alert: DiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes) * 100 < 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical disk space on {{ '{{' }} $labels.job {{ '}}' }}"
+          description: "Filesystem {{ '{{' }} $labels.mountpoint {{ '}}' }} has less than 5% free."
+
+  - name: containers
+    rules:
+      - alert: ContainerDown
+        expr: absent(container_last_seen{name!=""})
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ '{{' }} $labels.name {{ '}}' }} not seen"
+          description: "Container {{ '{{' }} $labels.name {{ '}}' }} has not been scraped in 5 minutes."

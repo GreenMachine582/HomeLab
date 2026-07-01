@@ -1,0 +1,124 @@
+---
+# roles/observe_services/tasks/main.yml
+# Renders config templates for the docker-compose.observe.yml stack.
+# The actual `docker compose up` is run in the playbook post_tasks.
+
+# ── Prometheus ────────────────────────────────────────────────────────────────
+- name: "Observe | Prometheus | Ensure config dir exists"
+  ansible.builtin.file:
+    path: "{{ homelab_repo_path }}/prometheus"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [prometheus]
+
+- name: "Observe | Prometheus | Write prometheus.yml"
+  ansible.builtin.template:
+    src: prometheus/prometheus.yml.j2
+    dest: "{{ homelab_repo_path }}/prometheus/prometheus.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [prometheus]
+
+- name: "Observe | Prometheus | Write alert_rules.yml"
+  ansible.builtin.template:
+    src: prometheus/alerts.yml.j2
+    dest: "{{ homelab_repo_path }}/prometheus/alert_rules.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [prometheus]
+
+# ── Loki ──────────────────────────────────────────────────────────────────────
+- name: "Observe | Loki | Ensure config dir exists"
+  ansible.builtin.file:
+    path: "{{ homelab_repo_path }}/loki"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [loki]
+
+- name: "Observe | Loki | Write loki.yml"
+  ansible.builtin.template:
+    src: loki/loki.yml.j2
+    dest: "{{ homelab_repo_path }}/loki/loki.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [loki]
+
+# ── Alertmanager ──────────────────────────────────────────────────────────────
+- name: "Observe | Alertmanager | Ensure config dir exists"
+  ansible.builtin.file:
+    path: "{{ homelab_repo_path }}/alertmanager"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [alertmanager]
+
+- name: "Observe | Alertmanager | Write alertmanager.yml"
+  ansible.builtin.template:
+    src: alertmanager/alertmanager.yml.j2
+    dest: "{{ homelab_repo_path }}/alertmanager/alertmanager.yml"
+    owner: root
+    group: root
+    mode: "0640"
+  tags: [alertmanager]
+
+# ── ntfy ──────────────────────────────────────────────────────────────────────
+- name: "Observe | ntfy | Ensure config dir exists"
+  ansible.builtin.file:
+    path: "{{ homelab_repo_path }}/ntfy/config"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [ntfy]
+
+- name: "Observe | ntfy | Write server.yml"
+  ansible.builtin.template:
+    src: ntfy/server.yml.j2
+    dest: "{{ homelab_repo_path }}/ntfy/config/server.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [ntfy]
+
+# ── Grafana ───────────────────────────────────────────────────────────────────
+- name: "Observe | Grafana | Ensure provisioning dirs exist"
+  ansible.builtin.file:
+    path: "{{ homelab_repo_path }}/grafana/provisioning/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - datasources
+    - dashboards
+  tags: [grafana]
+
+- name: "Observe | Grafana | Write datasources config"
+  ansible.builtin.template:
+    src: grafana/datasources.yml.j2
+    dest: "{{ homelab_repo_path }}/grafana/provisioning/datasources/datasources.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [grafana]
+
+- name: "Observe | Grafana | Write secrets env file"
+  ansible.builtin.copy:
+    dest: "{{ homelab_repo_path }}/grafana/.env.secrets"
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      GF_SECURITY_ADMIN_PASSWORD={{ grafana_admin_password }}
+      GF_SECURITY_ADMIN_USER={{ grafana_admin_user | default('admin') }}
+      GF_USERS_ALLOW_SIGN_UP=false
+  no_log: true
+  tags: [grafana]
