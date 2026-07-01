@@ -215,7 +215,7 @@ For disaster recovery procedures see [docs/TROUBLESHOOTING.md](./docs/TROUBLESHO
 
 ## Monitoring & Alerting
 
-Full stack reference (Prometheus, Loki, Grafana, Alertmanager, Uptime Kuma) is in [docs/MONITORING.md](./docs/MONITORING.md).
+Full stack reference (Prometheus, Loki, Grafana, Alertmanager, Uptime Kuma) is in [homelab-observe-services/docs/MONITORING.md](https://github.com/GreenMachine582/homelab-observe-services/blob/master/docs/MONITORING.md).
 
 **Alert channels:**
 
