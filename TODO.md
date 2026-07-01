@@ -12,7 +12,7 @@ Node roles, ports, and playbook commands are in [CLAUDE.md](./CLAUDE.md), [NODES
 
 Branch `wip/observe` contains the role and playbook. No merge conflicts with master expected (entirely new files).
 
-- [ ] **A1** — Merge `wip/observe` into master
+- [x] **A1** — Merge `wip/observe` into master
 - [ ] **A2** — Run Phase 3 bootstrap:
   ```bash
   ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe --ask-pass --ask-become-pass
