@@ -61,7 +61,7 @@ Branch `wip/svc` contains the roles and playbook. One conflict on merge: `TODO.m
 
 See [docs/repo_split_brief.md](./docs/repo_split_brief.md) for full design rationale, `services.yml` schema, and `deploy-service` CLI spec.
 
-**Current status:** `homelab-edge-services` is live (Phase 4 complete for edge). Remaining: `homelab-observe-services`, then svc-01 splits.
+**Current status:** `homelab-edge-services` is live (Phase 4 complete for edge). `homelab-observe-services` repo is created, tagged `v0.1.0`, with compose/configs extracted, docs migrated, and registered in `services.yml` (Milestone C1–C4 done). `deploy-service` now actually executes `pre_hook`/`post_hook`. Remaining: C5 (deploy-verify — blocked on Phase 3 Milestone A being live, no real node yet), C6 (retire from HomeLab repo); then svc-01 splits (Milestone D).
 
 ---
 
@@ -82,39 +82,26 @@ All resolved and committed to master:
 
 ---
 
-## Phase 4 — Polyrepo Migration
-
 ### Milestone C — `homelab-observe-services`
 
 > **Prep** (can start before Phase 3 completes):
 
-- [ ] **C1** — Create GitHub repo `GreenMachine382/homelab-observe-services`
+- [x] **C1** — Create GitHub repo `GreenMachine582/homelab-observe-services`
   - **Description:** `Observability stack for homelab-observe — Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma`
   - **Topics:** `homelab`, `self-hosted`, `prometheus`, `grafana`, `loki`, `docker-compose`
   - **Default branch:** `master`
   - **Visibility:** private (contains service configs with volume paths and hostnames)
-  - **After first commit, tag:** `v0.1.0`
+  - **After first commit, tag:** `v0.1.0` ✅ tagged
 
 > **Migration** (after Phase 3 is live and stable):
 
-- [ ] **C2** — Extract compose + config files into new repo:
+- [x] **C2** — Extract compose + config files into new repo:
   - `docker-compose.observe.yml` → `docker-compose.yml`
   - `roles/observe_services/templates/` → `configs/` (rendered to plain files, no Jinja2)
   - Add `.env.example` listing any Infisical-sourced secrets
-- [ ] **C3** — Move `docs/MONITORING.md` to the new repo; add link from HomeLab `README.md`
-- [ ] **C4** — Add `observe` entry to `services.yml`:
-  ```yaml
-  homelab-observe-services:
-    repo: github.com/GreenMachine382/homelab-observe-services
-    target_node: homelab-observe
-    deployment:
-      type: compose
-    deploy:
-      compose_files: [docker-compose.yml]
-    rollback:
-      strategy: git
-    services: [prometheus, loki, grafana, alertmanager, ntfy, uptime-kuma, portainer]
-  ```
+- [x] **C3** — Move `docs/MONITORING.md` to the new repo; add link from HomeLab `README.md`
+- [x] **C4** — Add `observe` entry to `services.yml` (done — includes `pre_hook: [scripts/predeploy.sh]` and the full Infisical secrets list: network IPs, Grafana admin password, Discord webhooks)
+  > **Hook gap resolved:** `deploy-service` previously declared but never executed `pre_hook`/`post_hook` from `services.yml`. Implemented in `deploy-service/deploy_service/compose.py` (`run_hooks()`, invoked via `bash <script>` so the executable bit doesn't matter) and wired into `cli.py`'s deploy sequence: clone/pull → `pre_hook` → compose deploy → `post_hook`. `clone_or_pull()` now also does `git reset --hard` before every pull, since hooks like `homelab-observe-services`'s `scripts/predeploy.sh` (envsubst) mutate tracked config files in place. This also fixes `homelab-edge-services`'s previously silently-skipped `post_hook` (pihole password).
 - [ ] **C5** — Deploy via `deploy-service` and verify end-to-end:
   ```bash
   deploy-service deploy homelab-observe-services
@@ -129,7 +116,7 @@ Three repos; tackle in order (each depends on the prior being stable). For each,
 
 #### D1 — `camunda-platform`
 
-- [ ] Create `GreenMachine382/camunda-platform`
+- [ ] Create `GreenMachine582/camunda-platform`
   - **Description:** `Camunda 8 + Elasticsearch workflow engine on homelab-svc-01`
   - **Topics:** `homelab`, `camunda`, `bpmn`, `elasticsearch`, `docker-compose`, `self-hosted`
   - **Default branch:** `master` | **Initial tag:** `v0.1.0`
@@ -140,7 +127,7 @@ Three repos; tackle in order (each depends on the prior being stable). For each,
 
 #### D2 — `n8n-automation`
 
-- [ ] Create `GreenMachine382/n8n-automation`
+- [ ] Create `GreenMachine582/n8n-automation`
   - **Description:** `n8n workflow automation on homelab-svc-01`
   - **Topics:** `homelab`, `n8n`, `automation`, `workflows`, `docker-compose`, `self-hosted`
   - **Default branch:** `master` | **Initial tag:** `v0.1.0`
@@ -151,20 +138,20 @@ Three repos; tackle in order (each depends on the prior being stable). For each,
 
 #### D3 — `discord-gateway` *(only if kept after B6)*
 
-- [ ] Create `GreenMachine382/discord-gateway`
+- [ ] Create `GreenMachine582/discord-gateway`
   - **Description:** `Inbound Discord slash-command gateway, routing to n8n on homelab-svc-01`
   - **Topics:** `homelab`, `discord`, `webhook`, `docker-compose`, `self-hosted`
-  - **Default branch:** `master` | **Initial image tag:** `v0.1.0` (pushed to `ghcr.io/greenmachine382/discord-gateway`)
+  - **Default branch:** `master` | **Initial image tag:** `v0.1.0` (pushed to `ghcr.io/greenmachine582/discord-gateway`)
   - **CI:** GitHub Actions — build + push image to `ghcr.io` on tag push
 - [ ] Extract `discord-gateway/` directory from HomeLab repo root
 - [ ] Add to `services.yml` as type: image:
   ```yaml
   discord-gateway:
-    repo: github.com/GreenMachine382/discord-gateway
+    repo: github.com/GreenMachine582/discord-gateway
     target_node: homelab-svc-01
     deployment:
       type: image
-      image: ghcr.io/greenmachine382/discord-gateway
+      image: ghcr.io/greenmachine582/discord-gateway
     rollback:
       strategy: image
       keep: 5
