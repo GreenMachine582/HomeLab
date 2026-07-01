@@ -49,3 +49,40 @@ repos:
     rollback:
       strategy: git
     services: [cloudflared, caddy, pihole, pihole-exporter, portainer-agent]
+
+  homelab-observe-services:
+    repo: github.com/GreenMachine582/homelab-observe-services
+    ref: master
+    path: /srv/services/homelab-observe-services
+    target_node: homelab-observe
+    deployment:
+      type: compose
+    deploy:
+      compose_files: [docker-compose.yml]
+      # prometheus.yml/alertmanager.yml are mounted config files, not read by
+      # docker compose itself, so ${IP_*}/${DISCORD_WEBHOOK_*} placeholders in
+      # them need envsubst before `docker compose up` — see scripts/predeploy.sh.
+      pre_hook: [scripts/predeploy.sh]
+    secrets:
+      infisical:
+        - path: /prod/network/IP_EDGE
+          env: IP_EDGE
+        - path: /prod/network/IP_OBSERVE
+          env: IP_OBSERVE
+        - path: /prod/network/IP_SVC_01
+          env: IP_SVC_01
+        - path: /prod/network/IP_SVC_02
+          env: IP_SVC_02
+        - path: /prod/network/IP_SVC_03
+          env: IP_SVC_03
+        - path: /prod/grafana/ADMIN_PASSWORD
+          env: GRAFANA_ADMIN_PASSWORD
+        - path: /prod/discord/WEBHOOK_CRITICAL
+          env: DISCORD_WEBHOOK_CRITICAL
+        - path: /prod/discord/WEBHOOK_WARNING
+          env: DISCORD_WEBHOOK_WARNING
+        - path: /prod/discord/WEBHOOK_INFO
+          env: DISCORD_WEBHOOK_INFO
+    rollback:
+      strategy: git
+    services: [prometheus, loki, grafana, alertmanager, ntfy, uptime-kuma, portainer]
