@@ -31,13 +31,17 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
 
     compose_files = deploy_cfg.get("compose_files", ["docker-compose.yml"])
     strategy = deploy_cfg.get("strategy", "rolling")
+    pre_hook = deploy_cfg.get("pre_hook", [])
+    post_hook = deploy_cfg.get("post_hook", [])
 
     print(f"[deploy-service] Fetching secrets from Infisical")
     secret_specs = secrets_cfg.get("infisical", [])
     injected_env = infisical.fetch(secret_specs)
 
     compose.clone_or_pull(repo_url, path, ref=ref, dry_run=args.dry_run)
+    compose.run_hooks(path, pre_hook, injected_env, "pre-deploy", dry_run=args.dry_run)
     compose.deploy(path, compose_files, injected_env, strategy=strategy, dry_run=args.dry_run)
+    compose.run_hooks(path, post_hook, injected_env, "post-deploy", dry_run=args.dry_run)
 
     if args.dry_run:
         print(f"[deploy-service] Dry run complete — no changes made")

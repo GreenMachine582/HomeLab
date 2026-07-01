@@ -23,6 +23,10 @@ def clone_or_pull(repo: str, path: str, ref: str = "main", dry_run: bool = False
 
     if git_dir.exists():
         print(f"[deploy-service] Pulling {repo} → {path}")
+        # pre_hook scripts (e.g. envsubst) can mutate tracked config files in
+        # place — reset to a clean state first so `pull --ff-only` never
+        # conflicts with last deploy's leftover local modifications.
+        _run(["git", "-C", path, "reset", "--hard"], dry_run=dry_run)
         _run(["git", "-C", path, "fetch", "--tags"], dry_run=dry_run)
         _run(["git", "-C", path, "checkout", ref], dry_run=dry_run)
         _run(["git", "-C", path, "pull", "--ff-only"], dry_run=dry_run)
@@ -32,6 +36,27 @@ def clone_or_pull(repo: str, path: str, ref: str = "main", dry_run: bool = False
             Path(path).mkdir(parents=True, exist_ok=True)
         _run(["git", "clone", repo_url, path], dry_run=dry_run)
         _run(["git", "-C", path, "checkout", ref], dry_run=dry_run)
+
+
+def run_hooks(
+    path: str,
+    scripts: list[str],
+    injected_env: dict[str, str],
+    label: str,
+    dry_run: bool = False,
+) -> None:
+    """Run pre/post-deploy hook scripts from the repo checkout, in order.
+
+    Invoked via `bash` rather than executed directly so a missing +x bit on
+    the script (e.g. after a fresh git clone) doesn't fail the deploy.
+    """
+    if not scripts:
+        return
+
+    env = {**os.environ, **injected_env}
+    for script in scripts:
+        print(f"[deploy-service] Running {label} hook: {script}")
+        _run(["bash", script], cwd=path, env=env, dry_run=dry_run)
 
 
 def deploy(
