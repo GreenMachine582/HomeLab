@@ -1,5 +1,7 @@
 # Homelab Repo Split — Planning Brief (v6)
 
+> **This is an active design brief, not an operations reference.** It documents the in-progress polyrepo migration strategy (`deploy-service`, `services.yml`, service repo splits). For day-to-day operations, see [README.md](../README.md), [BOOTSTRAP.md](../BOOTSTRAP.md), or [NETWORK.md](./NETWORK.md).
+
 **Status:** `homelab-edge-services` live (§8 Phase 4 underway — edge complete). Remaining Phase 4: `homelab-observe-services`, svc-01 splits. Phase 5 cleanup in progress.
 **Origin repo:** https://github.com/GreenMachine582/HomeLab
 **Purpose of this doc:** Final design reference ahead of implementation.

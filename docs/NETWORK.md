@@ -260,8 +260,8 @@ port exposure required. The cert is written to `/var/lib/tailscale/certs/` and m
 container, which serves it on ports 8443/8444 for Infisical and Semaphore respectively.
 
 This gives Tailscale-connected browsers a green padlock at `https://homelab-edge.<tailnet>.ts.net:8443/8444` with no 
-per-device trust setup. LAN access via `*.homelab.local` still uses `tls internal` (Caddy local CA) and will show a 
-browser warning unless the Caddy CA root is installed on the device.
+per-device trust setup. LAN access via `*.homelab.local` uses plain HTTP — no TLS on the LAN path (ACME cannot issue
+certs for `.local` domains and Caddy's local CA requires per-device trust installation).
 
 The cert is provisioned by the `tailscale` Ansible role (`tailscale_cert_enabled: true` on the edge node) and renewed 
 weekly via cron.
@@ -291,14 +291,20 @@ LAN client → Pi-hole DNS (<ip_edge>:53)
 
 ### Tailscale-Only Service Access (Infisical / Semaphore)
 
+**Browser (Tailscale):**
+```
+Admin device (on tailnet) → https://homelab-edge.<tailnet>.ts.net:{8443,8444}
+    → ufw allows 100.64.0.0/10 on that port → Caddy → container on homelab-edge
+```
+
+**Non-browser / API (Tailscale):**
 ```
 Admin device (on tailnet) → http://<edge-tailscale-ip>:{8222,3010}
     → ufw allows 100.64.0.0/10 on that port → container on homelab-edge
 ```
 
-No Pi-hole hostname, no Caddy vhost, no LAN reachability — by design (see
-[Firewall Rules](#firewall-rules)). The device making the request must itself
-be a tailnet member; there is no other path in.
+No Pi-hole hostname, no LAN reachability — by design (see [Firewall Rules](#firewall-rules)).
+The device making the request must itself be a tailnet member; there is no other path in.
 
 ### Ansible Deploy (Phase 3+)
 

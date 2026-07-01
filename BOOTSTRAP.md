@@ -446,7 +446,7 @@ afterward.
 | Harden SSH                 | Key-only auth, no root login; port changed to `ssh_port` via async restart only if sshd is not already listening there (probe-first, idempotent on re-runs); subsequent tasks reconnect on new port automatically |
 | Bring up Infisical         | Renders `/opt/infisical/.env` (node-generated secrets), starts `infisical-db`/`infisical-redis`/`infisical`, waits for the API port (8222) to accept connections |
 | Provision and seed Infisical | Drives Infisical's REST API (`roles/infisical/tasks/bootstrap_instance.yml`) — in one pass, over loopback, before the firewall locks the port down — to create the org, admin account, `homelab` project, `production` environment, the nine application folders, and the read-only `runtime` machine identity; push every `[seed → ...]` application secret from the WSL-local `vault.yml` into its mapped `/production/<folder>/<KEY>` path (additive — existing keys untouched); and write the `runtime` identity's freshly-minted credentials straight to `/home/homelab/.infisical_runtime_auth.yml`. All of it authenticated with the one-shot bootstrap call's own instance-admin token — no separate write-capable identity is ever created, persisted, printed, or revoked. See that task's header comment for the full rationale. |
-| Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp, 53/udp+tcp (Pi-hole DNS, LAN only), 8222/tcp + 3010/tcp (Infisical/Semaphore, **Tailscale CGNAT range only** — `100.64.0.0/10`); SSH reachability verified before play completes. Port 80 (Caddy) opened in Phase 2. |
+| Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp, 53/udp+tcp (Pi-hole DNS, LAN only), 8222/tcp + 3010/tcp (Infisical/Semaphore direct, **Tailscale CGNAT range only**); SSH reachability verified before play completes. Ports 80/8443/8444 (Caddy) opened in Phase 2 via `apply_firewall.yml`. |
 | Bring up Semaphore         | Renders `/opt/semaphore/.env` — node-generated Postgres password, `vault_semaphore_admin_*`, and the `runtime` identity's credentials loaded straight from `/home/homelab/.infisical_runtime_auth.yml` (never `vault.yml`, which never holds them) — then starts `semaphore-db`/`semaphore` |
 | Enable unattended upgrades |                                            |
 
@@ -461,23 +461,13 @@ deploy ALL=(ALL) NOPASSWD: /opt/homelab/scripts/deploy.sh
 ```
 
 **How Infisical goes from a bare container to fully seeded with zero clicks:**
-the obvious blocker — "an admin account is the one thing that can't exist
-before Infisical does" — turns out to have a built-in escape hatch: `POST
-/v1/admin/bootstrap` (Infisical's own "Programmatic Provisioning" /
-[automated bootstrapping](https://infisical.com/docs/self-hosting/guides/automated-bootstrapping)
-guide). It's a single unauthenticated, one-shot call that creates the admin
-account **and** the organization **and** returns an instance-admin Bearer
-token, all at once — and it refuses to run again once an instance is
-initialised (which doubles as the playbook's freshness check: a 200 means "go
-ahead and provision everything", anything else means "already done, skip").
-`bootstrap_instance.yml` drives that token through the rest of the REST API to
-provision the project/environment/folders/identity — and, because that token
-already has *more* write access than any project-scoped identity could, to
-push every application secret from `vault.yml` into Infisical immediately too,
-in the same breath. Only the read-only `runtime` identity ever gets created
-and persisted — nothing write-capable is ever minted, printed, copied, or left
-lying around to revoke. See `bootstrap_instance.yml`'s header comment for the
-complete "why no bootstrap identity" reasoning.
+`roles/infisical/tasks/bootstrap_instance.yml` calls Infisical's one-shot
+`POST /v1/admin/bootstrap` endpoint — unauthenticated, returns an instance-admin
+token on a fresh instance and refuses to run again once initialized. That token
+drives the entire provision-and-seed pass (org, project, environment, folders,
+`runtime` identity, all application secrets from `vault.yml`) before the firewall
+locks port 8222 down. See [CLAUDE.md §"Secrets"](./CLAUDE.md#secrets) for the
+full design rationale, including why no write-capable identity is ever created.
 
 | Identity  | Access level                                       | Used by                                                          |
 |-----------|----------------------------------------------------|------------------------------------------------------------------|
@@ -485,11 +475,12 @@ complete "why no bootstrap identity" reasoning.
 
 The playbook ends with Infisical running, fully provisioned, fully seeded, and
 Semaphore online — all reachable over Tailscale (the firewall restricts ports
-8222/3010 to the Tailscale CGNAT range). Confirm with `tailscale status`
-(should list `homelab-edge`), then browse to `http://<edge-tailscale-ip>:8222`
-for Infisical and `http://<edge-tailscale-ip>:3010` for Semaphore. Neither
-service gets a Pi-hole hostname or Caddy route — Tailscale is the only path in
-(see [docs/NETWORK.md](./docs/NETWORK.md#tailscale-only-service-access-infisical--semaphore)).
+8222/3010/8443/8444 to the Tailscale CGNAT range). Confirm with `tailscale status`
+(should list `homelab-edge`). Direct access is available immediately via
+`http://<edge-tailscale-ip>:8222` (Infisical) and `:3010` (Semaphore). After
+Phase 2 deploys Caddy, browser-trusted HTTPS is available at
+`https://homelab-edge.<tailnet>.ts.net:8443` / `:8444` — see
+[docs/NETWORK.md](./docs/NETWORK.md#tailscale).
 
 Now run Phase 2 — `deploy_edge.yml` resolves its application secrets
 (`cloudflare/TUNNEL_TOKEN`, `pihole/WEB_PASSWORD`) from Infisical via the

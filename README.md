@@ -132,6 +132,7 @@ homelab/
     NETWORK.md                # IP assignments, firewall rules, Tailscale ACLs
     MONITORING.md             # Grafana dashboard guide, alert tuning
     TROUBLESHOOTING.md        # Common issues and recovery procedures
+    repo_split_brief.md       # Polyrepo migration design brief (active, in-progress)
 
   .github/
     workflows/

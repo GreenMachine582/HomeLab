@@ -36,6 +36,8 @@ Services are split across four compose files by concern:
 - `docker-compose.svc01.yml` — Camunda, Elasticsearch, n8n, discord-gateway, Portainer Agent (runs on `homelab-svc-01`)
 - `docker-compose.observe.yml` — Prometheus, Loki, Grafana, Alertmanager, ntfy, Portainer Server (runs on `homelab-observe`)
 
+The in-progress polyrepo migration strategy (how future service repos are split, `deploy-service` design, `services.yml` schema) is documented in [`docs/repo_split_brief.md`](./docs/repo_split_brief.md).
+
 ### Ansible Structure
 
 - `inventories/bootstrap.ini` — Phase 1 only; connects as `admin`; `ansible_host`/`ansible_port` are probe-injected at runtime by `bootstrap_edge.yml` — no manual editing required

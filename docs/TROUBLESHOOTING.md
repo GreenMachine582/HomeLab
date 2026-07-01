@@ -294,6 +294,8 @@ Hostnames are defined in `templates/pihole/custom.list.j2`. If a hostname is mis
 
 ## Tailscale
 
+> See [NETWORK.md](./NETWORK.md#tailscale) for firewall rules, ACL policy, and Tailscale access URLs for Infisical/Semaphore.
+
 ### Node not appearing in Tailscale admin console
 
 ```bash
@@ -340,12 +342,10 @@ Review ACLs in the Tailscale admin console. See `docs/NETWORK.md` for the recomm
 
 ## Infisical & Semaphore
 
-Both run on `homelab-edge`, **Tailscale-only** (no Pi-hole hostname, no Caddy
-route — see [docs/NETWORK.md](./NETWORK.md#tailscale-only-service-access-infisical--semaphore)).
-If you can't reach `http://<edge-tailscale-ip>:8222` or `:3010`, start with the
-[Tailscale](#tailscale) checks above — connectivity issues here are almost
-always "the requesting device isn't on the tailnet" or "ACL/firewall blocks the
-port," not the containers themselves.
+Both run on `homelab-edge`, **Tailscale-only** (no Pi-hole hostname — see [NETWORK.md](./NETWORK.md#tailscale) for firewall rules and access URLs).
+Browser access: `https://homelab-edge.<tailnet>.ts.net:8443` (Infisical) / `:8444` (Semaphore).
+Direct non-browser access: `http://<edge-tailscale-ip>:8222` / `:3010`.
+If you can't reach either path, start with the [Tailscale](#tailscale) checks above — connectivity issues here are almost always "the requesting device isn't on the tailnet" or "ACL/firewall blocks the port," not the containers themselves.
 
 ### Bootstrap playbook reports Infisical already initialised — nothing provisioned or seeded
 
@@ -410,17 +410,11 @@ Ansible needs directly (read before Infisical can exist), and a `[seed →
 Infisical once.
 
 **One playbook has been converted as a reference implementation:**
-`deploy_edge.yml` (Phase 2, runs locally on `homelab-edge` — the one node that
-never receives a copy of `vault.yml`, see [CLAUDE.md
-"Secrets"](../CLAUDE.md#secrets)) now resolves `cloudflare/TUNNEL_TOKEN` and
+`deploy_edge.yml` (Phase 2) resolves `cloudflare/TUNNEL_TOKEN` and
 `pihole/WEB_PASSWORD` from Infisical at runtime via `roles/infisical/tasks/lookup.yml`,
-authenticating with a node-local, read-only Universal Auth identity
-(`/home/homelab/.infisical_runtime_auth.yml`, written directly during Phase 1
-by `roles/infisical/tasks/bootstrap_instance.yml` the instant the identity's
-credentials are minted — the same identity, and the same file, Semaphore
-reads from. These credentials never exist in `vault.yml` at all; see
-[CLAUDE.md "Secrets"](../CLAUDE.md#secrets) for why there's no
-write-capable "bootstrap" identity or `vault.yml` round-trip any more).
+using the read-only `runtime` machine identity provisioned during Phase 1
+(`/home/homelab/.infisical_runtime_auth.yml`). See [CLAUDE.md §"Secrets"](../CLAUDE.md#secrets)
+for the full design rationale.
 
 **Everything else remains unconverted** — Stage 1 (`bootstrap_edge.yml`, run
 from WSL where `vault.yml` lives) and every Stage 3+ playbook
