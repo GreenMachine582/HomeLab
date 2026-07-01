@@ -71,8 +71,8 @@ Tailscale IPs are assigned by the coordination server and stable per device. Upd
 | GreenTechHub      | `homelab-svc-02`  | 8000  |
 | Jellyfin          | `homelab-svc-03`  | 8096  |
 | Pi-hole admin     | `homelab-edge`    | 80    |
-| Infisical — Caddy HTTPS (LAN + Tailscale) | `homelab-edge` | 8443 |
-| Semaphore — Caddy HTTPS (LAN + Tailscale) | `homelab-edge` | 8444 |
+| Infisical — Caddy HTTPS (Tailscale only)  | `homelab-edge` | 8443 |
+| Semaphore — Caddy HTTPS (Tailscale only)  | `homelab-edge` | 8444 |
 | Infisical direct (Tailscale only, non-browser) | `homelab-edge` | 8222 |
 | Semaphore direct (Tailscale only, non-browser) | `homelab-edge` | 3010 |
 | SSH (all nodes)   | all               | `ssh_port` |
@@ -90,19 +90,18 @@ All nodes use `ufw` with a default-deny inbound policy. Rules are applied by the
 | `ssh_port` | TCP  | any     | SSH admin access              |
 | 53   | TCP/UDP  | LAN     | Pi-hole DNS (LAN only)        |
 | 80   | TCP      | LAN     | Pi-hole admin UI (LAN only)   |
-| 8443 | TCP      | LAN + `tailscale_cgnat_range` | Caddy HTTPS — Infisical (`infisical.homelab.local` / `homelab-edge.<tailnet>.ts.net`) |
-| 8444 | TCP      | LAN + `tailscale_cgnat_range` | Caddy HTTPS — Semaphore (`semaphore.homelab.local` / `homelab-edge.<tailnet>.ts.net`) |
+| 8443 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Infisical (`homelab-edge.<tailnet>.ts.net:8443`) |
+| 8444 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Semaphore (`homelab-edge.<tailnet>.ts.net:8444`) |
 | 8222 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Infisical direct port (Tailscale only — non-browser clients) |
 | 3010 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Semaphore direct port (Tailscale only — non-browser clients) |
 
 No ports are forwarded from the router. Cloudflare Tunnel connects outbound — all external traffic enters through it.
 
-> **Access paths for Infisical and Semaphore:** Caddy provides HTTPS on ports
-> 8443/8444 with two server blocks each — `*.homelab.local` (LAN, `tls
-> internal`) and `homelab-edge.<tailnet>.ts.net` (Tailscale, browser-trusted
-> Let's Encrypt cert via `tailscale cert`). Direct ports 8222/3010 stay scoped
-> to `tailscale_cgnat_range` for non-browser clients only. Do not widen 8222/3010
-> beyond the Tailscale CGNAT range — see `tailscale_cgnat_range` in
+> **Access paths for Infisical and Semaphore:** Caddy serves HTTPS on ports
+> 8443/8444 via `homelab-edge.<tailnet>.ts.net` (Tailscale, browser-trusted
+> Let's Encrypt cert via `tailscale cert`) — Tailscale CGNAT range only.
+> Direct ports 8222/3010 remain for non-browser Tailscale clients. Do not
+> widen either port range beyond `tailscale_cgnat_range` — see
 > `group_vars/all/main.yml`.
 
 ### `homelab-observe`

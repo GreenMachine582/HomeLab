@@ -14,10 +14,8 @@ ufw_rules:
   - { port: 9100,             proto: tcp, src: "{{ lan_subnet }}", comment: "node-exporter (Prometheus scrape)" }
   - { port: 8222,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Infisical direct port (Tailscale only — non-browser clients)" }
   - { port: 3010,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Semaphore direct port (Tailscale only — non-browser clients)" }
-  - { port: 8443,             proto: tcp, src: "{{ lan_subnet }}",            comment: "Caddy HTTPS — infisical.homelab.local (LAN)" }
-  - { port: 8444,             proto: tcp, src: "{{ lan_subnet }}",            comment: "Caddy HTTPS — semaphore.homelab.local (LAN)" }
-  - { port: 8443,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Infisical (Tailscale)" }
-  - { port: 8444,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Semaphore (Tailscale)" }
+  - { port: 8443,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Infisical (Tailscale: homelab-edge.<tailnet>.ts.net:8443)" }
+  - { port: 8444,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Semaphore (Tailscale: homelab-edge.<tailnet>.ts.net:8444)" }
 
 # ── fail2ban ──────────────────────────────────────────────────────────────────
 fail2ban_jails:
