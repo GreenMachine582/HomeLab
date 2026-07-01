@@ -565,6 +565,7 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
   - Caddy (LAN reverse proxy for `*.homelab.local`)
   - Pi-hole (DNS, port 53 — upstream is Unbound on the host via `host.docker.internal#5335`)
   - `pihole-exporter` (metrics)
+  - `node-exporter` (host metrics, port 9100)
   - Portainer Agent
 
 > **Firewall note:** UFW rules are applied by `bootstrap_edge.yml` (Phase 1) and persist. To update rules after adding new services run: `ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge`

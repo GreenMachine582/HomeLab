@@ -103,7 +103,7 @@ homelab/
 
   # Docker Compose stacks (at repo root, deployed per-node)
   docker-compose.edge.yml     # Infisical (+ Postgres, Redis), Semaphore (+ Postgres) — bootstrap tier only
-                              # homelab-edge-services (separate repo): cloudflared, Caddy, Pi-hole, pihole-exporter, portainer-agent
+                              # homelab-edge-services (separate repo): cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent
   docker-compose.observe.yml  # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer
   docker-compose.svc01.yml    # Camunda 8, Elasticsearch, n8n, discord-gateway, Portainer Agent
 

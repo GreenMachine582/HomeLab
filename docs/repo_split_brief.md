@@ -94,8 +94,8 @@ Decided/concrete moves:
 | `scripts/backup_databases.sh` | Moves with whichever repo owns the data it backs up; cross-service backup orchestration (if any) stays central |
 | BottleBot | Own repo from day one — proof-of-concept for the whole pattern, and the **first service migrated** under the revised sequencing in §8 |
 
-> **Edge compose note:** `docker-compose.edge.yml` currently holds two distinct tiers that must be split before anything moves. Only the **network appliance tier** goes to `homelab-edge-services` (cloudflared, Caddy, Pi-hole, pihole-exporter, portainer-agent). 
-The **bootstrap tooling tier** (node-exporter, Infisical stack, Semaphore stack) stays in the HomeLab repo in a renamed `docker-compose.bootstrap-edge.yml`. `roles/edge_services/` is retired post-migration (its Jinja2 templates become plain config files in `homelab-edge-services/`). 
+> **Edge compose note:** `docker-compose.edge.yml` currently holds two distinct tiers that must be split before anything moves. Only the **network appliance tier** goes to `homelab-edge-services` (cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent). 
+The **bootstrap tooling tier** (Infisical stack, Semaphore stack) stays in the HomeLab repo in a renamed `docker-compose.bootstrap-edge.yml`. `roles/edge_services/` is retired post-migration (its Jinja2 templates become plain config files in `homelab-edge-services/`). 
 `playbooks/deploy_edge.yml` is retired and replaced by `deploy-service deploy homelab-edge-services`. See §10 for the full breakdown.
 
 Service repos contain only: `docker-compose.yml`, `.env.example`, `scripts/`, `configs/`, `docs/`, optionally a `Makefile` for local dev. No Ansible, no inventories, no host vars — they should be runnable anywhere via `git clone && docker compose up -d`.
@@ -165,7 +165,7 @@ repos:
           env: PIHOLE_WEB_PASSWORD
     rollback:
       strategy: git
-    services: [cloudflared, caddy, pihole, pihole-exporter, portainer-agent]
+    services: [cloudflared, caddy, pihole, pihole-exporter, node-exporter, portainer-agent]
 ```
 
 **Custom application repo (builds and pushes an image):**
@@ -304,7 +304,7 @@ The current `docker-compose.edge.yml` bundles two tiers that have different owne
 | `caddy` | Network appliance | ✅ `homelab-edge-services` |
 | `pihole`, `pihole-exporter` | Network appliance | ✅ `homelab-edge-services` |
 | `portainer-agent` | Network appliance | ✅ `homelab-edge-services` |
-| `node-exporter` | Host observability (bootstrap) | managed by `roles/node_exporter` (host service — not in either compose) |
+| `node-exporter` | Network appliance | ✅ `homelab-edge-services` |
 | `infisical`, `infisical-db`, `infisical-redis` | Bootstrap control plane | `docker-compose.edge.yml` (stays) |
 | `semaphore`, `semaphore-db` | Bootstrap control plane | `docker-compose.edge.yml` (stays) |
 
@@ -335,6 +335,7 @@ Services:
 - `caddy` — LAN reverse proxy; static `Caddyfile` (no more Jinja2 templating)
 - `pihole` — DNS server; needs `PIHOLE_WEB_PASSWORD` from Infisical; `cap_add: NET_ADMIN`
 - `pihole-exporter` — Pi-hole Prometheus metrics
+- `node-exporter` — host Prometheus metrics (port 9100)
 - `portainer-agent` — connects to Portainer Server on homelab-observe
 
 Config files (Caddyfile, cloudflared config, pihole custom DNS lists) become static files in the repo, not Ansible templates. Values that were previously `group_vars` inputs to Jinja2 (caddy routes, cloudflared ingress rules, pihole custom DNS) move into the service repo as committed config.

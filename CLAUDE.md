@@ -32,7 +32,7 @@ Node IPs are defined in `inventories/group_vars/all/overrides.yml` (gitignored �
 Services are split across four compose files by concern:
 
 - `docker-compose.edge.yml` — Infisical (+ Postgres, Redis), Semaphore (+ Postgres) (runs on `homelab-edge`)
-- `homelab-edge-services` (separate repo, deployed via `deploy-service`) — cloudflared, Caddy, Pi-hole, pihole-exporter, portainer-agent (runs on `homelab-edge`)
+- `homelab-edge-services` (separate repo, deployed via `deploy-service`) — cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent (runs on `homelab-edge`)
 - `docker-compose.svc01.yml` — Camunda, Elasticsearch, n8n, discord-gateway, Portainer Agent (runs on `homelab-svc-01`)
 - `docker-compose.observe.yml` — Prometheus, Loki, Grafana, Alertmanager, ntfy, Portainer Server (runs on `homelab-observe`)
 
