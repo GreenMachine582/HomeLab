@@ -16,8 +16,8 @@
 # Usage:
 #   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
 #
-# Requires: roles/users, roles/base_hardening, roles/docker, roles/tailscale,
-#           roles/infisical, roles/firewall, roles/semaphore
+# Requires: roles/users, roles/base_hardening, roles/docker, roles/docker_compose,
+#           roles/tailscale, roles/infisical, roles/firewall, roles/semaphore
 # Then:     ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 #           (Phase 2 — see BOOTSTRAP.md § "Phase 2: Edge -> Self-Deploy")
 # See: BOOTSTRAP.md § Phase 1
@@ -230,6 +230,9 @@
     - role: docker
       tags: [docker]
 
+    - role: docker_compose
+      tags: [docker]
+
     - role: tailscale
       tags: [tailscale]
       vars:
@@ -386,6 +389,27 @@
         group: homelab
         recurse: true
       tags: [repo]
+
+    - name: "Observability | Deploy node-exporter"
+      community.docker.docker_container:
+        name: node-exporter
+        image: prom/node-exporter:latest
+        restart_policy: unless-stopped
+        pid_mode: host
+        volumes:
+          - /proc:/host/proc:ro
+          - /sys:/host/sys:ro
+          - /:/rootfs:ro
+        command:
+          - "--path.procfs=/host/proc"
+          - "--path.sysfs=/host/sys"
+          - "--path.rootfs=/rootfs"
+        state: started
+      tags: [observability, node-exporter]
+
+    # Grafana Alloy (log shipping to Loki) is applied in deploy_edge.yml, not here.
+    # Loki doesn't exist until homelab-observe is deployed — Alloy at bootstrap
+    # would fail silently until then.
 
     # ── Infisical ────────────────────────────────────────────────────────────
     # Brought up here rather than left to deploy_edge.yml's full-stack

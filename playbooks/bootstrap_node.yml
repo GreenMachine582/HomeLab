@@ -11,7 +11,7 @@
 # --ask-pass is required on first run (homelab SSH key not yet installed).
 # After bootstrap, subsequent runs use key-based auth via the homelab user.
 #
-# Requires: roles/base_hardening, roles/users, roles/docker, roles/tailscale
+# Requires: roles/users, roles/base_hardening, roles/docker, roles/docker_compose, roles/tailscale
 # See: BOOTSTRAP.md § Phase 3
 
 - name: "Bootstrap | Node | Base system, users, Docker, and Tailscale"
@@ -50,34 +50,27 @@
         state: present
 
   roles:
-    - role: base_hardening
-      tags: [base, hardening]
-
     - role: users
       tags: [base, users]
 
+    - role: base_hardening
+      tags: [base, hardening]
+
     - role: docker
+      tags: [docker]
+
+    - role: docker_compose
       tags: [docker]
 
     - role: tailscale
       tags: [tailscale]
 
   tasks:
-    - name: "Firewall | Enable ufw default-deny"
-      community.general.ufw:
-        state: enabled
-        policy: deny
-        direction: incoming
-      tags: [firewall]
-
-    - name: "Firewall | Apply group firewall rules"
-      community.general.ufw:
-        rule: allow
-        port: "{{ item.port | string }}"
-        proto: "{{ item.proto }}"
-        src: "{{ item.src | default('any') }}"
-        comment: "{{ item.comment }}"
-      loop: "{{ ufw_rules | default(ufw_rules_base | default([])) }}"
+    - name: "Firewall | Configure and enable"
+      ansible.builtin.include_role:
+        name: firewall
+      vars:
+        firewall_rules: "{{ ufw_rules | default(ufw_rules_base | default([])) }}"
       tags: [firewall]
 
     - name: "Observability | Deploy node-exporter"
@@ -96,6 +89,10 @@
           - "--path.rootfs=/rootfs"
         state: started
       tags: [observability, node-exporter]
+
+  # Grafana Alloy (log shipping to Loki) is applied in deploy_*.yml, not here.
+  # Loki doesn't exist until homelab-observe is deployed — Alloy at bootstrap
+  # would fail silently until then.
 
   post_tasks:
     - name: "Ansible | Scan new node SSH host keys (from edge)"
