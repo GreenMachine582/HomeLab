@@ -238,5 +238,5 @@ Full stack reference (Prometheus, Loki, Grafana, Alertmanager, Uptime Kuma) is i
 
 | Service   | URL                                          | Notes                                                                          |
 |-----------|----------------------------------------------|--------------------------------------------------------------------------------|
-| Infisical | `https://infisical.homelab.local:8443` (LAN) | Tailscale: `https://homelab-edge:8443` or `http://<edge-tailscale-ip>:8222`   |
-| Semaphore | `https://semaphore.homelab.local:8444` (LAN) | Tailscale: `https://homelab-edge:8444` or `http://<edge-tailscale-ip>:3010`   |
+| Infisical | `https://infisical.homelab.local:8443` (LAN) | Tailscale: `https://homelab-edge.<tailnet>.ts.net:8443` or `http://<edge-tailscale-ip>:8222` (non-browser) |
+| Semaphore | `https://semaphore.homelab.local:8444` (LAN) | Tailscale: `https://homelab-edge.<tailnet>.ts.net:8444` or `http://<edge-tailscale-ip>:3010` (non-browser) |

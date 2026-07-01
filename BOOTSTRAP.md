@@ -317,6 +317,15 @@ Tailscale needs three things configured in the admin console **before** you popu
 
 You will need the Client ID and Client secret in §1.9.
 
+**Step 4 — Enable HTTPS certificates** (`login.tailscale.com/admin/dns`):
+
+1. Scroll to **HTTPS Certificates**
+2. Click **Enable HTTPS**
+
+This allows nodes to run `tailscale cert` to obtain a browser-trusted Let's Encrypt certificate for their MagicDNS hostname (`<node>.<tailnet>.ts.net`). The edge node uses this to serve Infisical and Semaphore over HTTPS on ports 8443/8444 with a real green-padlock certificate instead of a self-signed one.
+
+> You will also need your **tailnet name** (the short name shown on this same DNS page, e.g. `mango-beaver`) for `overrides.yml` in §1.9.
+
 ---
 
 ### 1.9 Create Ansible Vault and Override Config
@@ -367,7 +376,7 @@ cp inventories/group_vars/all/overrides.yml.example \
    inventories/group_vars/all/overrides.yml
 ```
 
-Edit `overrides.yml` and fill in your actual IPs and `lan_subnet`. These override the `EDIT_BEFORE_USE` placeholders in `main.yml` and are automatically copied to the edge node by the bootstrap playbook.
+Edit `overrides.yml` and fill in your actual IPs, `lan_subnet`, and `tailscale_tailnet` (the short tailnet name from the Tailscale DNS page — step 4 of §1.8). These override the `EDIT_BEFORE_USE` placeholders in `main.yml` and are automatically copied to the edge node by the bootstrap playbook.
 
 ---
 
@@ -574,8 +583,8 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 | Service | URL | Notes |
 |---|---|---|
 | Pi-hole admin | `http://<ip_edge>:8080/admin` | Password = `vault_pihole_web_password` |
-| Infisical | `https://infisical.homelab.local:8443` | LAN via Caddy (TLS); or Tailscale: `http://<edge-tailscale-ip>:8222` |
-| Semaphore | `https://semaphore.homelab.local:8444` | LAN via Caddy (TLS); or Tailscale: `http://<edge-tailscale-ip>:3010` |
+| Infisical | `https://infisical.homelab.local:8443` | LAN via Caddy; or Tailscale: `https://homelab-edge.<tailnet>.ts.net:8443` (browser-trusted) / `http://<edge-tailscale-ip>:8222` (non-browser) |
+| Semaphore | `https://semaphore.homelab.local:8444` | LAN via Caddy; or Tailscale: `https://homelab-edge.<tailnet>.ts.net:8444` (browser-trusted) / `http://<edge-tailscale-ip>:3010` (non-browser) |
 | Portainer Agent | `http://<ip_edge>:9001` | Portainer Server connects here in Phase 3 |
 | node-exporter metrics | `http://<ip_edge>:9100/metrics` | Scraped by Prometheus in Phase 3 |
 | pihole-exporter metrics | `http://<ip_edge>:9617/metrics` | Scraped by Prometheus in Phase 3 |

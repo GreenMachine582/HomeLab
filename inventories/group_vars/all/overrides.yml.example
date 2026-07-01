@@ -27,3 +27,5 @@ tailscale_ip_svc_02:  "EDIT_BEFORE_USE"   # homelab-svc-02 Tailscale IP
 tailscale_ip_svc_03:  "EDIT_BEFORE_USE"   # homelab-svc-03 Tailscale IP
                                             # Set once after Tailscale is up on each node
                                             # (run: tailscale status). Leave as EDIT_BEFORE_USE until then.
+
+tailscale_tailnet: "EDIT_BEFORE_USE"   # e.g. mango-beaver — find it under DNS in the Tailscale admin console

@@ -71,8 +71,10 @@ Tailscale IPs are assigned by the coordination server and stable per device. Upd
 | GreenTechHub      | `homelab-svc-02`  | 8000  |
 | Jellyfin          | `homelab-svc-03`  | 8096  |
 | Pi-hole admin     | `homelab-edge`    | 80    |
-| Infisical (Tailscale only) | `homelab-edge` | 8222 |
-| Semaphore (Tailscale only) | `homelab-edge` | 3010 |
+| Infisical — Caddy HTTPS (LAN + Tailscale) | `homelab-edge` | 8443 |
+| Semaphore — Caddy HTTPS (LAN + Tailscale) | `homelab-edge` | 8444 |
+| Infisical direct (Tailscale only, non-browser) | `homelab-edge` | 8222 |
+| Semaphore direct (Tailscale only, non-browser) | `homelab-edge` | 3010 |
 | SSH (all nodes)   | all               | `ssh_port` |
 
 ---
@@ -88,19 +90,20 @@ All nodes use `ufw` with a default-deny inbound policy. Rules are applied by the
 | `ssh_port` | TCP  | any     | SSH admin access              |
 | 53   | TCP/UDP  | LAN     | Pi-hole DNS (LAN only)        |
 | 80   | TCP      | LAN     | Pi-hole admin UI (LAN only)   |
-| 8222 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Infisical UI/API — secrets manager (Tailscale only) |
-| 3010 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Semaphore UI — wields the playbooks in this repo (Tailscale only) |
+| 8443 | TCP      | LAN + `tailscale_cgnat_range` | Caddy HTTPS — Infisical (`infisical.homelab.local` / `homelab-edge.<tailnet>.ts.net`) |
+| 8444 | TCP      | LAN + `tailscale_cgnat_range` | Caddy HTTPS — Semaphore (`semaphore.homelab.local` / `homelab-edge.<tailnet>.ts.net`) |
+| 8222 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Infisical direct port (Tailscale only — non-browser clients) |
+| 3010 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Semaphore direct port (Tailscale only — non-browser clients) |
 
 No ports are forwarded from the router. Cloudflare Tunnel connects outbound — all external traffic enters through it.
 
-> **Why CGNAT-range, not the LAN subnet:** Infisical holds every application
-> secret and Semaphore can run any playbook in this repo with the `homelab`
-> user's full sudo — neither gets a Caddy vhost or a Pi-hole hostname, and
-> LAN reachability would defeat the purpose. Scoping the `src` to Tailscale's
-> stable `100.64.0.0/10` CGNAT allocation (rather than a single node's dynamic
-> `tailscale0` address) means the rule survives Tailscale IP churn and admin
-> devices reach both services the same way they reach everything else on the
-> tailnet — see `tailscale_cgnat_range` in `group_vars/all/main.yml`.
+> **Access paths for Infisical and Semaphore:** Caddy provides HTTPS on ports
+> 8443/8444 with two server blocks each — `*.homelab.local` (LAN, `tls
+> internal`) and `homelab-edge.<tailnet>.ts.net` (Tailscale, browser-trusted
+> Let's Encrypt cert via `tailscale cert`). Direct ports 8222/3010 stay scoped
+> to `tailscale_cgnat_range` for non-browser clients only. Do not widen 8222/3010
+> beyond the Tailscale CGNAT range — see `tailscale_cgnat_range` in
+> `group_vars/all/main.yml`.
 
 ### `homelab-observe`
 
@@ -249,6 +252,20 @@ Then re-run the relevant deploy playbook to apply the new key.
 Tailscale MagicDNS resolves node hostnames (e.g. `homelab-edge`) to Tailscale IPs automatically for devices on the VPN. 
 This complements Pi-hole's `.homelab.local` zone — MagicDNS handles node-to-node resolution within Tailscale; Pi-hole 
 handles service-level `.homelab.local` resolution for LAN clients.
+
+### Tailscale HTTPS Certificates
+
+`homelab-edge` provisions a browser-trusted Let's Encrypt certificate for its MagicDNS FQDN 
+(`homelab-edge.<tailnet>.ts.net`) via the `tailscale cert` command. Tailscale acts as the DNS-01 ACME proxy — no public 
+port exposure required. The cert is written to `/var/lib/tailscale/certs/` and mounted read-only into the Caddy 
+container, which serves it on ports 8443/8444 for Infisical and Semaphore respectively.
+
+This gives Tailscale-connected browsers a green padlock at `https://homelab-edge.<tailnet>.ts.net:8443/8444` with no 
+per-device trust setup. LAN access via `*.homelab.local` still uses `tls internal` (Caddy local CA) and will show a 
+browser warning unless the Caddy CA root is installed on the device.
+
+The cert is provisioned by the `tailscale` Ansible role (`tailscale_cert_enabled: true` on the edge node) and renewed 
+weekly via cron.
 
 ---
 

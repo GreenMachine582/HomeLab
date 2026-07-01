@@ -109,3 +109,28 @@
     - net.ipv6.conf.all.forwarding
   when: tailscale_advertise_routes | length > 0
   tags: [tailscale]
+
+- name: "Tailscale | Provision HTTPS certificate"
+  ansible.builtin.command:
+    cmd: >
+      tailscale cert
+      --cert-file {{ tailscale_cert_dir }}/{{ inventory_hostname }}.{{ tailscale_tailnet }}.ts.net.crt
+      --key-file  {{ tailscale_cert_dir }}/{{ inventory_hostname }}.{{ tailscale_tailnet }}.ts.net.key
+      {{ inventory_hostname }}.{{ tailscale_tailnet }}.ts.net
+  changed_when: true
+  when: tailscale_cert_enabled
+  tags: [tailscale, cert]
+
+- name: "Tailscale | Schedule weekly cert renewal"
+  ansible.builtin.cron:
+    name: tailscale-cert-renew
+    special_time: weekly
+    job: >
+      tailscale cert
+      --cert-file {{ tailscale_cert_dir }}/{{ inventory_hostname }}.{{ tailscale_tailnet }}.ts.net.crt
+      --key-file  {{ tailscale_cert_dir }}/{{ inventory_hostname }}.{{ tailscale_tailnet }}.ts.net.key
+      {{ inventory_hostname }}.{{ tailscale_tailnet }}.ts.net
+      && docker restart caddy
+    user: root
+  when: tailscale_cert_enabled
+  tags: [tailscale, cert]

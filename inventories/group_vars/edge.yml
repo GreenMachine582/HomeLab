@@ -41,6 +41,7 @@ tailscale_advertise_routes:
   - "{{ lan_subnet }}"   # Subnet router — convenience for non-Tailscale LAN devices
 tailscale_accept_routes: false
 tailscale_exit_node: false
+tailscale_cert_enabled: true
 
 # ── Unbound ───────────────────────────────────────────────────────────────────
 unbound_port: 5335

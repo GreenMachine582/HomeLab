@@ -30,6 +30,8 @@ tailscale_ip_svc_01:  "EDIT_BEFORE_USE"
 tailscale_ip_svc_02:  "EDIT_BEFORE_USE"
 tailscale_ip_svc_03:  "EDIT_BEFORE_USE"
 
+tailscale_tailnet: "EDIT_BEFORE_USE"   # short tailnet name, e.g. mango-beaver (Tailscale admin console → DNS)
+
 # ── System ────────────────────────────────────────────────────────────────────
 ssh_port: 22
 fallback_ssh_port: 22
