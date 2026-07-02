@@ -406,6 +406,9 @@
           network/TAILSCALE_IP_SVC_02:  "{{ tailscale_ip_svc_02 }}"
           network/TAILSCALE_IP_SVC_03:  "{{ tailscale_ip_svc_03 }}"
           network/TAILNET:              "{{ tailscale_tailnet }}"
+          network/SSH_ADMIN_PUBKEY:   "{{ vault_admin_ssh_pubkey }}"
+          network/SSH_HOMELAB_PUBKEY: "{{ vault_homelab_ssh_pubkey }}"
+          network/SSH_DEPLOY_PUBKEY:  "{{ vault_deploy_ssh_pubkey }}"
           semaphore/ADMIN_USER:     "{{ vault_semaphore_admin_user }}"
           semaphore/ADMIN_PASSWORD: "{{ vault_semaphore_admin_password }}"
 

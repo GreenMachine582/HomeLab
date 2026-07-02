@@ -109,6 +109,17 @@
           then re-run. See BOOTSTRAP.md § Phase 3.
       tags: [always]
 
+    - name: "Probe | Resolve node-user SSH public keys from Infisical"
+      ansible.builtin.include_role:
+        name: infisical
+        tasks_from: lookup.yml
+      vars:
+        infisical_lookup_keys:
+          - network/SSH_ADMIN_PUBKEY
+          - network/SSH_HOMELAB_PUBKEY
+          - network/SSH_DEPLOY_PUBKEY
+      tags: [always]
+
     - name: "Probe | Warn if no fresh-node candidate is available"
       ansible.builtin.debug:
         msg: >-
@@ -186,6 +197,9 @@
         ansible_port: "{{ _successful_probes[0].item.port }}"
         ansible_user: homelab
         ansible_ssh_private_key_file: /home/homelab/.ssh/homelab
+        vault_admin_ssh_pubkey: "{{ infisical_secrets['network/SSH_ADMIN_PUBKEY'] }}"
+        vault_homelab_ssh_pubkey: "{{ infisical_secrets['network/SSH_HOMELAB_PUBKEY'] }}"
+        vault_deploy_ssh_pubkey: "{{ infisical_secrets['network/SSH_DEPLOY_PUBKEY'] }}"
       changed_when: false
       when: _successful_probes[0].item in _hardened_candidates
       tags: [always]
@@ -199,6 +213,9 @@
         ansible_user: admin
         ansible_password: "{{ _admin_pw }}"
         ansible_become_password: "{{ _admin_pw }}"
+        vault_admin_ssh_pubkey: "{{ infisical_secrets['network/SSH_ADMIN_PUBKEY'] }}"
+        vault_homelab_ssh_pubkey: "{{ infisical_secrets['network/SSH_HOMELAB_PUBKEY'] }}"
+        vault_deploy_ssh_pubkey: "{{ infisical_secrets['network/SSH_DEPLOY_PUBKEY'] }}"
       changed_when: false
       no_log: true
       when: _successful_probes[0].item in _fresh_candidates
