@@ -24,15 +24,15 @@ all:
             homelab-edge:
               ansible_host: "{{ ip_edge }}"
 
-#        observe:
-#          hosts:
-#            homelab-observe:
-#              ansible_host: "{{ ip_observe }}"
-#
-#        svc:
-#          hosts:
-#            homelab-svc-01:
-#              ansible_host: "{{ ip_svc_01 }}"
+        observe:
+          hosts:
+            homelab-observe:
+              ansible_host: "{{ ip_observe }}"
+
+        svc:
+          hosts:
+            homelab-svc-01:
+              ansible_host: "{{ ip_svc_01 }}"
             # homelab-svc-02:
             #   ansible_host: "{{ ip_svc_02 }}"   # Uncomment when provisioned
             # homelab-svc-03:

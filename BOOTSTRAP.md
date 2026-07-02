@@ -441,7 +441,7 @@ afterward.
 | Install Ansible            | Edge becomes a control node                |
 | Install Git                |                                            |
 | Clone repo                 | `/opt/homelab`, owned by `homelab`         |
-| Copy files to node         | `overrides.yml`, `homelab` SSH key pair — **`vault.yml`/`.vault_pass` are deliberately NOT copied** (they live only on the WSL/PC control host; see [Secrets](./CLAUDE.md#secrets)). Phase 2+ resolves application secrets from Infisical at runtime instead (`roles/infisical/tasks/lookup.yml`) |
+| Copy files to node         | `overrides.yml`, `homelab` SSH key pair, and `vault_admin_become_password` written straight to `/home/homelab/.node_bootstrap_admin_pass` (0600) for Phase 3's fresh-node probe — **`vault.yml`/`.vault_pass` themselves are deliberately NOT copied** (they live only on the WSL/PC control host; see [Secrets](./CLAUDE.md#secrets)). Phase 2+ resolves application secrets from Infisical at runtime instead (`roles/infisical/tasks/lookup.yml`) |
 | Register SSH host key      | Edge's own key added to `/home/homelab/.ssh/known_hosts` — required for Phase 2 self-deploy |
 | Harden SSH                 | Key-only auth, no root login; port changed to `ssh_port` via async restart only if sshd is not already listening there (probe-first, idempotent on re-runs); subsequent tasks reconnect on new port automatically |
 | Bring up Infisical         | Renders `/opt/infisical/.env` (node-generated secrets), starts `infisical-db`/`infisical-redis`/`infisical`, waits for the API port (8222) to accept connections |
@@ -587,7 +587,12 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 
 **Goal:** Deploy the observe node and service nodes from the edge.
 
-All commands run on `homelab-edge` (or from your PC via the production inventory).
+**All commands in this phase run from `homelab-edge` itself** — SSH in first:
+
+```bash
+ssh -p <ssh_port> homelab@<ip_edge>
+cd /opt/homelab
+```
 
 ### 3.1 Deploy Observe Node
 
@@ -595,9 +600,7 @@ Prerequisites: `homelab-observe` has the base OS installed and is reachable via 
 
 ```bash
 # Bootstrap the observe node
-ansible-playbook playbooks/bootstrap_node.yml \
-  --limit homelab-observe \
-  --ask-pass --ask-become-pass
+ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 
 # Deploy the monitoring stack
 ansible-playbook playbooks/deploy_observe.yml
@@ -622,9 +625,7 @@ ansible-playbook playbooks/deploy_observe.yml
 
 ```bash
 # Bootstrap svc-01
-ansible-playbook playbooks/bootstrap_node.yml \
-  --limit homelab-svc-01 \
-  --ask-pass --ask-become-pass
+ansible-playbook playbooks/bootstrap_node.yml --limit homelab-svc-01
 
 # Deploy the Camunda stack
 ansible-playbook playbooks/deploy_svc.yml --tags camunda
@@ -633,9 +634,7 @@ ansible-playbook playbooks/deploy_svc.yml --tags camunda
 For `svc-02` (when provisioned):
 
 ```bash
-ansible-playbook playbooks/bootstrap_node.yml \
-  --limit homelab-svc-02 \
-  --ask-pass --ask-become-pass
+ansible-playbook playbooks/bootstrap_node.yml --limit homelab-svc-02
 
 ansible-playbook playbooks/deploy_svc.yml --tags greentechhub
 ```

@@ -1,21 +1,176 @@
 ---
 # playbooks/bootstrap_node.yml
 #
-# Phase 3 — Run from homelab-edge to bootstrap any new node from a fresh OS install.
-# Use --limit to target a single node. Must be run before the relevant deploy_*.yml.
+# Phase 3 — Run from homelab-edge (as the homelab user) to bootstrap any new
+# node from a fresh OS install. Requires --limit <node>, e.g.:
 #
-# Usage:
-#   ansible-playbook playbooks/bootstrap_node.yml \
-#     --limit homelab-observe --ask-pass --ask-become-pass
+#   ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 #
-# --ask-pass is required on first run (homelab SSH key not yet installed).
-# After bootstrap, subsequent runs use key-based auth via the homelab user.
+# No --ask-pass/--ask-become-pass, ever. A probe play (below) figures out on
+# its own whether the target is a fresh OS install (admin user, password auth,
+# port 22) or already hardened (homelab user, key auth, ssh_port) and connects
+# accordingly — same idea as bootstrap_edge.yml's probe play, generalized to
+# whichever node --limit names. The admin account's password never lives in
+# this repo's Ansible run on this node: it's read from
+# /home/homelab/.node_bootstrap_admin_pass, written once during Phase 1
+# (bootstrap_edge.yml, which has vault.yml) from vault_admin_become_password —
+# vault.yml itself never leaves the WSL/PC control host, and never touches
+# homelab-edge. Safe to re-run.
 #
 # Requires: roles/users, roles/base_hardening, roles/docker, roles/docker_compose, roles/tailscale
 # See: BOOTSTRAP.md § Phase 3
 
+# ── Probe play ─────────────────────────────────────────────────────────────────
+# Runs on localhost (= homelab-edge, since Phase 3 always runs from there — no
+# SSH connection yet). --limit must name exactly one node (every documented
+# use of this playbook already does). Builds two candidate tiers for that node
+# and probes TCP reachability only (not auth — same as bootstrap_edge.yml):
+#
+#   Hardened (tried first): tailscale_ip_<suffix>:ssh_port, then ip_<suffix>:ssh_port
+#                            — user homelab, key /home/homelab/.ssh/homelab
+#   Fresh    (fallback):    ip_<suffix>:fallback_ssh_port
+#                            — user admin, password from
+#                              /home/homelab/.node_bootstrap_admin_pass
+#
+# The fresh candidate has no Tailscale variant — Tailscale isn't installed
+# until this same playbook's tailscale role runs. If ssh_port == fallback_ssh_port
+# the two tiers probe the same port and TCP alone can't disambiguate — same
+# inherent limitation base_hardening's own re-run probe already accepts; set a
+# non-default ssh_port to avoid the ambiguity.
+- name: "Probe | Discover reachable SSH endpoint and identity for target node"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/../inventories/group_vars/all/main.yml"
+    - "{{ playbook_dir }}/../inventories/group_vars/all/overrides.yml"
+
+  vars:
+    _target_node: "{{ ansible_limit | default('') }}"
+    _valid_nodes: "{{ (groups['observe'] | default([])) + (groups['svc'] | default([])) }}"
+    _suffix: "{{ _target_node | regex_replace('^homelab-', '') | replace('-', '_') }}"
+    _ip: "{{ lookup('vars', 'ip_' ~ _suffix, default='EDIT_BEFORE_USE') }}"
+    _tailscale_ip: "{{ lookup('vars', 'tailscale_ip_' ~ _suffix, default='EDIT_BEFORE_USE') }}"
+    _tailscale_available: "{{ _tailscale_ip != 'EDIT_BEFORE_USE' }}"
+    _has_custom_port: "{{ ssh_port | int != fallback_ssh_port | int }}"
+    _admin_pw: "{{ lookup('file', '/home/homelab/.node_bootstrap_admin_pass', errors='ignore') | default('', true) }}"
+    _hardened_candidates: >-
+      {{
+        ([{'host': _tailscale_ip, 'port': ssh_port | int,
+           'label': 'Tailscale hardened ' ~ _tailscale_ip ~ ':' ~ ssh_port}]
+         if _tailscale_available else [])
+        + [{'host': _ip, 'port': ssh_port | int,
+            'label': 'LAN hardened ' ~ _ip ~ ':' ~ ssh_port}]
+      }}
+    _fresh_candidates: >-
+      {{
+        [{'host': _ip, 'port': fallback_ssh_port | int,
+          'label': 'LAN fresh ' ~ _ip ~ ':' ~ fallback_ssh_port}]
+        if (_admin_pw | length > 0) else []
+      }}
+    _all_candidates: "{{ _hardened_candidates + _fresh_candidates }}"
+
+  tasks:
+    - name: "Probe | Assert --limit names exactly one known node"
+      ansible.builtin.assert:
+        that:
+          - _target_node | length > 0
+          - _target_node in _valid_nodes
+        fail_msg: >-
+          bootstrap_node.yml requires --limit <node>, naming exactly one host
+          from the observe or svc inventory groups (got: "{{ _target_node }}",
+          known: {{ _valid_nodes | join(', ') }}). See BOOTSTRAP.md § Phase 3.
+      tags: [always]
+
+    - name: "Probe | Assert ip_{{ _suffix }} is set in overrides.yml"
+      ansible.builtin.assert:
+        that: _ip != 'EDIT_BEFORE_USE'
+        fail_msg: >-
+          ip_{{ _suffix }} is still EDIT_BEFORE_USE. Set it in overrides.yml
+          then re-run. See BOOTSTRAP.md § Phase 3.
+      tags: [always]
+
+    - name: "Probe | Warn if no fresh-node candidate is available"
+      ansible.builtin.debug:
+        msg: >-
+          /home/homelab/.node_bootstrap_admin_pass is missing or empty on
+          this node — only the already-hardened candidate will be probed.
+          This file is written by bootstrap_edge.yml (Phase 1); re-run Phase 1
+          if this is meant to be a fresh-node bootstrap.
+      when: _admin_pw | length == 0
+      tags: [always]
+
+    - name: "Probe | Show candidates"
+      ansible.builtin.debug:
+        msg: "Probing {{ _target_node }}: {{ _all_candidates | map(attribute='label') | list | join(' → ') }}"
+      tags: [always]
+
+    - name: "Probe | Test TCP reachability"
+      ansible.builtin.wait_for:
+        host: "{{ item.host }}"
+        port: "{{ item.port }}"
+        state: started
+        timeout: 5
+      register: _probe_results
+      ignore_errors: true
+      changed_when: false
+      loop: "{{ _all_candidates }}"
+      loop_control:
+        label: "{{ item.label }}"
+      tags: [always]
+
+    - name: "Probe | Collect successes"
+      ansible.builtin.set_fact:
+        _successful_probes: >-
+          {{ _probe_results.results | selectattr('failed', 'equalto', false) | list }}
+      tags: [always]
+
+    - name: "Probe | Fail if nothing reachable"
+      ansible.builtin.fail:
+        msg: >-
+          No SSH endpoint reachable for {{ _target_node }}.
+          Tried: {{ _all_candidates | map(attribute='label') | list | join(', ') }}.
+          Check the node is powered on and reachable, ip_{{ _suffix }} is
+          correct in overrides.yml, and — for a fresh node —
+          /home/homelab/.node_bootstrap_admin_pass exists on this host.
+          See BOOTSTRAP.md § Phase 3.
+      when: _successful_probes | length == 0
+      tags: [always]
+
+    - name: "Probe | Show winner"
+      ansible.builtin.debug:
+        msg: "Connecting via: {{ _successful_probes[0].item.label }}"
+      tags: [always]
+
+    - name: "Probe | Inject connection facts for target node (hardened)"
+      ansible.builtin.add_host:
+        name: "{{ _target_node }}"
+        groups: node_bootstrap
+        ansible_host: "{{ _successful_probes[0].item.host }}"
+        ansible_port: "{{ _successful_probes[0].item.port }}"
+        ansible_user: homelab
+        ansible_ssh_private_key_file: /home/homelab/.ssh/homelab
+      changed_when: false
+      when: _successful_probes[0].item in _hardened_candidates
+      tags: [always]
+
+    - name: "Probe | Inject connection facts for target node (fresh)"
+      ansible.builtin.add_host:
+        name: "{{ _target_node }}"
+        groups: node_bootstrap
+        ansible_host: "{{ _successful_probes[0].item.host }}"
+        ansible_port: "{{ _successful_probes[0].item.port }}"
+        ansible_user: admin
+        ansible_password: "{{ _admin_pw }}"
+        ansible_become_password: "{{ _admin_pw }}"
+      changed_when: false
+      no_log: true
+      when: _successful_probes[0].item in _fresh_candidates
+      tags: [always]
+
 - name: "Bootstrap | Node | Base system, users, Docker, and Tailscale"
-  hosts: "{{ target | default('all') }}"
+  hosts: node_bootstrap
   become: true
   gather_facts: true
 

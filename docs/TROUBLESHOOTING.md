@@ -736,7 +736,7 @@ Since the edge node is intact, recovery is straightforward:
 1. Flash a new SD card / reinstall OS on the failed node
 2. From the edge node, bootstrap and redeploy:
    ```bash
-   ansible-playbook playbooks/bootstrap_node.yml --limit <node> --ask-pass --ask-become-pass
+   ansible-playbook playbooks/bootstrap_node.yml --limit <node>
    ansible-playbook playbooks/deploy_<role>.yml
    ```
 3. Restore databases if needed (see [Databases](#databases) above)

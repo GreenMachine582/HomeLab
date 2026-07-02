@@ -106,8 +106,10 @@ ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
 # Phase 2: Deploy edge services (run on edge as homelab user)
 ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 
-# Phase 3: Bootstrap and deploy other nodes
-ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe --ask-pass --ask-become-pass
+# Phase 3: Bootstrap and deploy other nodes (run from homelab-edge — see CLAUDE.md "Secrets"
+# for why; no --ask-pass/--ask-become-pass — bootstrap_node.yml's probe play auto-detects
+# fresh vs already-hardened and connects accordingly)
+ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 ansible-playbook playbooks/deploy_observe.yml
 ansible-playbook playbooks/deploy_svc.yml --tags camunda
 

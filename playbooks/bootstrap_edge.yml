@@ -248,6 +248,7 @@
           - ansible
           - python3-pip
           - python3-venv
+          - sshpass
         state: present
       tags: [ansible]
 
@@ -380,6 +381,16 @@
         owner: homelab
         group: homelab
         mode: "0644"
+      tags: [secrets]
+
+    - name: "Secrets | Write node-bootstrap admin password (Phase 3 uses this, never vault.yml)"
+      ansible.builtin.copy:
+        content: "{{ vault_admin_become_password }}"
+        dest: /home/homelab/.node_bootstrap_admin_pass
+        owner: homelab
+        group: homelab
+        mode: "0600"
+      no_log: true
       tags: [secrets]
 
     - name: "Repo | Set repo ownership"
