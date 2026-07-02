@@ -170,7 +170,7 @@
 
     - name: "Probe | Add target node SSH host key to known_hosts"
       ansible.builtin.known_hosts:
-        name: "[{{ _successful_probes[0].item.host }}]:{{ _successful_probes[0].item.port }}"
+        name: "{{ item.split(' ')[0] }}"
         key: "{{ item }}"
         path: /home/homelab/.ssh/known_hosts
         state: present
@@ -295,7 +295,7 @@
 
     - name: "Ansible | Add new node host keys to edge homelab known_hosts"
       ansible.builtin.known_hosts:
-        name: "[{{ ansible_host }}]:{{ ssh_port }}"
+        name: "{{ item.split(' ')[0] }}"
         key: "{{ item }}"
         path: /home/homelab/.ssh/known_hosts
         state: present
