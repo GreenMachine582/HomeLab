@@ -48,11 +48,24 @@
         method: GET
         headers:
           Authorization: "Bearer {{ _infisical_lookup_auth.json.accessToken }}"
-        status_code: 200
+        status_code: [200, 404]
       loop: "{{ infisical_lookup_keys }}"
       loop_control:
         label: "/{{ infisical_seed_environment }}/{{ item }}"
       register: _infisical_lookup_results
+
+    - name: "Infisical lookup | Fail with the specific missing keys, not a bare 404"
+      ansible.builtin.assert:
+        that: >-
+          _infisical_lookup_results.results
+          | selectattr('status', 'equalto', 404) | list | length == 0
+        fail_msg: >-
+          Missing from Infisical (/{{ infisical_seed_environment }}/...): {{
+          _infisical_lookup_results.results | selectattr('status', 'equalto', 404)
+          | map(attribute='item') | join(', ') }}. If these keys were just added
+          to _infisical_seed_map, re-run bootstrap_edge.yml (Phase 1 — safe,
+          additive, idempotent) to seed them, then retry.
+      no_log: false
 
     - name: "Infisical lookup | Build the resolved secrets map"
       ansible.builtin.set_fact:

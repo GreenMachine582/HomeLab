@@ -109,7 +109,7 @@
           then re-run. See BOOTSTRAP.md § Phase 3.
       tags: [always]
 
-    - name: "Probe | Resolve node-user SSH public keys from Infisical"
+    - name: "Probe | Resolve vault_* secrets from Infisical"
       ansible.builtin.include_role:
         name: infisical
         tasks_from: lookup.yml
@@ -118,6 +118,10 @@
           - network/SSH_ADMIN_PUBKEY
           - network/SSH_HOMELAB_PUBKEY
           - network/SSH_DEPLOY_PUBKEY
+          - ntfy/TOKEN
+          - discord/ALERTS_WEBHOOK
+          - tailscale/OAUTH_CLIENT_ID
+          - tailscale/OAUTH_CLIENT_SECRET
       tags: [always]
 
     - name: "Probe | Warn if no fresh-node candidate is available"
@@ -200,6 +204,10 @@
         vault_admin_ssh_pubkey: "{{ infisical_secrets['network/SSH_ADMIN_PUBKEY'] }}"
         vault_homelab_ssh_pubkey: "{{ infisical_secrets['network/SSH_HOMELAB_PUBKEY'] }}"
         vault_deploy_ssh_pubkey: "{{ infisical_secrets['network/SSH_DEPLOY_PUBKEY'] }}"
+        vault_ntfy_token: "{{ infisical_secrets['ntfy/TOKEN'] }}"
+        vault_discord_alerts_webhook: "{{ infisical_secrets['discord/ALERTS_WEBHOOK'] }}"
+        vault_tailscale_oauth_client_id: "{{ infisical_secrets['tailscale/OAUTH_CLIENT_ID'] }}"
+        vault_tailscale_oauth_client_secret: "{{ infisical_secrets['tailscale/OAUTH_CLIENT_SECRET'] }}"
       changed_when: false
       when: _successful_probes[0].item in _hardened_candidates
       tags: [always]
@@ -216,6 +224,10 @@
         vault_admin_ssh_pubkey: "{{ infisical_secrets['network/SSH_ADMIN_PUBKEY'] }}"
         vault_homelab_ssh_pubkey: "{{ infisical_secrets['network/SSH_HOMELAB_PUBKEY'] }}"
         vault_deploy_ssh_pubkey: "{{ infisical_secrets['network/SSH_DEPLOY_PUBKEY'] }}"
+        vault_ntfy_token: "{{ infisical_secrets['ntfy/TOKEN'] }}"
+        vault_discord_alerts_webhook: "{{ infisical_secrets['discord/ALERTS_WEBHOOK'] }}"
+        vault_tailscale_oauth_client_id: "{{ infisical_secrets['tailscale/OAUTH_CLIENT_ID'] }}"
+        vault_tailscale_oauth_client_secret: "{{ infisical_secrets['tailscale/OAUTH_CLIENT_SECRET'] }}"
       changed_when: false
       no_log: true
       when: _successful_probes[0].item in _fresh_candidates

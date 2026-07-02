@@ -409,6 +409,8 @@
           network/SSH_ADMIN_PUBKEY:   "{{ vault_admin_ssh_pubkey }}"
           network/SSH_HOMELAB_PUBKEY: "{{ vault_homelab_ssh_pubkey }}"
           network/SSH_DEPLOY_PUBKEY:  "{{ vault_deploy_ssh_pubkey }}"
+          tailscale/OAUTH_CLIENT_ID:     "{{ vault_tailscale_oauth_client_id }}"
+          tailscale/OAUTH_CLIENT_SECRET: "{{ vault_tailscale_oauth_client_secret }}"
           semaphore/ADMIN_USER:     "{{ vault_semaphore_admin_user }}"
           semaphore/ADMIN_PASSWORD: "{{ vault_semaphore_admin_password }}"
 

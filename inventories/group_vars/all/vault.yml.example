@@ -17,6 +17,7 @@
 # folders:
 #   /camunda  /n8n  /discord  /cloudflare  /pihole  /grafana
 #   /ntfy     /greentechhub   /deploy      /network  /semaphore
+#   /tailscale
 #
 # Mapping rule:  vault_<service>_<field>  →  /production/<service-folder>/<FIELD>
 #   e.g. vault_camunda_db_password  →  /production/camunda/DB_PASSWORD
@@ -62,6 +63,8 @@
 #   vault_admin_ssh_pubkey            → /production/network/SSH_ADMIN_PUBKEY
 #   vault_homelab_ssh_pubkey          → /production/network/SSH_HOMELAB_PUBKEY
 #   vault_deploy_ssh_pubkey           → /production/network/SSH_DEPLOY_PUBKEY
+#   vault_tailscale_oauth_client_id     → /production/tailscale/OAUTH_CLIENT_ID
+#   vault_tailscale_oauth_client_secret → /production/tailscale/OAUTH_CLIENT_SECRET
 
 # ══════════════════════════════════════════════════════════════════════════════
 # [bootstrap] — read directly by Ansible during Phase 1 (before Infisical exists)
@@ -70,14 +73,9 @@
 # ── Bootstrap credentials ─────────────────────────────────────────────────────
 # admin sudo password — set in RPi Imager (BOOTSTRAP.md § 0.3)
 # Wired via bootstrap.ini: ansible_become_password={{ vault_admin_become_password }}
-# Never seeded into Infisical — only needed for the one-time Phase 1 SSH login.
 vault_admin_become_password: "changeme"
 
 # ── SSH public keys ───────────────────────────────────────────────────────────
-# Contents of the corresponding .pub files generated in BOOTSTRAP.md § 1.4.
-# Also seeded into Infisical (/production/network/SSH_*_PUBKEY) during Phase 1 —
-# bootstrap_node.yml (Phase 3, runs from homelab-edge, no vault.yml there) reads
-# them back from there via roles/infisical/tasks/lookup.yml.
 vault_admin_ssh_pubkey: "ssh-ed25519 AAAA... admin"
 vault_homelab_ssh_pubkey: "ssh-ed25519 AAAA... homelab"
 vault_deploy_ssh_pubkey: "ssh-ed25519 AAAA... deploy"
