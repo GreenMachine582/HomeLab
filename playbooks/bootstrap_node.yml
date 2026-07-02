@@ -161,6 +161,23 @@
         msg: "Connecting via: {{ _successful_probes[0].item.label }}"
       tags: [always]
 
+    - name: "Probe | Scan target node SSH host key"
+      ansible.builtin.shell:
+        cmd: "ssh-keyscan -p {{ _successful_probes[0].item.port }} {{ _successful_probes[0].item.host }} 2>/dev/null"
+      register: _target_host_keys
+      changed_when: false
+      tags: [always]
+
+    - name: "Probe | Add target node SSH host key to known_hosts"
+      ansible.builtin.known_hosts:
+        name: "[{{ _successful_probes[0].item.host }}]:{{ _successful_probes[0].item.port }}"
+        key: "{{ item }}"
+        path: /home/homelab/.ssh/known_hosts
+        state: present
+      loop: "{{ _target_host_keys.stdout_lines | select('match', '^[^#]') | list }}"
+      no_log: true
+      tags: [always]
+
     - name: "Probe | Inject connection facts for target node (hardened)"
       ansible.builtin.add_host:
         name: "{{ _target_node }}"
