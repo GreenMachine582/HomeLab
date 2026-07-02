@@ -12,7 +12,7 @@
 repos:
   homelab-edge-services:
     repo: github.com/GreenMachine582/homelab-edge-services
-    ref: main
+    ref: master
     path: /srv/services/homelab-edge-services
     target_node: homelab-edge
     deployment:

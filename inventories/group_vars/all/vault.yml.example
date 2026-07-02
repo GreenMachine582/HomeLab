@@ -87,9 +87,6 @@ vault_infisical_admin_password: "changeme"
 vault_infisical_encryption_key: "changeme"
 
 # ── Semaphore admin account ───────────────────────────────────────────────────
-# Also seeded into Infisical as /production/semaphore/ADMIN_{USER,PASSWORD}.
-# The semaphore role reads these directly from vault.yml during Phase 1 bootstrap
-# (Semaphore starts before Infisical seeding is complete — see env.j2 comment).
 vault_semaphore_admin_user: "admin"
 vault_semaphore_admin_password: "changeme"
 
@@ -174,13 +171,7 @@ vault_django_secret_key: "changeme"
 # Must match the DEPLOY_SECRET GitHub Actions secret (repo Settings → Secrets).
 vault_deploy_webhook_secret: "changeme"
 
-# ── Network — node IPs (OPTIONAL; non-secret) ────────────────────────────────
-# These are seeded into Infisical under /production/network/IP_* so
-# deploy-service can inject them as env vars into service stacks (e.g. Caddy
-# reverse-proxy backends in homelab-edge-services). They are NOT secrets.
-# If omitted here, the seed task falls back to ip_*/ip_svc_0* from overrides.yml
-# automatically — you do NOT need to add them to your vault.yml unless you want
-# them to differ from your overrides.yml values (rare).
+# ── Network — node IPs ────────────────────────────────────────────────────────
 # vault_network_ip_observe: "192.168.50.11"
 # vault_network_ip_svc_01:  "192.168.50.20"
 # vault_network_ip_svc_02:  "192.168.50.21"

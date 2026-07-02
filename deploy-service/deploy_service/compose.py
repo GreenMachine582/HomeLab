@@ -16,7 +16,7 @@ def _run(cmd: list[str], cwd: str | None = None, env: dict | None = None, dry_ru
         sys.exit(f"[deploy-service] Command failed (exit {result.returncode}): {display}")
 
 
-def clone_or_pull(repo: str, path: str, ref: str = "main", dry_run: bool = False) -> None:
+def clone_or_pull(repo: str, path: str, ref: str = "master", dry_run: bool = False) -> None:
     """Clone the service repo if absent, otherwise pull latest."""
     repo_url = f"https://{repo}.git"
     git_dir = Path(path) / ".git"

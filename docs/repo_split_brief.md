@@ -173,7 +173,7 @@ repos:
 repos:
   bottlebot:
     repo: github.com/GreenMachine582/BottleBot
-    ref: main                      # or a pinned tag, e.g. v1.2.3
+    ref: master                      # or a pinned tag, e.g. v1.2.3
     target_node: homelab-svc-02
     path: /srv/services/bottlebot
 
