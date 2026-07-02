@@ -16,6 +16,20 @@
 
 set -euo pipefail
 
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  cat <<'EOF'
+Usage:
+  sudo scripts/deploy.sh                                          # edge deploy (default)
+  sudo scripts/deploy.sh deploy_observe homelab-observe           # observe deploy
+  sudo scripts/deploy.sh deploy_edge homelab-edge --check         # dry-run
+  sudo scripts/deploy.sh deploy_edge homelab-edge --tags alloy --extra-vars "x=1"
+
+Runs via deploy user sudo rule. Both git pull and ansible-playbook run as
+homelab (via runuser) so they share homelab's known_hosts and SSH keys.
+EOF
+  exit 0
+fi
+
 REPO="$(cd "$(dirname "$(realpath "$0")")/.." && pwd)"
 
 case $# in
