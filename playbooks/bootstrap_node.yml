@@ -21,10 +21,23 @@
 # See: BOOTSTRAP.md § Phase 3
 
 # ── Probe play ─────────────────────────────────────────────────────────────────
-# Runs on localhost (= homelab-edge, since Phase 3 always runs from there — no
-# SSH connection yet). --limit must name exactly one node (every documented
-# use of this playbook already does). Builds two candidate tiers for that node
-# and probes TCP reachability only (not auth — same as bootstrap_edge.yml):
+# hosts: all + connection: local — deliberately NOT hosts: localhost. Ansible
+# intersects --limit against every play's host pattern, including implicit
+# `hosts: localhost` plays, and localhost never matches a --limit pattern like
+# homelab-observe — so a `hosts: localhost` probe play here would get silently
+# skipped ("skipping: no hosts matched"), add_host would never run, and the
+# Bootstrap play below would skip too ("Could not match supplied host
+# pattern"). Pointing hosts: at `all` — which includes the real observe/svc
+# inventory hosts _valid_nodes already assumes exist (inventories/prod.yml) —
+# means --limit <node> actually narrows the play to that one host.
+# connection: local keeps every task executing on the control node
+# (homelab-edge), never opening a real SSH connection to the not-yet-
+# configured target — that's still done by wait_for (TCP only) below, exactly
+# as before. _target_node is inventory_hostname now, not ansible_limit — each
+# matched play host IS the target.
+#
+# Builds two candidate tiers for that node and probes TCP reachability only
+# (not auth — same as bootstrap_edge.yml):
 #
 #   Hardened (tried first): tailscale_ip_<suffix>:ssh_port, then ip_<suffix>:ssh_port
 #                            — user homelab, key /home/homelab/.ssh/homelab
@@ -38,16 +51,13 @@
 # inherent limitation base_hardening's own re-run probe already accepts; set a
 # non-default ssh_port to avoid the ambiguity.
 - name: "Probe | Discover reachable SSH endpoint and identity for target node"
-  hosts: localhost
+  hosts: all
   connection: local
+  become: false
   gather_facts: false
 
-  vars_files:
-    - "{{ playbook_dir }}/../inventories/group_vars/all/main.yml"
-    - "{{ playbook_dir }}/../inventories/group_vars/all/overrides.yml"
-
   vars:
-    _target_node: "{{ ansible_limit | default('') }}"
+    _target_node: "{{ inventory_hostname }}"
     _valid_nodes: "{{ (groups['observe'] | default([])) + (groups['svc'] | default([])) }}"
     _suffix: "{{ _target_node | regex_replace('^homelab-', '') | replace('-', '_') }}"
     _ip: "{{ lookup('vars', 'ip_' ~ _suffix, default='EDIT_BEFORE_USE') }}"
@@ -75,12 +85,20 @@
     - name: "Probe | Assert --limit names exactly one known node"
       ansible.builtin.assert:
         that:
-          - _target_node | length > 0
-          - _target_node in _valid_nodes
+          - ansible_play_hosts_all | length == 1
         fail_msg: >-
           bootstrap_node.yml requires --limit <node>, naming exactly one host
-          from the observe or svc inventory groups (got: "{{ _target_node }}",
-          known: {{ _valid_nodes | join(', ') }}). See BOOTSTRAP.md § Phase 3.
+          from the observe or svc inventory groups (matched {{
+          ansible_play_hosts_all | length }}: {{ ansible_play_hosts_all | join(', ') }}).
+          See BOOTSTRAP.md § Phase 3.
+      tags: [always]
+
+    - name: "Probe | Assert target node is a known observe/svc node"
+      ansible.builtin.assert:
+        that: _target_node in _valid_nodes
+        fail_msg: >-
+          {{ _target_node }} is not in the observe or svc inventory groups
+          (known: {{ _valid_nodes | join(', ') }}). See BOOTSTRAP.md § Phase 3.
       tags: [always]
 
     - name: "Probe | Assert ip_{{ _suffix }} is set in overrides.yml"
