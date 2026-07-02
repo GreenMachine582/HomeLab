@@ -65,6 +65,8 @@ repos:
       pre_hook: [scripts/predeploy.sh]
     secrets:
       infisical:
+        - path: /prod/deploy/GITHUB_PAT
+          env: GITHUB_PAT
         - path: /prod/network/IP_EDGE
           env: IP_EDGE
         - path: /prod/network/IP_OBSERVE

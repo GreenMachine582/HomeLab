@@ -49,6 +49,7 @@
 #   vault_greentechhub_db_password    → /production/greentechhub/DB_PASSWORD
 #   vault_django_secret_key           → /production/greentechhub/DJANGO_SECRET_KEY
 #   vault_deploy_webhook_secret       → /production/deploy/WEBHOOK_SECRET
+#   vault_github_pat                  → /production/deploy/GITHUB_PAT
 #   vault_semaphore_admin_user        → /production/semaphore/ADMIN_USER
 #   vault_semaphore_admin_password    → /production/semaphore/ADMIN_PASSWORD
 #   vault_network_ip_observe          → /production/network/IP_OBSERVE
@@ -175,6 +176,9 @@ vault_django_secret_key: "changeme"
 # Without it any caller who knows the URL can trigger a deploy.
 # Must match the DEPLOY_SECRET GitHub Actions secret (repo Settings → Secrets).
 vault_deploy_webhook_secret: "changeme"
+
+# ── GitHub PAT (deploy-service private repo clones) ───────────────────────────
+vault_github_pat: "github_pat_..."
 
 # ── Network — node IPs ────────────────────────────────────────────────────────
 # vault_network_ip_observe: "192.168.50.11"
