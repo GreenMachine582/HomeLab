@@ -127,7 +127,7 @@ vault_discord_webhook_info: "https://discord.com/api/webhooks/..."
 # Primary notification target for on-boot/shutdown/SSH scripts.
 # ⚠️  Phase 3 prerequisite — ntfy runs on homelab-observe, which isn't deployed until
 # Phase 3. Use a placeholder here during Phase 1; update the vault on the edge node
-# (ansible-vault edit ...) before running deploy_observe.yml.
+# (ansible-vault edit ...) before running `deploy-service deploy homelab-observe-services`.
 # Once ntfy is up: ntfy user add <username> && ntfy token add <username>
 vault_ntfy_token: "tk_..."
 

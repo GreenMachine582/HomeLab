@@ -418,7 +418,7 @@ for the full design rationale.
 
 **Everything else remains unconverted** — Stage 1 (`bootstrap_edge.yml`, run
 from WSL where `vault.yml` lives) and every Stage 3+ playbook
-(`deploy_observe.yml`, `deploy_svc.yml`, `healthcheck.yml`, `update_all.yml`,
+(`deploy_svc.yml`, `healthcheck.yml`, `update_all.yml`,
 `backup.yml`, `rollback.yml`, `apply_firewall.yml`) still resolve every
 `{{ vault_<service>_<field> }}` lookup straight from the vault, exactly as
 before this migration. The full `secret_backend` helper abstraction mentioned
@@ -547,7 +547,7 @@ Common cause: incorrect Slack webhook URL or API key in `inventories/group_vars/
 
 ```bash
 ansible-vault edit inventories/group_vars/all/vault.yml
-ansible-playbook playbooks/deploy_observe.yml --tags alertmanager
+deploy-service deploy homelab-observe-services
 ```
 
 ---
@@ -673,7 +673,7 @@ If the automated pipeline is broken, deploy manually at any time:
 ssh -p <ssh_port> deploy@homelab-edge
 cd /opt/homelab
 sudo ansible-playbook playbooks/deploy_edge.yml
-sudo ansible-playbook playbooks/deploy_observe.yml
+deploy-service deploy homelab-observe-services
 sudo ansible-playbook playbooks/deploy_svc.yml
 ```
 

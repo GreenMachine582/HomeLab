@@ -338,5 +338,5 @@
         msg: >
           {{ inventory_hostname }} bootstrap complete.
           Run the relevant deploy playbook next:
-            deploy_observe.yml  (for homelab-observe)
+            deploy-service deploy homelab-observe-services  (for homelab-observe)
             deploy_svc.yml      (for homelab-svc-*)

@@ -7,7 +7,7 @@
 #
 # Usage:
 #   sudo scripts/deploy.sh                                          # edge deploy (default)
-#   sudo scripts/deploy.sh deploy_observe homelab-observe           # observe deploy
+#   sudo scripts/deploy.sh deploy_svc homelab-svc-01                # svc deploy
 #   sudo scripts/deploy.sh deploy_edge homelab-edge --check         # dry-run
 #   sudo scripts/deploy.sh deploy_edge homelab-edge --tags alloy --extra-vars "x=1"
 #
@@ -20,7 +20,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'EOF'
 Usage:
   sudo scripts/deploy.sh                                          # edge deploy (default)
-  sudo scripts/deploy.sh deploy_observe homelab-observe           # observe deploy
+  sudo scripts/deploy.sh deploy_svc homelab-svc-01                # svc deploy
   sudo scripts/deploy.sh deploy_edge homelab-edge --check         # dry-run
   sudo scripts/deploy.sh deploy_edge homelab-edge --tags alloy --extra-vars "x=1"
 

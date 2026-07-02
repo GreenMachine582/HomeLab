@@ -78,7 +78,6 @@ homelab/
     bootstrap_edge.yml        # Phase 1: edge setup, Infisical bring-up + full provision/seed, Semaphore — single pass
     bootstrap_node.yml        # Phase 3: bootstrap a new node
     deploy_edge.yml           # Phase 2: deploy edge services
-    deploy_observe.yml        # Phase 3: deploy monitoring stack
     deploy_svc.yml            # Phase 3: deploy service workloads
     update_all.yml            # OS updates, Docker image pulls
     backup.yml                # Database backups, config exports
@@ -98,23 +97,17 @@ homelab/
     users/                    # System user creation (admin, homelab, deploy)
     infisical/                # Infisical .env rendering + seed (secrets manager, Tailscale-only)
     semaphore/                # Semaphore .env rendering (Ansible web UI, Tailscale-only)
-    observe_services/         # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma
     camunda/                  # Camunda 8 + n8n + discord-gateway env rendering
 
   # Docker Compose stacks (at repo root, deployed per-node)
   docker-compose.edge.yml     # Infisical (+ Postgres, Redis), Semaphore (+ Postgres) — bootstrap tier only
                               # homelab-edge-services (separate repo): cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent
-  docker-compose.observe.yml  # Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer
+                              # homelab-observe-services (separate repo): Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer
   docker-compose.svc01.yml    # Camunda 8, Elasticsearch, n8n, discord-gateway, Portainer Agent
 
   # Jinja2 templates live inside each role at roles/<role>/templates/
   # Key templates:
   #   roles/alloy/templates/config.alloy.j2
-  #   roles/observe_services/templates/prometheus/prometheus.yml.j2
-  #   roles/observe_services/templates/alertmanager/alertmanager.yml.j2
-  #   roles/observe_services/templates/loki/loki.yml.j2
-  #   roles/observe_services/templates/ntfy/server.yml.j2
-  #   roles/observe_services/templates/grafana/datasources.yml.j2
   #   roles/infisical/templates/env.j2
   #   roles/semaphore/templates/env.j2
   #   roles/fail2ban/templates/jail.conf.j2
@@ -130,7 +123,6 @@ homelab/
 
   docs/
     NETWORK.md                # IP assignments, firewall rules, Tailscale ACLs
-    MONITORING.md             # Grafana dashboard guide, alert tuning
     TROUBLESHOOTING.md        # Common issues and recovery procedures
     repo_split_brief.md       # Polyrepo migration design brief (active, in-progress)
 

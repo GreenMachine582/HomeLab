@@ -34,7 +34,7 @@ Services are split across four compose files by concern:
 - `docker-compose.edge.yml` — Infisical (+ Postgres, Redis), Semaphore (+ Postgres) (runs on `homelab-edge`)
 - `homelab-edge-services` (separate repo, deployed via `deploy-service`) — cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent (runs on `homelab-edge`)
 - `docker-compose.svc01.yml` — Camunda, Elasticsearch, n8n, discord-gateway, Portainer Agent (runs on `homelab-svc-01`)
-- `docker-compose.observe.yml` — Prometheus, Loki, Grafana, Alertmanager, ntfy, Portainer Server (runs on `homelab-observe`)
+- `homelab-observe-services` (separate repo, deployed via `deploy-service`) — Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer (runs on `homelab-observe`)
 
 The in-progress polyrepo migration strategy (how future service repos are split, `deploy-service` design, `services.yml` schema) is documented in [`docs/repo_split_brief.md`](./docs/repo_split_brief.md).
 
@@ -65,7 +65,6 @@ The in-progress polyrepo migration strategy (how future service repos are split,
 | `unbound` | Unbound recursive resolver as host systemd service (port 5335); Pi-hole upstream | edge |
 | `infisical` | Self-hosted secrets manager — node-generated `.env`, container bring-up, additive seed from `vault.yml`, runtime lookup helper (`tasks/lookup.yml`) used by `deploy_edge.yml` (Tailscale-only) | edge |
 | `semaphore` | Web UI over this repo's playbooks — read-only repo bind mount + writable workspace volume (Tailscale-only) | edge |
-| `observe_services` | Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma | observe |
 | `camunda` | Camunda 8, Elasticsearch, n8n, discord-gateway (env templates) | svc-01 |
 | `greentechhub` | GreenTechHub Django app, Redis, Celery | svc-02 |
 | `jellyfin` | Jellyfin media server | svc-03 |
@@ -78,7 +77,7 @@ The in-progress polyrepo migration strategy (how future service repos are split,
 
 ### Secrets
 
-`inventories/group_vars/all/vault.yml` (Ansible Vault) lives **only on the WSL/PC control host** — it is never copied to any node, not even `homelab-edge` (see "Important Constraints"). The vault password file is `.vault_pass` (gitignored, also WSL-only). It still backs Phase 1 bootstrap (`bootstrap_edge.yml`, run from WSL — a single pass, see below) and every Stage 3+ playbook (`deploy_observe.yml`, `deploy_svc.yml`, `healthcheck.yml`, `update_all.yml`, `backup.yml`, `rollback.yml`, `apply_firewall.yml`), which still read `{{ vault_* }}` directly — converting these is **deferred**, see `docs/TROUBLESHOOTING.md` "Vault → Infisical conversion status".
+`inventories/group_vars/all/vault.yml` (Ansible Vault) lives **only on the WSL/PC control host** — it is never copied to any node, not even `homelab-edge` (see "Important Constraints"). The vault password file is `.vault_pass` (gitignored, also WSL-only). It still backs Phase 1 bootstrap (`bootstrap_edge.yml`, run from WSL — a single pass, see below) and every Stage 3+ playbook (`deploy_svc.yml`, `healthcheck.yml`, `update_all.yml`, `backup.yml`, `rollback.yml`, `apply_firewall.yml`), which still read `{{ vault_* }}` directly — converting these is **deferred**, see `docs/TROUBLESHOOTING.md` "Vault → Infisical conversion status".
 
 `deploy_edge.yml` (Phase 2 — runs on `homelab-edge` itself, which never receives `vault.yml`) is the first **converted** playbook: it resolves its application secrets (`cloudflare/TUNNEL_TOKEN`, `pihole/WEB_PASSWORD`) at runtime from Infisical via `roles/infisical/tasks/lookup.yml`, authenticating with a node-local, read-only Universal Auth identity. That identity is created via Infisical's REST API during Phase 1 bootstrap, and its credentials are written *directly* — the moment they're minted — to `/home/homelab/.infisical_runtime_auth.yml` (`roles/infisical/tasks/bootstrap_instance.yml`); they never exist as `vault_*` values and never round-trip through `vault.yml` at all. This is the reference implementation for the rest of the `secret_backend: infisical | vault` helper abstraction, which remains **deferred** for Stage 3+ roles.
 
@@ -110,7 +109,7 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 # for why; no --ask-pass/--ask-become-pass — bootstrap_node.yml's probe play auto-detects
 # fresh vs already-hardened and connects accordingly)
 ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
-ansible-playbook playbooks/deploy_observe.yml
+deploy-service deploy homelab-observe-services
 ansible-playbook playbooks/deploy_svc.yml --tags camunda
 
 # Update firewall rules (after adding services or once ip_observe is set)
@@ -136,7 +135,6 @@ ansible-vault view inventories/group_vars/all/vault.yml
 ```bash
 # Start a specific stack
 docker compose -f docker-compose.edge.yml up -d
-docker compose -f docker-compose.observe.yml up -d
 
 # Pull and recreate without killing the tunnel
 docker compose pull && docker compose up -d --remove-orphans
@@ -150,9 +148,6 @@ Config files are rendered by Ansible roles from Jinja2 templates. Templates live
 
 Key templates and their data sources:
 - `roles/alloy/templates/config.alloy.j2` ← `inventories/group_vars/all.yml` (`alloy_loki_endpoint`, `alloy_scrape_systemd_units`)
-- `roles/observe_services/templates/prometheus/prometheus.yml.j2` ← `inventories/group_vars/observe.yml` (`prometheus_scrape_targets`)
-- `roles/observe_services/templates/alertmanager/alertmanager.yml.j2` ← `inventories/group_vars/observe.yml` (`alertmanager_receivers`, `alertmanager_routes`)
-- `roles/observe_services/templates/loki/loki.yml.j2` ← `inventories/group_vars/observe.yml` (`loki_retention`)
 - `roles/camunda/templates/elasticsearch/elasticsearch.yml.j2` ← `inventories/host_vars/homelab-svc-01.yml`
 - `roles/camunda/templates/postgres/postgresql.conf.j2` ← `inventories/host_vars/homelab-svc-01.yml`
 - `roles/infisical/templates/env.j2` ← node-generated secrets (idempotent: read back from `/opt/infisical/.env` if present, else `openssl rand -hex 32`) + `vault_infisical_encryption_key`

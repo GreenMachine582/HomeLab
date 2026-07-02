@@ -603,7 +603,7 @@ Prerequisites: `homelab-observe` has the base OS installed and is reachable via 
 ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 
 # Deploy the monitoring stack
-ansible-playbook playbooks/deploy_observe.yml
+deploy-service deploy homelab-observe-services
 ```
 
 **What gets deployed:**
@@ -686,7 +686,6 @@ script git-pulls the repo and then runs `ansible-playbook` as `homelab`.
 4. Commands:
    ```bash
    sudo /opt/homelab/scripts/deploy.sh                                  # edge (default)
-   sudo /opt/homelab/scripts/deploy.sh deploy_observe homelab-observe
    sudo /opt/homelab/scripts/deploy.sh deploy_svc homelab-svc-01
    ```
    > The script git-pulls the repo before running `ansible-playbook`, so the play is always current on every trigger.
@@ -745,7 +744,6 @@ ssh -p <ssh_port> -i .ssh/deploy deploy@homelab-edge
 
 # Run whichever playbooks are needed
 sudo /opt/homelab/scripts/deploy.sh                                  # edge (default)
-sudo /opt/homelab/scripts/deploy.sh deploy_observe homelab-observe
 sudo /opt/homelab/scripts/deploy.sh deploy_svc homelab-svc-01
 ```
 

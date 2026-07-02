@@ -19,7 +19,7 @@ Branch `wip/observe` contains the role and playbook. No merge conflicts with mas
   ```
 - [ ] **A3** — Deploy the observability stack:
   ```bash
-  ansible-playbook playbooks/deploy_observe.yml
+  deploy-service deploy homelab-observe-services
   ```
 - [ ] **A4** — Verify services are live (from a LAN client or Tailscale):
   - Grafana: `http://ip_observe:3000`
@@ -106,7 +106,13 @@ All resolved and committed to master:
   ```bash
   deploy-service deploy homelab-observe-services
   ```
-- [ ] **C6** — Retire from HomeLab repo: remove `roles/observe_services/`, `docker-compose.observe.yml`, `playbooks/deploy_observe.yml`; update `CLAUDE.md` role table and `NODES.md`
+  > `deploy-service` was extended with remote (SSH) execution and GitHub PAT auth
+  > for private repos to make this possible, but the run has not yet been verified
+  > against the real `homelab-observe` node — still open.
+- [x] **C6** — Retire from HomeLab repo: remove `roles/observe_services/`, `docker-compose.observe.yml`, `playbooks/deploy_observe.yml`; update `CLAUDE.md` role table and `NODES.md`
+  > Done ahead of C5 verification per explicit instruction (to reduce having two
+  > parallel deploy paths). If C5 verification surfaces a problem with
+  > `deploy-service`, the removed files are recoverable from git history.
 
 ---
 

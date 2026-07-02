@@ -46,13 +46,6 @@
       when: "'edge' in group_names"
       changed_when: true
 
-    - name: "Rollback | Observe | Stop current stack"
-      ansible.builtin.command:
-        cmd: docker compose -f docker-compose.observe.yml stop
-        chdir: "{{ homelab_repo_path }}"
-      when: "'observe' in group_names"
-      changed_when: true
-
     - name: "Rollback | Svc-01 | Stop current stack"
       ansible.builtin.command:
         cmd: docker compose -f docker-compose.svc01.yml stop
@@ -75,13 +68,6 @@
         cmd: docker compose -f docker-compose.edge.yml up -d --remove-orphans
         chdir: "{{ homelab_repo_path }}"
       when: "'edge' in group_names"
-      changed_when: true
-
-    - name: "Rollback | Observe | Restart rolled-back stack"
-      ansible.builtin.command:
-        cmd: docker compose -f docker-compose.observe.yml up -d --remove-orphans
-        chdir: "{{ homelab_repo_path }}"
-      when: "'observe' in group_names"
       changed_when: true
 
     - name: "Rollback | Svc-01 | Restart rolled-back stack"
