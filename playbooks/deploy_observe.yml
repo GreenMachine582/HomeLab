@@ -43,7 +43,7 @@
 
     - name: "Meta | Update repo to latest"
       ansible.builtin.git:
-        repo: "git@github.com:{{ vault_github_org }}/homelab.git"
+        repo: "git@github.com:{{ github_org }}/homelab.git"
         dest: "{{ homelab_repo_path }}"
         version: "{{ homelab_repo_branch }}"
         accept_hostkey: true
@@ -51,6 +51,32 @@
         force: false
       become_user: homelab
       tags: [repo]
+
+    - name: "Meta | Resolve vault_* secrets from Infisical"
+      ansible.builtin.include_role:
+        name: infisical
+        tasks_from: lookup.yml
+      delegate_to: localhost
+      vars:
+        infisical_lookup_keys:
+          - grafana/ADMIN_PASSWORD
+          - discord/WEBHOOK_CRITICAL
+          - discord/WEBHOOK_WARNING
+          - discord/WEBHOOK_INFO
+          - discord/ALERTS_WEBHOOK
+          - ntfy/TOKEN
+      tags: [always]
+
+    - name: "Meta | Set vault_* facts from resolved Infisical secrets"
+      ansible.builtin.set_fact:
+        vault_grafana_admin_password: "{{ infisical_secrets['grafana/ADMIN_PASSWORD'] }}"
+        vault_discord_webhook_critical: "{{ infisical_secrets['discord/WEBHOOK_CRITICAL'] }}"
+        vault_discord_webhook_warning: "{{ infisical_secrets['discord/WEBHOOK_WARNING'] }}"
+        vault_discord_webhook_info: "{{ infisical_secrets['discord/WEBHOOK_INFO'] }}"
+        vault_discord_alerts_webhook: "{{ infisical_secrets['discord/ALERTS_WEBHOOK'] }}"
+        vault_ntfy_token: "{{ infisical_secrets['ntfy/TOKEN'] }}"
+      no_log: true
+      tags: [always]
 
   roles:
     - role: base_hardening
