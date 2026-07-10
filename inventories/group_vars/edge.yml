@@ -16,6 +16,12 @@ ufw_rules:
   - { port: 3010,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Semaphore direct port (Tailscale only — non-browser clients)" }
   - { port: 8443,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Infisical (Tailscale: homelab-edge.<tailnet>.ts.net:8443)" }
   - { port: 8444,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Semaphore (Tailscale: homelab-edge.<tailnet>.ts.net:8444)" }
+  - { port: 3000,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Grafana (Tailscale)" }
+  - { port: 9090,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Prometheus (Tailscale)" }
+  - { port: 9093,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Alertmanager (Tailscale)" }
+  - { port: 3001,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Uptime Kuma (Tailscale)" }
+  - { port: 9000,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — Portainer (Tailscale)" }
+  - { port: 8085,             proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Caddy HTTPS — ntfy (Tailscale)" }
 
 # ── fail2ban ──────────────────────────────────────────────────────────────────
 fail2ban_jails:

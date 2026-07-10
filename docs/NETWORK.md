@@ -93,6 +93,12 @@ All nodes use `ufw` with a default-deny inbound policy. Rules are applied by the
 | 80   | TCP      | LAN     | Pi-hole admin UI (LAN only)   |
 | 8443 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Infisical (`homelab-edge.<tailnet>.ts.net:8443`) |
 | 8444 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Semaphore (`homelab-edge.<tailnet>.ts.net:8444`) |
+| 3000 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Grafana (Tailscale) |
+| 9090 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Prometheus (Tailscale) |
+| 9093 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Alertmanager (Tailscale) |
+| 3001 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Uptime Kuma (Tailscale) |
+| 9000 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Portainer (Tailscale) |
+| 8085 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — ntfy (Tailscale) |
 | 8222 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Infisical direct port (Tailscale only — non-browser clients) |
 | 3010 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Semaphore direct port (Tailscale only — non-browser clients) |
 
@@ -104,6 +110,17 @@ No ports are forwarded from the router. Cloudflare Tunnel connects outbound — 
 > Direct ports 8222/3010 remain for non-browser Tailscale clients. Do not
 > widen either port range beyond `tailscale_cgnat_range` — see
 > `group_vars/all/main.yml`.
+
+> **Tailscale access to observe services:** Caddy also proxies each observe
+> service straight through from `homelab-edge`, one dedicated HTTPS port per
+> service (same cert, same `tailscale_cgnat_range`-only firewall pattern as
+> Infisical/Semaphore above) — no Pi-hole DNS required:
+> - Grafana: `https://homelab-edge.<tailnet>.ts.net:3000`
+> - Prometheus: `https://homelab-edge.<tailnet>.ts.net:9090`
+> - Alertmanager: `https://homelab-edge.<tailnet>.ts.net:9093`
+> - Uptime Kuma: `https://homelab-edge.<tailnet>.ts.net:3001`
+> - Portainer: `https://homelab-edge.<tailnet>.ts.net:9000`
+> - ntfy: `https://homelab-edge.<tailnet>.ts.net:8085`
 
 ### `homelab-observe`
 
