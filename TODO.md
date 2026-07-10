@@ -19,7 +19,7 @@ Branch `wip/observe` contains the role and playbook. No merge conflicts with mas
   ```
 - [ ] **A3** — Deploy the observability stack:
   ```bash
-  deploy-service deploy homelab-observe-services
+  /opt/deploy-service-venv/bin/deploy-service deploy homelab-observe-services --config /opt/homelab/services.yml
   ```
 - [ ] **A4** — Verify services are live (from a LAN client or Tailscale):
   - Grafana: `http://ip_observe:3000`

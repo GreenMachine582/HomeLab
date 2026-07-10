@@ -590,7 +590,8 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 **All commands in this phase run from `homelab-edge` itself** — SSH in first:
 
 ```bash
-ssh -p <ssh_port> homelab@<ip_edge>
+ssh -p <ssh_port> admin@<ip_edge>
+sudo su - homelab
 cd /opt/homelab
 ```
 
@@ -603,7 +604,7 @@ Prerequisites: `homelab-observe` has the base OS installed and is reachable via 
 ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 
 # Deploy the monitoring stack
-deploy-service deploy homelab-observe-services
+/opt/deploy-service-venv/bin/deploy-service deploy homelab-observe-services --config /opt/homelab/services.yml
 ```
 
 **What gets deployed:**

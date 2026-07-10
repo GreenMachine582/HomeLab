@@ -109,7 +109,7 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 # for why; no --ask-pass/--ask-become-pass — bootstrap_node.yml's probe play auto-detects
 # fresh vs already-hardened and connects accordingly)
 ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
-deploy-service deploy homelab-observe-services
+/opt/deploy-service-venv/bin/deploy-service deploy homelab-observe-services --config /opt/homelab/services.yml
 ansible-playbook playbooks/deploy_svc.yml --tags camunda
 
 # Update firewall rules (after adding services or once ip_observe is set)
