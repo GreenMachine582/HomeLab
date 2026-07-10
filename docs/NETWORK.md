@@ -67,6 +67,7 @@ Tailscale IPs are assigned by the coordination server and stable per device. Upd
 | Alertmanager      | `homelab-observe` | 9093  |
 | Uptime Kuma       | `homelab-observe` | 3001  |
 | Portainer         | `homelab-observe` | 9000  |
+| ntfy              | `homelab-observe` | 8085  |
 | Camunda           | `homelab-svc-01`  | 8080  |
 | GreenTechHub      | `homelab-svc-02`  | 8000  |
 | Jellyfin          | `homelab-svc-03`  | 8096  |
@@ -114,6 +115,7 @@ No ports are forwarded from the router. Cloudflare Tunnel connects outbound — 
 | 9093 | TCP      | LAN / VPN | Alertmanager                  |
 | 3001 | TCP      | LAN / VPN | Uptime Kuma                   |
 | 9000 | TCP      | LAN / VPN | Portainer                     |
+| 8085 | TCP      | LAN / VPN | ntfy                          |
 
 No public exposure. Accessible via Tailscale from admin devices.
 
@@ -161,6 +163,7 @@ Internal hostnames are configured as static entries in the `homelab-edge-service
 | `alertmanager.homelab.local` | `ip_observe`  | 9093 |
 | `uptime.homelab.local`       | `ip_observe`  | 3001 |
 | `portainer.homelab.local`    | `ip_observe`  | 9000 |
+| `ntfy.homelab.local`         | `ip_observe`  | 8085 |
 | `camunda.homelab.local`      | `ip_svc_01`   | 8080 |
 | `greentechhub.homelab.local` | `ip_svc_02`   | 8000 |
 | `jellyfin.homelab.local`     | `ip_svc_03`   | 8096 |
@@ -173,10 +176,16 @@ lookups directly against root servers — no third-party upstream DNS.
 
 ### Adding a New Internal Hostname
 
-1. Add an entry to both `pihole_custom_dns` and `caddy_routes` in `group_vars/edge.yml` (DNS resolves to `ip_edge`; Caddy proxies to the backend)
-2. Run the edge deploy playbook:
+Caddy and Pi-hole config are static files committed in the `homelab-edge-services` repo, not
+Ansible templates — see [repo_split_brief.md](./repo_split_brief.md).
+
+1. In `homelab-edge-services`, add an entry to both:
+   - `configs/pihole/custom.list` (hostname → `ip_edge`'s literal current value)
+   - `configs/caddy/Caddyfile` (`reverse_proxy {env.IP_<NODE>}:<port>`)
+   Commit and push.
+2. Redeploy from `homelab-edge`:
    ```bash
-   ansible-playbook playbooks/deploy_edge.yml --tags pihole,caddy
+   /opt/deploy-service-venv/bin/deploy-service deploy homelab-edge-services --config /opt/homelab/services.yml
    ```
 
 ### External — Cloudflare

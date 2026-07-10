@@ -282,12 +282,14 @@ If Unbound is failing, Pi-hole will fall back to its configured upstream (if any
 
 ### A `.homelab.local` hostname is missing
 
-Hostnames are defined in `templates/pihole/custom.list.j2`. If a hostname is missing:
+Hostnames are static entries in the `homelab-edge-services` repo, not an Ansible template. If a
+hostname is missing:
 
-1. Add it to the template
+1. Add it to `configs/pihole/custom.list` (and a matching route in `configs/caddy/Caddyfile` if
+   it should be reverse-proxied) in `homelab-edge-services`, commit and push.
 2. Redeploy:
    ```bash
-   ansible-playbook playbooks/deploy_edge.yml --tags pihole
+   /opt/deploy-service-venv/bin/deploy-service deploy homelab-edge-services --config /opt/homelab/services.yml
    ```
 
 ---

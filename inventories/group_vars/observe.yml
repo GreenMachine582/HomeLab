@@ -13,6 +13,7 @@ ufw_rules:
   - { port: 9443, proto: tcp, src: "{{ lan_subnet }}", comment: "Portainer HTTPS" }
   - { port: 9100, proto: tcp, src: "{{ lan_subnet }}", comment: "node-exporter" }
   - { port: 3100, proto: tcp, src: "{{ lan_subnet }}", comment: "Loki (Alloy ingestion)" }
+  - { port: 8085, proto: tcp, src: "{{ lan_subnet }}", comment: "ntfy" }
 
 # ── Tailscale ─────────────────────────────────────────────────────────────────
 tailscale_accept_routes: true
