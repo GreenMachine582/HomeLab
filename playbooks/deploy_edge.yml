@@ -43,7 +43,7 @@
         key_file: /home/homelab/.ssh/github
         force: false
       become_user: homelab
-      tags: [repo]
+      tags: [repo, deploy-service, docker]
 
     - name: "Users | Keep deploy sudoers rule current (points at wrapper script, not ansible-playbook directly)"
       ansible.builtin.copy:
