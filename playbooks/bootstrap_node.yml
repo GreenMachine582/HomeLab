@@ -60,7 +60,7 @@
     _target_node: "{{ inventory_hostname }}"
     _valid_nodes: "{{ (groups['observe'] | default([])) + (groups['svc'] | default([])) }}"
     _suffix: "{{ _target_node | regex_replace('^homelab-', '') | replace('-', '_') }}"
-    _ip: "{{ lookup('vars', 'ip_' ~ _suffix, default='EDIT_BEFORE_USE') }}"
+    _ip: "{{ infisical_secrets['network/IP_' ~ (_suffix | upper)] }}"
     _tailscale_ip: "{{ lookup('vars', 'tailscale_ip_' ~ _suffix, default='EDIT_BEFORE_USE') }}"
     _tailscale_available: "{{ _tailscale_ip != 'EDIT_BEFORE_USE' }}"
     _has_custom_port: "{{ ssh_port | int != fallback_ssh_port | int }}"
@@ -101,14 +101,6 @@
           (known: {{ _valid_nodes | join(', ') }}). See BOOTSTRAP.md § Phase 3.
       tags: [always]
 
-    - name: "Probe | Assert ip_{{ _suffix }} is set in overrides.yml"
-      ansible.builtin.assert:
-        that: _ip != 'EDIT_BEFORE_USE'
-        fail_msg: >-
-          ip_{{ _suffix }} is still EDIT_BEFORE_USE. Set it in overrides.yml
-          then re-run. See BOOTSTRAP.md § Phase 3.
-      tags: [always]
-
     - name: "Probe | Resolve vault_* secrets from Infisical"
       ansible.builtin.include_role:
         name: infisical
@@ -118,6 +110,7 @@
           - network/SSH_ADMIN_PUBKEY
           - network/SSH_HOMELAB_PUBKEY
           - network/SSH_DEPLOY_PUBKEY
+          - "network/IP_{{ _suffix | upper }}"
           - ntfy/TOKEN
           - discord/ALERTS_WEBHOOK
           - tailscale/OAUTH_CLIENT_ID
@@ -164,8 +157,8 @@
         msg: >-
           No SSH endpoint reachable for {{ _target_node }}.
           Tried: {{ _all_candidates | map(attribute='label') | list | join(', ') }}.
-          Check the node is powered on and reachable, ip_{{ _suffix }} is
-          correct in overrides.yml, and — for a fresh node —
+          Check the node is powered on and reachable, network/IP_{{ _suffix | upper }} in
+          Infisical is correct, and — for a fresh node —
           /home/homelab/.node_bootstrap_admin_pass exists on this host.
           See BOOTSTRAP.md § Phase 3.
       when: _successful_probes | length == 0
