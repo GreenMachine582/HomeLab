@@ -3,6 +3,7 @@
 Replicates roles/infisical/tasks/lookup.yml in Python.
 Uses stdlib urllib only — no third-party HTTP library needed.
 """
+import getpass
 import json
 import sys
 import urllib.error
@@ -36,9 +37,16 @@ def _http(method: str, url: str, body: dict | None = None, token: str | None = N
 def _load_runtime_creds() -> tuple[str, str, str]:
     path = _RUNTIME_AUTH_PATH
     if not path.exists():
+        current_user = getpass.getuser()
+        hint = (
+            f" — you're running as '{current_user}'; deploy-service must run as 'homelab' "
+            "(sudo su - homelab)"
+            if current_user != "homelab"
+            else ""
+        )
         sys.exit(
-            f"[deploy-service] Runtime credentials not found: {path}\n"
-            "  Phase 1 bootstrap must run before deploy-service can look up secrets."
+            f"[deploy-service] Runtime credentials not found: {path}{hint}\n"
+            "  If you are the 'homelab' user, Phase 1 bootstrap must run first."
         )
     with open(path) as f:
         creds = yaml.safe_load(f)
