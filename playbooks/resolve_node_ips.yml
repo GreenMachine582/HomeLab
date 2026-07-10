@@ -1,0 +1,57 @@
+---
+# playbooks/resolve_node_ips.yml
+#
+# Shared preamble: resolves ansible_host for observe/svc nodes from Infisical
+# at runtime instead of a static overrides.yml value. Import at the top of
+# any playbook targeting observe/svc nodes:
+#
+#   - import_playbook: resolve_node_ips.yml
+#   - name: "..."
+#     hosts: observe   # still works — add_host below re-adds each host to
+#                         its existing group(s) with a freshly resolved
+#                         ansible_host
+#
+# hosts: all + connection: local (not hosts: localhost / hosts: homelab-edge)
+# so --limit <node> still matches this play — same reasoning as
+# bootstrap_node.yml's probe play. tags: [always] on every task so this
+# always runs even under --tags-scoped invocations (e.g. update_all.yml
+# --tags docker).
+#
+# ip_edge is NOT resolved here and never will be — Phase 1 bootstrap needs
+# it before Infisical exists to be queried, and deploy_edge.yml's own play
+# genuinely SSHes edge-to-itself over ip_edge (no connection: local there
+# either) — so it must stay a static overrides.yml value regardless.
+
+- name: "Resolve | Fetch observe/svc node IPs from Infisical, inject ansible_host"
+  hosts: all
+  connection: local
+  become: false
+  gather_facts: false
+
+  vars:
+    _suffix: "{{ inventory_hostname | regex_replace('^homelab-', '') | replace('-', '_') }}"
+
+  tasks:
+    - name: "Resolve | Skip edge — ip_edge stays static"
+      ansible.builtin.meta: end_host
+      when: inventory_hostname == 'homelab-edge'
+      tags: [always]
+
+    - name: "Resolve | Fetch network/IP_* from Infisical"
+      ansible.builtin.include_role:
+        name: infisical
+        tasks_from: lookup.yml
+      vars:
+        infisical_lookup_keys:
+          - network/IP_OBSERVE
+          - network/IP_SVC_01
+          - network/IP_SVC_02
+          - network/IP_SVC_03
+      tags: [always]
+
+    - name: "Resolve | Inject this node's resolved ansible_host"
+      ansible.builtin.add_host:
+        name: "{{ inventory_hostname }}"
+        ansible_host: "{{ infisical_secrets['network/IP_' ~ (_suffix | upper)] }}"
+        groups: "{{ group_names }}"
+      tags: [always]

@@ -21,6 +21,8 @@
 # NOTE: Docker image history is required on the node for rollback to work.
 # If images have been pruned, restore from a registry or re-deploy.
 
+- import_playbook: resolve_node_ips.yml
+
 - name: "Rollback | Target node | Revert Docker containers"
   hosts: "{{ target | default('all') }}"
   become: true

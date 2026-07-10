@@ -18,6 +18,8 @@
 #   --tags postgres    PostgreSQL pg_dump only
 #   --tags cleanup     Remove backups older than retain_days
 
+- import_playbook: resolve_node_ips.yml
+
 - name: "Backup | Svc nodes and edge | Database backups"
   hosts: svc:edge
   become: true

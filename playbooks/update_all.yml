@@ -20,6 +20,8 @@
 #   --tags docker   Docker image pulls only
 #   --tags restart  Restart containers after pull (opt-in, combine with --tags docker)
 
+- import_playbook: resolve_node_ips.yml
+
 - name: "Update | All nodes | OS packages and Docker images"
   hosts: homelab
   become: true

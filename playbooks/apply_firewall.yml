@@ -8,6 +8,8 @@
 #   ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge
 #   ansible-playbook playbooks/apply_firewall.yml --limit homelab-observe
 
+- import_playbook: resolve_node_ips.yml
+
 - name: "Firewall | Apply rules"
   hosts: "{{ target | default('homelab') }}"
   become: true

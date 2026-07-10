@@ -17,6 +17,8 @@
 #   --tags dns        DNS resolution checks
 #   --tags tailscale  Tailscale connectivity checks
 
+- import_playbook: resolve_node_ips.yml
+
 # ── Play 1: Docker container status (all nodes) ───────────────────────────────
 - name: "Healthcheck | All nodes | Docker and Tailscale"
   hosts: homelab

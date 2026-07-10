@@ -41,9 +41,10 @@ The in-progress polyrepo migration strategy (how future service repos are split,
 ### Ansible Structure
 
 - `inventories/bootstrap.ini` — Phase 1 only; connects as `admin`; `ansible_host`/`ansible_port` are probe-injected at runtime by `bootstrap_edge.yml` — no manual editing required
-- `inventories/prod.yml` — Phase 2+; connects as `homelab` (passwordless sudo); YAML format supports Jinja2 so `ansible_host`/`ansible_port` resolve from `group_vars/all/main.yml`
+- `inventories/prod.yml` — Phase 2+; connects as `homelab` (passwordless sudo); YAML format supports Jinja2 so `ansible_host`/`ansible_port` resolve from `group_vars/all/main.yml` by default
+- `playbooks/resolve_node_ips.yml` — shared preamble, imported via `import_playbook` at the top of `healthcheck.yml`, `apply_firewall.yml`, `update_all.yml`, `backup.yml`, and `rollback.yml` (and any future playbook targeting observe/svc nodes, e.g. `deploy_svc.yml` when it's created). Overrides `ansible_host` for observe/svc nodes at runtime with a live fetch from Infisical's `/production/network/IP_*` secrets (via `roles/infisical/tasks/lookup.yml`, `connection: local` on `homelab-edge`, then `add_host`) instead of the static value in `overrides.yml`. `ip_edge` is never resolved this way — Phase 1 bootstraps the edge node before Infisical exists, so it must stay a static value.
 - `inventories/group_vars/all/main.yml` — applied to all nodes (users, SSH, Docker config, observability agents); IPs are `EDIT_BEFORE_USE` placeholders
-- `inventories/group_vars/all/overrides.yml` — gitignored; holds real IPs/subnet overriding `main.yml` placeholders (copy from `overrides.yml.example`)
+- `inventories/group_vars/all/overrides.yml` — gitignored; holds real IPs/subnet. `ip_edge` here is authoritative; `ip_observe`/`ip_svc_01-03` here are only a fallback for ad-hoc commands that bypass a playbook (e.g. `ansible observe -m ping`) — every playbook resolves those live from Infisical instead (see `resolve_node_ips.yml` above). Copy from `overrides.yml.example`.
 - `inventories/group_vars/all/vault.yml` — Ansible Vault encrypted; never committed in plaintext (auto-loaded alongside `main.yml`)
 - `inventories/group_vars/edge.yml`, `observe.yml`, `svc.yml` — group-specific vars
 - `inventories/host_vars/<node>.yml` — per-node overrides
