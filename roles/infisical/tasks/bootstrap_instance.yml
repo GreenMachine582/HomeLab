@@ -415,6 +415,8 @@
           tailscale/OAUTH_CLIENT_SECRET: "{{ vault_tailscale_oauth_client_secret }}"
           semaphore/ADMIN_USER:     "{{ vault_semaphore_admin_user }}"
           semaphore/ADMIN_PASSWORD: "{{ vault_semaphore_admin_password }}"
+          observe/UPTIME_KUMA_ADMIN_USER:     "{{ vault_uptime_kuma_admin_user }}"
+          observe/UPTIME_KUMA_ADMIN_PASSWORD: "{{ vault_uptime_kuma_admin_password }}"
 
     - name: "Infisical bootstrap | Check which application-secret keys already exist"
       ansible.builtin.uri:

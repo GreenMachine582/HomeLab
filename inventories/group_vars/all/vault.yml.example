@@ -17,7 +17,7 @@
 # folders:
 #   /camunda  /n8n  /discord  /cloudflare  /pihole  /grafana
 #   /ntfy     /greentechhub   /deploy      /network  /semaphore
-#   /tailscale
+#   /tailscale  /observe
 #
 # Mapping rule:  vault_<service>_<field>  →  /production/<service-folder>/<FIELD>
 #   e.g. vault_camunda_db_password  →  /production/camunda/DB_PASSWORD
@@ -52,6 +52,8 @@
 #   vault_github_pat                  → /production/deploy/GITHUB_PAT
 #   vault_semaphore_admin_user        → /production/semaphore/ADMIN_USER
 #   vault_semaphore_admin_password    → /production/semaphore/ADMIN_PASSWORD
+#   vault_uptime_kuma_admin_user      → /production/observe/UPTIME_KUMA_ADMIN_USER
+#   vault_uptime_kuma_admin_password  → /production/observe/UPTIME_KUMA_ADMIN_PASSWORD
 #   vault_network_ip_edge             → /production/network/IP_EDGE
 #   vault_network_ip_observe          → /production/network/IP_OBSERVE
 #   vault_network_ip_svc_01           → /production/network/IP_SVC_01
@@ -115,6 +117,12 @@ vault_pihole_web_password: "changeme"
 
 # ── Grafana ───────────────────────────────────────────────────────────────────
 vault_grafana_admin_password: "changeme"
+
+# ── Uptime Kuma ───────────────────────────────────────────────────────────────
+# Consumed only by homelab-observe-services' setup_monitors.py post_hook (via
+# Infisical) — no Ansible role reads these directly, unlike Semaphore's above.
+vault_uptime_kuma_admin_user: "admin"
+vault_uptime_kuma_admin_password: "changeme"
 
 # ── Discord webhook URLs ──────────────────────────────────────────────────────
 # Create webhooks in Discord → Server Settings → Integrations → Webhooks

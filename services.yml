@@ -59,10 +59,14 @@ repos:
       type: compose
     deploy:
       compose_files: [docker-compose.yml]
-      # prometheus.yml/alertmanager.yml are mounted config files, not read by
-      # docker compose itself, so ${IP_*}/${DISCORD_WEBHOOK_*} placeholders in
-      # them need envsubst before `docker compose up` — see scripts/predeploy.sh.
+      # prometheus.yml/alertmanager.yml/monitors.yml are mounted config files,
+      # not read by docker compose itself, so ${IP_*}/${DISCORD_WEBHOOK_*}
+      # placeholders in them need envsubst before `docker compose up` — see
+      # scripts/predeploy.sh.
       pre_hook: [scripts/predeploy.sh]
+      # Reconciles Uptime Kuma's monitors against configs/uptime-kuma/monitors.yml
+      # via its API — runs after the stack is up so Uptime Kuma is reachable.
+      post_hook: [scripts/setup_monitors.sh]
     secrets:
       infisical:
         - path: /prod/deploy/GITHUB_PAT
@@ -85,6 +89,10 @@ repos:
           env: DISCORD_WEBHOOK_WARNING
         - path: /prod/discord/WEBHOOK_INFO
           env: DISCORD_WEBHOOK_INFO
+        - path: /prod/observe/UPTIME_KUMA_ADMIN_USER
+          env: UPTIME_KUMA_ADMIN_USER
+        - path: /prod/observe/UPTIME_KUMA_ADMIN_PASSWORD
+          env: UPTIME_KUMA_ADMIN_PASSWORD
     rollback:
       strategy: git
     services: [prometheus, loki, grafana, alertmanager, ntfy, uptime-kuma, portainer]
