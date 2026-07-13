@@ -1,38 +1,47 @@
-# Network
+# 🏠 Network
 
 Reference for IP assignments, firewall rules, DNS configuration, Tailscale ACLs, and traffic flow.
 
+**Quick links:** [🌐 IP Assignments](#-ip-assignments) · [🔥 Firewall Rules](#-firewall-rules) · [🧭 DNS](#-dns) · [🔒 Tailscale](#tailscale) · [🔀 Traffic Flow](#-traffic-flow)
+
+<details>
+<summary>Full outline</summary>
+
 <!-- TOC -->
-* [Network](#network)
-  * [IP Assignments](#ip-assignments)
+* [🏠 Network](#-network)
+  * [🌐 IP Assignments](#-ip-assignments)
     * [LAN (Static DHCP)](#lan-static-dhcp)
     * [Tailscale (100.x.x.x)](#tailscale-100xxx)
     * [Service Ports](#service-ports)
-  * [Firewall Rules](#firewall-rules)
+  * [🔥 Firewall Rules](#-firewall-rules)
     * [`homelab-edge`](#homelab-edge)
     * [`homelab-observe`](#homelab-observe)
     * [`homelab-svc-01`](#homelab-svc-01)
     * [`homelab-svc-02` and `homelab-svc-03`](#homelab-svc-02-and-homelab-svc-03)
     * [Updating Rules](#updating-rules)
-  * [DNS](#dns)
-    * [Internal — Pi-hole + Unbound](#internal--pi-hole--unbound)
+  * [🧭 DNS](#-dns)
+    * [🏠 Internal — Pi-hole + Unbound](#-internal--pi-hole--unbound)
     * [Adding a New Internal Hostname](#adding-a-new-internal-hostname)
-    * [External — Cloudflare](#external--cloudflare)
+    * [☁️ External — Cloudflare](#-external--cloudflare)
   * [Tailscale](#tailscale)
     * [Mode](#mode)
     * [ACLs](#acls)
     * [Key Rotation](#key-rotation)
     * [MagicDNS](#magicdns)
-  * [Traffic Flow](#traffic-flow)
+    * [Tailscale HTTPS Certificates](#tailscale-https-certificates)
+  * [🔀 Traffic Flow](#-traffic-flow)
     * [External Request (Public Hostname)](#external-request-public-hostname)
     * [Internal Request (LAN Client)](#internal-request-lan-client)
+    * [Tailscale-Only Service Access](#tailscale-only-service-access)
     * [Ansible Deploy (Phase 3+)](#ansible-deploy-phase-3)
     * [Automated Deploy (Phase 4)](#automated-deploy-phase-4)
 <!-- TOC -->
 
+</details>
+
 ---
 
-## IP Assignments
+## 🌐 IP Assignments
 
 ### LAN (Static DHCP)
 
@@ -80,19 +89,19 @@ Tailscale IPs are assigned by the coordination server and stable per device. Upd
 
 ---
 
-## Firewall Rules
+## 🔥 Firewall Rules
 
 All nodes use `ufw` with a default-deny inbound policy. Rules are applied by the `base_hardening` role and node-specific group vars.
 
 ### `homelab-edge`
 
-| Port | Protocol | Source  | Reason                        |
-|------|----------|---------|-------------------------------|
-| `ssh_port` | TCP  | any     | SSH admin access              |
-| 53   | TCP/UDP  | LAN     | Pi-hole DNS (LAN only)        |
-| 80   | TCP      | LAN     | Pi-hole admin UI (LAN only)   |
-| 8443 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Infisical (`homelab-edge.<tailnet>.ts.net:8443`) |
-| 8444 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Semaphore (`homelab-edge.<tailnet>.ts.net:8444`) |
+| Port | Protocol | Source  | Reason                                                         |
+|------|----------|---------|----------------------------------------------------------------|
+| `ssh_port` | TCP  | any     | SSH admin access                                               |
+| 53   | TCP/UDP  | LAN     | Pi-hole DNS (LAN only)                                         |
+| 80   | TCP      | LAN     | Pi-hole admin UI (LAN only)                                    |
+| 8443 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Infisical (Tailscale) |
+| 8444 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Semaphore (Tailscale) |
 | 3000 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Grafana (Tailscale) |
 | 9090 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Prometheus (Tailscale) |
 | 9093 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Alertmanager (Tailscale) |
@@ -104,23 +113,13 @@ All nodes use `ufw` with a default-deny inbound policy. Rules are applied by the
 
 No ports are forwarded from the router. Cloudflare Tunnel connects outbound — all external traffic enters through it.
 
-> **Access paths for Infisical and Semaphore:** Caddy serves HTTPS on ports
-> 8443/8444 via `homelab-edge.<tailnet>.ts.net` (Tailscale, browser-trusted
-> Let's Encrypt cert via `tailscale cert`) — Tailscale CGNAT range only.
-> Direct ports 8222/3010 remain for non-browser Tailscale clients. Do not
-> widen either port range beyond `tailscale_cgnat_range` — see
-> `group_vars/all/main.yml`.
-
-> **Tailscale access to observe services:** Caddy also proxies each observe
-> service straight through from `homelab-edge`, one dedicated HTTPS port per
-> service (same cert, same `tailscale_cgnat_range`-only firewall pattern as
-> Infisical/Semaphore above) — no Pi-hole DNS required:
-> - Grafana: `https://homelab-edge.<tailnet>.ts.net:3000`
-> - Prometheus: `https://homelab-edge.<tailnet>.ts.net:9090`
-> - Alertmanager: `https://homelab-edge.<tailnet>.ts.net:9093`
-> - Uptime Kuma: `https://homelab-edge.<tailnet>.ts.net:3001`
-> - Portainer: `https://homelab-edge.<tailnet>.ts.net:9000`
-> - ntfy: `https://homelab-edge.<tailnet>.ts.net:8085`
+> 🔒 **All `tailscale_cgnat_range` rows above are Tailscale-only**, served as
+> `https://homelab-edge.<tailnet>.ts.net:<port>` via Caddy (browser-trusted
+> Let's Encrypt cert from `tailscale cert`) — no Pi-hole DNS involved. Ports
+> 8222/3010 are the equivalent direct (non-Caddy) ports for non-browser
+> clients. Don't widen any of these beyond `tailscale_cgnat_range` — see
+> `group_vars/all/main.yml`. Request path: [Tailscale-Only Service
+> Access](#tailscale-only-service-access).
 
 ### `homelab-observe`
 
@@ -164,9 +163,9 @@ ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge
 
 ---
 
-## DNS
+## 🧭 DNS
 
-### Internal — Pi-hole + Unbound
+### 🏠 Internal — Pi-hole + Unbound
 
 Pi-hole on `homelab-edge` (`ip_edge`) is the DNS server for all LAN clients. Set it as the primary DNS on your 
 router's DHCP config.
@@ -205,7 +204,7 @@ Ansible templates — see [repo_split_brief.md](./repo_split_brief.md).
    /opt/deploy-service-venv/bin/deploy-service deploy homelab-edge-services --config /opt/homelab/services.yml
    ```
 
-### External — Cloudflare
+### ☁️ External — Cloudflare
 
 Public hostnames (`*.yourdomain.com`) are managed in Cloudflare DNS. TLS terminates at Cloudflare. The Cloudflare 
 Tunnel config in `host_vars/homelab-edge.yml` maps each public hostname to an internal `host:port`.
@@ -294,7 +293,7 @@ weekly via cron.
 
 ---
 
-## Traffic Flow
+## 🔀 Traffic Flow
 
 ### External Request (Public Hostname)
 
@@ -315,11 +314,13 @@ LAN client → Pi-hole DNS (<ip_edge>:53)
     → direct connection to node:port over LAN
 ```
 
-### Tailscale-Only Service Access (Infisical / Semaphore)
+### Tailscale-Only Service Access
+
+Ports and services covered by this pattern are listed in [Firewall Rules → `homelab-edge`](#homelab-edge). No Pi-hole hostname, no LAN path — the requesting device must itself be a tailnet member.
 
 **Browser (Tailscale):**
 ```
-Admin device (on tailnet) → https://homelab-edge.<tailnet>.ts.net:{8443,8444}
+Admin device (on tailnet) → https://homelab-edge.<tailnet>.ts.net:{8443,8444,...}
     → ufw allows 100.64.0.0/10 on that port → Caddy → container on homelab-edge
 ```
 
@@ -328,9 +329,6 @@ Admin device (on tailnet) → https://homelab-edge.<tailnet>.ts.net:{8443,8444}
 Admin device (on tailnet) → http://<edge-tailscale-ip>:{8222,3010}
     → ufw allows 100.64.0.0/10 on that port → container on homelab-edge
 ```
-
-No Pi-hole hostname, no LAN reachability — by design (see [Firewall Rules](#firewall-rules)).
-The device making the request must itself be a tailnet member; there is no other path in.
 
 ### Ansible Deploy (Phase 3+)
 

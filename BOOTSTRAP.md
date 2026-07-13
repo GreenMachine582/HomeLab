@@ -5,18 +5,23 @@ steps are kept to the absolute minimum.
 
 **Estimated time:** 2–3 hours for a full deployment (Phases 1–4).
 
+**Quick links:** [📋 Prerequisites](#-prerequisites) · [0️⃣ Phase 0: Flash the SD Card](#0️⃣-phase-0-flash-the-sd-card) · [1️⃣ Phase 1: PC → Edge (Bootstrap)](#1️⃣-phase-1-pc--edge-bootstrap) · [2️⃣ Phase 2: Edge → Self-Deploy](#2️⃣-phase-2-edge--self-deploy) · [3️⃣ Phase 3: Edge → Other Nodes](#3️⃣-phase-3-edge--other-nodes) · [4️⃣ Phase 4: Automated Deployments](#4️⃣-phase-4-automated-deployments)
+
+<details>
+<summary>Full outline</summary>
+
 <!-- TOC -->
 * [Bootstrap Guide](#bootstrap-guide)
-  * [Prerequisites](#prerequisites)
+  * [📋 Prerequisites](#-prerequisites)
     * [Hardware](#hardware)
     * [Accounts](#accounts)
     * [Files](#files)
-  * [Phase 0: Flash the SD Card](#phase-0-flash-the-sd-card)
+  * [0️⃣ Phase 0: Flash the SD Card](#0-phase-0-flash-the-sd-card)
     * [0.1 Download and Install RPi Imager](#01-download-and-install-rpi-imager)
     * [0.2 Select OS and Storage](#02-select-os-and-storage)
     * [0.3 Configure OS Customisation](#03-configure-os-customisation)
     * [0.4 Flash and Boot](#04-flash-and-boot)
-  * [Phase 1: PC → Edge (Bootstrap)](#phase-1-pc--edge-bootstrap)
+  * [1️⃣ Phase 1: PC → Edge (Bootstrap)](#1-phase-1-pc--edge-bootstrap)
     * [1.1 Prepare Your PC](#11-prepare-your-pc)
     * [1.2 Move the Repo into the WSL Filesystem](#12-move-the-repo-into-the-wsl-filesystem)
     * [1.3 Find the Edge Node IP](#13-find-the-edge-node-ip)
@@ -28,24 +33,26 @@ steps are kept to the absolute minimum.
     * [1.9 Create Ansible Vault and Override Config](#19-create-ansible-vault-and-override-config)
     * [1.10 Run the Bootstrap Playbook](#110-run-the-bootstrap-playbook)
     * [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does)
-  * [Phase 2: Edge → Self-Deploy](#phase-2-edge--self-deploy)
-  * [Phase 3: Edge → Other Nodes](#phase-3-edge--other-nodes)
+  * [2️⃣ Phase 2: Edge → Self-Deploy](#2-phase-2-edge--self-deploy)
+  * [3️⃣ Phase 3: Edge → Other Nodes](#3-phase-3-edge--other-nodes)
     * [3.1 Deploy Observe Node](#31-deploy-observe-node)
     * [3.2 Deploy Service Nodes](#32-deploy-service-nodes)
-  * [Phase 4: Automated Deployments](#phase-4-automated-deployments)
+  * [4️⃣ Phase 4: Automated Deployments](#4-phase-4-automated-deployments)
     * [How It Works](#how-it-works)
     * [4.1 Configure the Automation Endpoint (n8n or Camunda)](#41-configure-the-automation-endpoint-n8n-or-camunda)
     * [4.2 GitHub Workflow](#42-github-workflow)
     * [4.3 Manual Trigger](#43-manual-trigger)
 <!-- TOC -->
 
+</details>
+
 ---
 
-## Prerequisites
+## 📋 Prerequisites
 
 ### Hardware
 
-- [ ] All Raspberry Pis flashed with **Raspberry Pi OS Lite (64-bit)** — see [Phase 0](#phase-0-flash-the-sd-card)
+- [ ] All Raspberry Pis flashed with **Raspberry Pi OS Lite (64-bit)** — see [Phase 0](#0️⃣-phase-0-flash-the-sd-card)
 - [ ] Edge node powered on and connected to WiFi (or Ethernet)
 - [ ] Static DHCP reservations configured on router (recommended — can be done after initial boot)
 
@@ -62,7 +69,7 @@ steps are kept to the absolute minimum.
 
 ---
 
-## Phase 0: Flash the SD Card
+## 0️⃣ Phase 0: Flash the SD Card
 
 **Goal:** Write Raspberry Pi OS to the SD card and pre-configure the OS so the Pi boots ready for SSH — no keyboard or monitor needed.
 
@@ -134,7 +141,7 @@ Click **Save**, then **Yes** to apply the settings.
 
 ---
 
-## Phase 1: PC → Edge (Bootstrap)
+## 1️⃣ Phase 1: PC → Edge (Bootstrap)
 
 **Goal:** Convert `homelab-edge` from a fresh OS install into the Ansible control node for the entire homelab.
 
@@ -418,7 +425,7 @@ provisioned, fully seeded, and that Semaphore is online too — see [What the
 Bootstrap Playbook Does](#what-the-bootstrap-playbook-does) for the full
 breakdown of what just happened. Nothing is printed for you to copy anywhere;
 Phase 1 is simply done. Continue straight to [Phase
-2](#phase-2-edge--self-deploy).
+2](#2️⃣-phase-2-edge--self-deploy).
 
 ---
 
@@ -476,16 +483,15 @@ full design rationale, including why no write-capable identity is ever created.
 The playbook ends with Infisical running, fully provisioned, fully seeded, and
 Semaphore online — all reachable over Tailscale (the firewall restricts ports
 8222/3010/8443/8444 to the Tailscale CGNAT range). Confirm with `tailscale status`
-(should list `homelab-edge`). Direct access is available immediately via
-`http://<edge-tailscale-ip>:8222` (Infisical) and `:3010` (Semaphore). After
-Phase 2 deploys Caddy, browser-trusted HTTPS is available at
-`https://homelab-edge.<tailnet>.ts.net:8443` / `:8444` — see
+(should list `homelab-edge`). Direct access to both is available immediately —
+see [Phase 2 → Direct access](#2️⃣-phase-2-edge--self-deploy) for the URL table
+(Tailscale HTTPS on 8443/8444 is added once Phase 2 deploys Caddy); see also
 [docs/NETWORK.md](./docs/NETWORK.md#tailscale).
 
 Now run Phase 2 — `deploy_edge.yml` resolves its application secrets
 (`cloudflare/TUNNEL_TOKEN`, `pihole/WEB_PASSWORD`) from Infisical via the
 `runtime` identity that's already in place, so this is the first point it can
-succeed. See [Phase 2](#phase-2-edge--self-deploy) for both ways to run it
+succeed. See [Phase 2](#2️⃣-phase-2-edge--self-deploy) for both ways to run it
 (SSH into the edge, or directly from your PC/WSL):
 ```bash
 ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
@@ -515,7 +521,7 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 
 ---
 
-## Phase 2: Edge → Self-Deploy
+## 2️⃣ Phase 2: Edge → Self-Deploy
 
 **Goal:** The edge node deploys its own services using Ansible running locally.
 
@@ -583,7 +589,7 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 
 ---
 
-## Phase 3: Edge → Other Nodes
+## 3️⃣ Phase 3: Edge → Other Nodes
 
 **Goal:** Deploy the observe node and service nodes from the edge.
 
@@ -649,7 +655,7 @@ ansible-playbook playbooks/deploy_svc.yml --tags greentechhub
 
 ---
 
-## Phase 4: Automated Deployments
+## 4️⃣ Phase 4: Automated Deployments
 
 **Goal:** Deployments trigger automatically on push to `master`, without a self-hosted runner on the edge.
 

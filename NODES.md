@@ -2,6 +2,11 @@
 
 Per-node hardware specifications and deployed services.
 
+**Quick links:** [🟩 `homelab-edge`](#-homelab-edge--rpi-4-model-b) · [🟨 `homelab-observe`](#-homelab-observe--rpi-4-model-b) · [🟥 `homelab-svc-01`](#-homelab-svc-01--rpi-5-model-b) · [🟦 `homelab-svc-02`](#-homelab-svc-02--rpi-5-model-b-planned) · [🟦 `homelab-svc-03`](#-homelab-svc-03--future-jellyfin--media-node)
+
+<details>
+<summary>Full outline</summary>
+
 <!-- TOC -->
 * [Nodes Reference](#nodes-reference)
   * [🟩 `homelab-edge` — RPi 4 Model B](#-homelab-edge--rpi-4-model-b)
@@ -25,6 +30,8 @@ Per-node hardware specifications and deployed services.
     * [Routing](#routing-1)
     * [Future Enhancements](#future-enhancements)
 <!-- TOC -->
+
+</details>
 
 ---
 
@@ -80,13 +87,7 @@ Per-node hardware specifications and deployed services.
 
 Clients access services directly at `http://<hostname>:<port>`. Internal traffic travels over Tailscale (encrypted) so a separate TLS layer is not required.
 
-> **Infisical and Semaphore are deliberately absent from this table** — they
-> hold or wield secrets/playbook execution and get no LAN-reachable Pi-hole
-> hostname. Access them over Tailscale via Caddy HTTPS:
-> `https://homelab-edge.<tailnet>.ts.net:8443` (Infisical) and `:8444`
-> (Semaphore). Non-browser clients can use the direct ports `8222` / `3010`
-> at the edge node's Tailscale IP. See [docs/NETWORK.md](./docs/NETWORK.md)
-> for the firewall rules that enforce this.
+> 🔒 Infisical and Semaphore are deliberately absent from this table — see the Dockerized Services rows above for their Tailscale-only access URLs, and [docs/NETWORK.md](./docs/NETWORK.md) for the firewall rules that enforce it.
 
 ---
 

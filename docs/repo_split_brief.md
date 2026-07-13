@@ -12,9 +12,42 @@
 - **`depends_on` dropped entirely.** On reflection, services in this homelab are deliberately independent — no shared startup ordering or runtime calls — so there was nothing real to encode. Removed from the schema and from §6.5; the bootstrap lock (a different, already-justified mechanism) is unaffected.
 - §9 fully closed except one remaining build task: the bootstrap playbooks need a small addition to publish per-node lock messages, which doesn't exist yet and is needed before the bootstrap-lock mechanism can function.
 
+**Quick links:** [🎯 Goal](#-1-goal) · [❓ Why](#-2-why-context-from-prior-discussion) · [🗂️ Repo Structure](#-3-current-repo-structure-for-reference) · [✅ What Stays](#-4-what-stays-in-the-bootstraparchitecture-repo) · [📦 What Moves](#-5-what-moves-to-service-repos) · [🔄 Redeploy Mechanism](#-6-metadata-driven-redeploy--schema-revised-again-and-deploy-service-design) · [🖧 Clustering](#-7-clustering-by-node-role-vs-per-service-repos-resolved-heuristic) · [🌿 Branch Plan](#-8-branch-plan-revised-sequencing) · [✂️ Edge Compose Split](#-10-edge-node-compose-split-in-detail) · [📝 Open Items](#-9-remaining-open-items-for-the-repo-owner-to-confirm)
+
+<details>
+<summary>Full outline</summary>
+
+<!-- TOC -->
+* [Homelab Repo Split — Planning Brief (v6)](#homelab-repo-split--planning-brief-v6)
+  * [🎯 1. Goal](#-1-goal)
+  * [❓ 2. Why (context from prior discussion)](#-2-why-context-from-prior-discussion)
+  * [🗂️ 3. Current repo structure (for reference)](#-3-current-repo-structure-for-reference)
+  * [✅ 4. What stays in the bootstrap/architecture repo](#-4-what-stays-in-the-bootstraparchitecture-repo)
+  * [📦 5. What moves to service repos](#-5-what-moves-to-service-repos)
+  * [🔄 6. Metadata-driven redeploy — schema (revised again) and `deploy-service` design](#-6-metadata-driven-redeploy--schema-revised-again-and-deploy-service-design)
+    * [6.1 Service classification (replaces the universal "image_tag" assumption)](#61-service-classification-replaces-the-universal-image_tag-assumption)
+    * [6.2 Schema (revised)](#62-schema-revised)
+    * [6.3 `deploy-service` — CLI design](#63-deploy-service--cli-design)
+    * [6.4 Decided / confirmed items](#64-decided--confirmed-items)
+    * [6.5 Scheduling design — maintenance window, serialization, and dependencies](#65-scheduling-design--maintenance-window-serialization-and-dependencies)
+  * [🖧 7. Clustering by node role vs. per-service repos (resolved heuristic)](#-7-clustering-by-node-role-vs-per-service-repos-resolved-heuristic)
+  * [🌿 8. Branch plan (revised sequencing)](#-8-branch-plan-revised-sequencing)
+  * [✂️ 10. Edge node compose split in detail](#-10-edge-node-compose-split-in-detail)
+    * [10.1 The two tiers today](#101-the-two-tiers-today)
+    * [10.2 The bootstrap compose (`docker-compose.bootstrap-edge.yml`)](#102-the-bootstrap-compose-docker-composebootstrap-edgeyml)
+    * [10.3 The `homelab-edge-services` compose](#103-the-homelab-edge-services-compose)
+    * [10.4 Network topology change](#104-network-topology-change)
+    * [10.5 Phase 1 bootstrap scope change](#105-phase-1-bootstrap-scope-change)
+    * [10.6 Cloudflared rolling-deploy constraint](#106-cloudflared-rolling-deploy-constraint)
+    * [10.7 Roles retired after Phase 4 completion](#107-roles-retired-after-phase-4-completion)
+  * [📝 9. Remaining open items for the repo owner to confirm](#-9-remaining-open-items-for-the-repo-owner-to-confirm)
+<!-- TOC -->
+
+</details>
+
 ---
 
-## 1. Goal
+## 🎯 1. Goal
 
 The current `HomeLab` repo mixes bootstrap/architecture concerns (network, users, hardening, secrets handling) with per-service deployment detail (compose files, service-specific playbooks/scripts) in one place. This is becoming overwhelming to navigate and reason about.
 
@@ -28,7 +61,7 @@ This was always the intended direction (polyrepo-by-service); this branch is the
 
 ---
 
-## 2. Why (context from prior discussion)
+## ❓ 2. Why (context from prior discussion)
 
 - Single-repo-per-service gives independent versioning/tagging, smaller diffs, and the option to make a service (e.g. BottleBot) shareable/standalone without dragging in homelab secrets or infra.
 - Cross-cutting changes (SSH port, subnet, base hardening) stay cheap because they live in the bootstrap repo and apply on a bootstrap release — this was the main cost of polyrepo and it's already mitigated by design.
@@ -37,7 +70,7 @@ This was always the intended direction (polyrepo-by-service); this branch is the
 
 ---
 
-## 3. Current repo structure (for reference)
+## 🗂️ 3. Current repo structure (for reference)
 
 ```
 homelab/
@@ -66,7 +99,7 @@ Node roles today: `homelab-edge` (active), `homelab-observe` (active), `homelab-
 
 ---
 
-## 4. What stays in the bootstrap/architecture repo
+## ✅ 4. What stays in the bootstrap/architecture repo
 
 - `inventories/`, `group_vars/`, `host_vars/` — shared node config, IPs, secrets handling
 - `playbooks/bootstrap_*`, `playbooks/healthcheck.yml`, `playbooks/rollback.yml` (mechanism, not service-specific content)
@@ -80,7 +113,7 @@ Node roles today: `homelab-edge` (active), `homelab-observe` (active), `homelab-
 
 This is effectively a **platform engineering repo**: it owns node bootstrap, cross-cutting config, and the deployment control plane, but no service content.
 
-## 5. What moves to service repos
+## 📦 5. What moves to service repos
 
 Decided/concrete moves:
 
@@ -102,7 +135,7 @@ Service repos contain only: `docker-compose.yml`, `.env.example`, `scripts/`, `c
 
 ---
 
-## 6. Metadata-driven redeploy — schema (revised again) and `deploy-service` design
+## 🔄 6. Metadata-driven redeploy — schema (revised again) and `deploy-service` design
 
 Lives in the bootstrap repo as `services.yml`, kept **central** (decided — see §9 for reasoning). Read by `deploy-service`, a standalone Python tool that Ansible invokes rather than reimplements (`- command: deploy-service deploy bottlebot`). This keeps deploy logic out of Ansible entirely and makes it independently testable/runnable.
 
@@ -258,7 +291,7 @@ Camunda 8's native primitives map cleanly onto both scheduling requirements and 
 
 ---
 
-## 7. Clustering by node role vs. per-service repos (resolved heuristic)
+## 🖧 7. Clustering by node role vs. per-service repos (resolved heuristic)
 
 Raised directly by the repo owner: some services are too small to justify their own repo, and clustering by node role may be more appropriate in places. Validated and refined.
 
@@ -276,7 +309,7 @@ This resolves the original open question from v1: the schema in §6 already supp
 
 ---
 
-## 8. Branch plan (revised sequencing)
+## 🌿 8. Branch plan (revised sequencing)
 
 **Sequencing reversed from v1** based on validation: build and prove `deploy-service` + `services.yml` *before* moving any repo content. This means the existing deploy paths (Ansible/Phase 4) keep working untouched while the new mechanism is built and proven, so rollback to the current state is trivial at every stage rather than only at the end.
 
@@ -292,7 +325,7 @@ This order means nothing is moved out of the working monorepo until there's a pr
 
 ---
 
-## 10. Edge node compose split in detail
+## ✂️ 10. Edge node compose split in detail
 
 The current `docker-compose.edge.yml` bundles two tiers that have different owners after the split. This section records exactly what goes where and the implications for bootstrap sequencing.
 
@@ -371,7 +404,7 @@ Cloudflared maintains the Cloudflare Tunnel. If it exits, all remote access via 
 
 ---
 
-## 9. Remaining open items for the repo owner to confirm
+## 📝 9. Remaining open items for the repo owner to confirm
 
 - ~~Camunda's role in the standard deploy path~~ — **resolved in direction**: Camunda becomes the deploy trigger/approval front door, replacing n8n in that specific role.
 - ~~`deploy-service` language/runtime~~ — **closed**: Python.

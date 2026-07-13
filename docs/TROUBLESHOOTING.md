@@ -2,43 +2,48 @@
 
 Common issues, diagnostic commands, and recovery procedures. Organised by area.
 
+**Quick links:** [🩺 General Diagnostics](#-general-diagnostics) · [🔑 SSH & Connectivity](#-ssh--connectivity) · [⚙️ Ansible](#-ansible) · [🐳 Docker & Containers](#-docker--containers) · [🧭 DNS](#-dns-pi-hole--unbound) · [🔒 Tailscale](#-tailscale) · [🔐 Infisical & Semaphore](#-infisical--semaphore) · [☁️ Cloudflare Tunnel](#-cloudflare-tunnel) · [📊 Monitoring Stack](#-monitoring-stack) · [🗄️ Databases](#-databases) · [🚀 Automated Deploys (Phase 4)](#-automated-deploys-phase-4) · [🚨 Disaster Recovery](#disaster-recovery)
+
+<details>
+<summary>Full outline</summary>
+
 <!-- TOC -->
 * [Troubleshooting](#troubleshooting)
-  * [General Diagnostics](#general-diagnostics)
-  * [SSH & Connectivity](#ssh--connectivity)
+  * [🩺 General Diagnostics](#-general-diagnostics)
+  * [🔑 SSH & Connectivity](#-ssh--connectivity)
     * [Cannot SSH to a node](#cannot-ssh-to-a-node)
     * [Ansible cannot reach a node](#ansible-cannot-reach-a-node)
-  * [Ansible](#ansible)
+  * [⚙️ Ansible](#-ansible)
     * [Playbook fails mid-run](#playbook-fails-mid-run)
     * [Vault decryption error](#vault-decryption-error)
     * ["sudo: a password is required" during bootstrap](#sudo-a-password-is-required-during-bootstrap)
-  * [Docker & Containers](#docker--containers)
+  * [🐳 Docker & Containers](#-docker--containers)
     * [A container is not running](#a-container-is-not-running)
     * [Container is in a crash loop](#container-is-in-a-crash-loop)
     * [Docker daemon not starting](#docker-daemon-not-starting)
     * [Redeploying a single service](#redeploying-a-single-service)
-  * [DNS (Pi-hole & Unbound)](#dns-pi-hole--unbound)
+  * [🧭 DNS (Pi-hole & Unbound)](#-dns-pi-hole--unbound)
     * [DNS resolution not working for a LAN client](#dns-resolution-not-working-for-a-lan-client)
     * [Unbound not resolving upstream](#unbound-not-resolving-upstream)
     * [A `.homelab.local` hostname is missing](#a-homelablocal-hostname-is-missing)
-  * [Tailscale](#tailscale)
+  * [🔒 Tailscale](#-tailscale)
     * [Node not appearing in Tailscale admin console](#node-not-appearing-in-tailscale-admin-console)
     * [Cannot reach a node over Tailscale](#cannot-reach-a-node-over-tailscale)
-  * [Infisical & Semaphore](#infisical--semaphore)
+  * [🔐 Infisical & Semaphore](#-infisical--semaphore)
     * [Bootstrap playbook reports Infisical already initialised — nothing provisioned or seeded](#bootstrap-playbook-reports-infisical-already-initialised--nothing-provisioned-or-seeded)
     * [Bootstrap instance/seed step fails with an authentication or 4xx/5xx error](#bootstrap-instanceseed-step-fails-with-an-authentication-or-4xx5xx-error)
     * [Vault → Infisical conversion status](#vault--infisical-conversion-status)
     * [Outstanding hardening tasks (not yet implemented)](#outstanding-hardening-tasks-not-yet-implemented)
-  * [Cloudflare Tunnel](#cloudflare-tunnel)
+  * [☁️ Cloudflare Tunnel](#-cloudflare-tunnel)
     * [External services not reachable](#external-services-not-reachable)
-  * [Monitoring Stack](#monitoring-stack)
+  * [📊 Monitoring Stack](#-monitoring-stack)
     * [Grafana showing no data](#grafana-showing-no-data)
     * [Alertmanager not sending notifications](#alertmanager-not-sending-notifications)
-  * [Databases](#databases)
+  * [🗄️ Databases](#-databases)
     * [PostgreSQL not starting](#postgresql-not-starting)
     * [Restoring a PostgreSQL backup](#restoring-a-postgresql-backup)
     * [Elasticsearch heap pressure](#elasticsearch-heap-pressure)
-  * [Automated Deploys (Phase 4)](#automated-deploys-phase-4)
+  * [🚀 Automated Deploys (Phase 4)](#-automated-deploys-phase-4)
     * [Deploy not triggering after a push to main](#deploy-not-triggering-after-a-push-to-main)
     * [Manual deploy fallback](#manual-deploy-fallback)
   * [Disaster Recovery](#disaster-recovery)
@@ -47,9 +52,11 @@ Common issues, diagnostic commands, and recovery procedures. Organised by area.
     * [Complete homelab loss](#complete-homelab-loss)
 <!-- TOC -->
 
+</details>
+
 ---
 
-## General Diagnostics
+## 🩺 General Diagnostics
 
 Quick health check across all nodes:
 
@@ -83,7 +90,7 @@ ansible-playbook playbooks/healthcheck.yml
 
 ---
 
-## SSH & Connectivity
+## 🔑 SSH & Connectivity
 
 ### Cannot SSH to a node
 
@@ -127,7 +134,7 @@ Common causes: wrong IP in `host_vars/`, SSH key not deployed to the node, firew
 
 ---
 
-## Ansible
+## ⚙️ Ansible
 
 ### Playbook fails mid-run
 
@@ -172,7 +179,7 @@ After bootstrap, subsequent playbooks use the `homelab` user with passwordless s
 
 ---
 
-## Docker & Containers
+## 🐳 Docker & Containers
 
 ### A container is not running
 
@@ -242,7 +249,7 @@ ansible-playbook playbooks/deploy_<node>.yml \
 
 ---
 
-## DNS (Pi-hole & Unbound)
+## 🧭 DNS (Pi-hole & Unbound)
 
 ### DNS resolution not working for a LAN client
 
@@ -294,7 +301,7 @@ hostname is missing:
 
 ---
 
-## Tailscale
+## 🔒 Tailscale
 
 > See [NETWORK.md](./NETWORK.md#tailscale) for firewall rules, ACL policy, and Tailscale access URLs for Infisical/Semaphore.
 
@@ -330,24 +337,22 @@ journalctl -u tailscaled --no-pager -n 50
 
 **Check 2 — Has the auth key expired?**
 
-```bash
-sudo tailscale up --authkey=<new-key>
-```
-
-Update the key in `inventories/group_vars/all/vault.yml` and re-run the node's deploy playbook to keep it in sync.
+Same fix as [Node not appearing in Tailscale admin console](#node-not-appearing-in-tailscale-admin-console) above — re-authenticate with a new key and update the vault.
 
 **Check 3 — ACL blocking the connection?**
 
-Review ACLs in the Tailscale admin console. See `docs/NETWORK.md` for the recommended ACL policy. Remember that each node has its own Tailscale IP — ensure ACL rules reference node IPs or tags directly, not just the subnet route.
+Review ACLs in the Tailscale admin console. See `docs/NETWORK.md` for the recommended ACL policy. Remember that each 
+node has its own Tailscale IP — ensure ACL rules reference node IPs or tags directly, not just the subnet route.
 
 ---
 
-## Infisical & Semaphore
+## 🔐 Infisical & Semaphore
 
 Both run on `homelab-edge`, **Tailscale-only** (no Pi-hole hostname — see [NETWORK.md](./NETWORK.md#tailscale) for firewall rules and access URLs).
 Browser access: `https://homelab-edge.<tailnet>.ts.net:8443` (Infisical) / `:8444` (Semaphore).
 Direct non-browser access: `http://<edge-tailscale-ip>:8222` / `:3010`.
-If you can't reach either path, start with the [Tailscale](#tailscale) checks above — connectivity issues here are almost always "the requesting device isn't on the tailnet" or "ACL/firewall blocks the port," not the containers themselves.
+If you can't reach either path, start with the [Tailscale](#-tailscale) checks above — connectivity issues here are almost 
+always "the requesting device isn't on the tailnet" or "ACL/firewall blocks the port," not the containers themselves.
 
 ### Bootstrap playbook reports Infisical already initialised — nothing provisioned or seeded
 
@@ -469,7 +474,7 @@ deferred. Tracked here so they have a permanent home.
 
 ---
 
-## Cloudflare Tunnel
+## ☁️ Cloudflare Tunnel
 
 ### External services not reachable
 
@@ -505,7 +510,7 @@ Verify the public hostname mapping in `host_vars/homelab-edge.yml` matches what 
 
 ---
 
-## Monitoring Stack
+## 📊 Monitoring Stack
 
 ### Grafana showing no data
 
@@ -554,7 +559,7 @@ deploy-service deploy homelab-observe-services
 
 ---
 
-## Databases
+## 🗄️ Databases
 
 ### PostgreSQL not starting
 
@@ -644,7 +649,7 @@ ansible-playbook playbooks/deploy_svc.yml --tags camunda
 
 ---
 
-## Automated Deploys (Phase 4)
+## 🚀 Automated Deploys (Phase 4)
 
 ### Deploy not triggering after a push to main
 
@@ -741,7 +746,7 @@ Since the edge node is intact, recovery is straightforward:
    ansible-playbook playbooks/bootstrap_node.yml --limit <node>
    ansible-playbook playbooks/deploy_<role>.yml
    ```
-3. Restore databases if needed (see [Databases](#databases) above)
+3. Restore databases if needed (see [Databases](#-databases) above)
 
 ### Complete homelab loss
 
