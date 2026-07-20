@@ -44,7 +44,7 @@ infisical_seed_folders:
   - network
   - semaphore
   - tailscale
-  - observe
+  - uptime_kuma
 
 # Project role slug — ⚠️ verify against the deployed Infisical version; this is
 # a built-in project role name and may differ across releases. read-only:

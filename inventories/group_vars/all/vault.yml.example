@@ -119,8 +119,6 @@ vault_pihole_web_password: "changeme"
 vault_grafana_admin_password: "changeme"
 
 # ── Uptime Kuma ───────────────────────────────────────────────────────────────
-# Consumed only by homelab-observe-services' setup_monitors.py post_hook (via
-# Infisical) — no Ansible role reads these directly, unlike Semaphore's above.
 vault_uptime_kuma_admin_user: "admin"
 vault_uptime_kuma_admin_password: "changeme"
 

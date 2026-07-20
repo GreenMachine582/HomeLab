@@ -64,8 +64,6 @@ repos:
       # placeholders in them need envsubst before `docker compose up` — see
       # scripts/predeploy.sh.
       pre_hook: [scripts/predeploy.sh]
-      # Reconciles Uptime Kuma's monitors against configs/uptime-kuma/monitors.yml
-      # via its API — runs after the stack is up so Uptime Kuma is reachable.
       post_hook: [scripts/setup_monitors.sh]
     secrets:
       infisical:
@@ -89,9 +87,9 @@ repos:
           env: DISCORD_WEBHOOK_WARNING
         - path: /prod/discord/WEBHOOK_INFO
           env: DISCORD_WEBHOOK_INFO
-        - path: /prod/observe/UPTIME_KUMA_ADMIN_USER
+        - path: /prod/uptime_kuma/ADMIN_USER
           env: UPTIME_KUMA_ADMIN_USER
-        - path: /prod/observe/UPTIME_KUMA_ADMIN_PASSWORD
+        - path: /prod/uptime_kuma/ADMIN_PASSWORD
           env: UPTIME_KUMA_ADMIN_PASSWORD
     rollback:
       strategy: git
