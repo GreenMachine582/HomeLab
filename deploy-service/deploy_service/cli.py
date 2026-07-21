@@ -19,17 +19,31 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     entry = config.load(args.config, args.repo)
 
     repo_url = entry["repo"]
-    ref = entry.get("ref", "main")
     path = entry["path"]
     deployment = entry.get("deployment", {})
     deploy_cfg = entry.get("deploy", {})
     secrets_cfg = entry.get("secrets", {})
 
-    if deployment.get("type") != "compose":
+    dtype = deployment.get("type")
+    if dtype not in ("compose", "image"):
         sys.exit(
-            f"[deploy-service] Unsupported deployment type '{deployment.get('type')}' "
-            f"for '{args.repo}'. Only 'compose' is implemented."
+            f"[deploy-service] Unsupported deployment type '{dtype}' "
+            f"for '{args.repo}'. Only 'compose' and 'image' are implemented."
         )
+
+    image = None
+    if dtype == "image":
+        image = deployment.get("image")
+        if not image:
+            sys.exit(
+                f"[deploy-service] '{args.repo}' has deployment.type: image but no "
+                f"deployment.image set in {args.config}"
+            )
+
+    # --ref overrides the git checkout ref for type: compose, or the image tag
+    # to pull for type: image — it means "the version to deploy" in either case.
+    ref = args.ref if (args.ref and dtype == "compose") else entry.get("ref", "main")
+    image_tag = args.ref if (args.ref and dtype == "image") else "latest"
 
     target_node = entry.get("target_node")
     if not target_node:
@@ -56,7 +70,13 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
 
     compose.clone_or_pull(repo_url, path, ref=ref, target=tgt, github_token=github_token, dry_run=args.dry_run)
     compose.run_hooks(path, pre_hook, injected_env, "pre-deploy", target=tgt, dry_run=args.dry_run)
-    compose.deploy(path, compose_files, injected_env, strategy=strategy, target=tgt, dry_run=args.dry_run)
+    if dtype == "image":
+        compose.deploy_image(
+            path, compose_files, injected_env, image=image, tag=image_tag,
+            strategy=strategy, target=tgt, dry_run=args.dry_run,
+        )
+    else:
+        compose.deploy(path, compose_files, injected_env, strategy=strategy, target=tgt, dry_run=args.dry_run)
     compose.run_hooks(path, post_hook, injected_env, "post-deploy", target=tgt, dry_run=args.dry_run)
 
     if args.dry_run:
@@ -86,6 +106,14 @@ def main() -> None:
         metavar="PATH",
         help="Path to the Ansible inventory used to resolve remote target_nodes "
         "(default: <services.yml's dir>/inventories/prod.yml)",
+    )
+    deploy_p.add_argument(
+        "--ref",
+        default=None,
+        metavar="REF",
+        help="Version to deploy: overrides the git checkout ref for "
+        "deployment.type: compose, or the image tag to pull for "
+        "deployment.type: image (default: latest)",
     )
     deploy_p.add_argument(
         "--dry-run",

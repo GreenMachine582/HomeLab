@@ -166,6 +166,33 @@ def run_hooks(
         _run_on(target, ["bash", script], cwd=path, injected_env=injected_env, dry_run=dry_run)
 
 
+def _check_rolling(strategy: str) -> None:
+    if strategy != "rolling":
+        sys.exit(f"[deploy-service] Unknown deploy strategy '{strategy}'. Only 'rolling' is supported.")
+
+
+def _up(
+    path: str,
+    compose_files: list[str],
+    injected_env: dict[str, str],
+    target: Target | None = None,
+    dry_run: bool = False,
+) -> None:
+    target = target or Target.local()
+    file_args: list[str] = []
+    for cf in compose_files:
+        file_args += ["-f", cf]
+
+    print("[deploy-service] Applying stack (up -d --remove-orphans)")
+    _run_on(
+        target,
+        ["docker", "compose"] + file_args + ["up", "-d", "--remove-orphans"],
+        cwd=path,
+        injected_env=injected_env,
+        dry_run=dry_run,
+    )
+
+
 def deploy(
     path: str,
     compose_files: list[str],
@@ -179,8 +206,7 @@ def deploy(
     strategy='rolling' enforces `up -d --remove-orphans` only — never `down`.
     Secrets are passed as environment variables; nothing is written to disk.
     """
-    if strategy != "rolling":
-        sys.exit(f"[deploy-service] Unknown deploy strategy '{strategy}'. Only 'rolling' is supported.")
+    _check_rolling(strategy)
 
     target = target or Target.local()
     file_args: list[str] = []
@@ -190,11 +216,38 @@ def deploy(
     print(f"[deploy-service] Pulling images ({', '.join(compose_files)})")
     _run_on(target, ["docker", "compose"] + file_args + ["pull"], cwd=path, injected_env=injected_env, dry_run=dry_run)
 
-    print("[deploy-service] Applying stack (up -d --remove-orphans)")
-    _run_on(
-        target,
-        ["docker", "compose"] + file_args + ["up", "-d", "--remove-orphans"],
-        cwd=path,
-        injected_env=injected_env,
-        dry_run=dry_run,
-    )
+    _up(path, compose_files, injected_env, target=target, dry_run=dry_run)
+
+
+def pull_image(
+    image: str,
+    tag: str,
+    target: Target | None = None,
+    dry_run: bool = False,
+) -> None:
+    """Explicitly pull a single image:tag — used by deployment.type: image
+    so a specific tag can be pulled independent of whatever's pinned in the
+    service's docker-compose.yml (unlike `docker compose pull`, which pulls
+    whatever the compose file/env already specifies)."""
+    target = target or Target.local()
+    ref = f"{image}:{tag}"
+    print(f"[deploy-service] Pulling image ({ref})")
+    _run_on(target, ["docker", "pull", ref], injected_env=None, dry_run=dry_run)
+
+
+def deploy_image(
+    path: str,
+    compose_files: list[str],
+    injected_env: dict[str, str],
+    image: str,
+    tag: str,
+    strategy: str = "rolling",
+    target: Target | None = None,
+    dry_run: bool = False,
+) -> None:
+    """Pull the named image:tag explicitly, then docker compose up -d for the
+    service stack — the deployment.type: image counterpart to deploy()."""
+    _check_rolling(strategy)
+    target = target or Target.local()
+    pull_image(image, tag, target=target, dry_run=dry_run)
+    _up(path, compose_files, injected_env, target=target, dry_run=dry_run)
