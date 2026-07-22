@@ -3,7 +3,7 @@ services:
   # Tailscale-only — no public ingress, no Caddy vhost (see UFW rules in
   # group_vars/edge.yml and docs/NETWORK.md "Tailscale-only routing"). High
   # blast-radius control plane: holds every application secret.
-  # Dedicated Postgres + Redis (NOT the Camunda Postgres — keeps edge self-contained).
+  # Dedicated Postgres + Redis — keeps edge self-contained.
   # .env rendered by roles/infisical to /opt/infisical/.env (mode 0600) — deliberately
   # OUTSIDE the repo dir so repo git operations never touch node-generated secrets.
   # All three containers share /opt/infisical/.env (env_file) — it carries both the

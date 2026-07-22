@@ -94,3 +94,54 @@ repos:
     rollback:
       strategy: git
     services: [prometheus, loki, grafana, alertmanager, ntfy, uptime-kuma, portainer]
+
+  camunda-platform:
+    repo: github.com/GreenMachine582/camunda-platform
+    ref: master
+    path: /srv/services/camunda-platform
+    target_node: homelab-svc-01
+    deployment:
+      type: compose
+    deploy:
+      compose_files: [docker-compose.yml]
+      strategy: rolling
+      # Creates the ES bind-mount dir and sets vm.max_map_count (Elasticsearch
+      # requirement) before compose up.
+      pre_hook: [scripts/predeploy.sh]
+    secrets:
+      infisical:
+        - path: /prod/camunda/ADMIN_USER
+          env: CAMUNDA_ADMIN_USER
+        - path: /prod/camunda/ADMIN_PASSWORD
+          env: CAMUNDA_ADMIN_PASSWORD
+        - path: /prod/camunda/LICENSE_KEY
+          env: CAMUNDA_LICENSE_KEY
+    rollback:
+      strategy: git
+    services: [camunda-orchestration, elasticsearch]
+
+  n8n-automation:
+    repo: github.com/GreenMachine582/n8n-automation
+    ref: master
+    path: /srv/services/n8n-automation
+    target_node: homelab-svc-01
+    deployment:
+      type: compose
+    deploy:
+      compose_files: [docker-compose.yml]
+      strategy: rolling
+    secrets:
+      infisical:
+        - path: /prod/n8n/USER
+          env: N8N_USER
+        - path: /prod/n8n/PASSWORD
+          env: N8N_PASSWORD
+        - path: /prod/n8n/OWNER_EMAIL
+          env: N8N_OWNER_EMAIL
+        - path: /prod/n8n/OWNER_PASSWORD
+          env: N8N_OWNER_PASSWORD
+        - path: /prod/n8n/ENCRYPTION_KEY
+          env: N8N_ENCRYPTION_KEY
+    rollback:
+      strategy: git
+    services: [n8n]

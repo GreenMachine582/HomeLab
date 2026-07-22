@@ -29,37 +29,6 @@
     backup_timestamp: "{{ ansible_date_time.date }}"
 
   tasks:
-    # ── PostgreSQL backup (svc-01: Camunda DB) ────────────────────────────────
-    - name: "Backup | Postgres | Ensure backup dir exists (svc-01)"
-      ansible.builtin.file:
-        path: "{{ postgres_backup_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: "0700"
-      when:
-        - inventory_hostname == 'homelab-svc-01'
-        - postgres_backup_dir is defined
-      tags: [postgres]
-
-    - name: "Backup | Postgres | Dump Camunda database (svc-01)"
-      ansible.builtin.command:
-        cmd: >
-          docker exec camunda-postgres
-          pg_dump -U {{ vault_camunda_db_user }} camunda
-          -f /backups/camunda_{{ backup_timestamp }}.sql
-      when: inventory_hostname == 'homelab-svc-01'
-      tags: [postgres]
-      changed_when: true
-      no_log: true   # Suppress output (may contain connection strings)
-
-    - name: "Backup | Postgres | Compress backup (svc-01)"
-      ansible.builtin.command:
-        cmd: gzip -f {{ postgres_backup_dir }}/camunda_{{ backup_timestamp }}.sql
-      when: inventory_hostname == 'homelab-svc-01'
-      tags: [postgres]
-      changed_when: true
-
     # ── PostgreSQL backup (svc-02: GreenTechHub DB) ───────────────────────────
     - name: "Backup | Postgres | Dump GreenTechHub database (svc-02)"
       ansible.builtin.command:
