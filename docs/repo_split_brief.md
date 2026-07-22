@@ -1,16 +1,15 @@
-# Homelab Repo Split — Planning Brief (v6)
+# Homelab Repo Split — Planning Brief (v7)
 
 > **This is an active design brief, not an operations reference.** It documents the in-progress polyrepo migration strategy (`deploy-service`, `services.yml`, service repo splits). For day-to-day operations, see [README.md](../README.md), [BOOTSTRAP.md](../BOOTSTRAP.md), or [NETWORK.md](./NETWORK.md).
 
-**Status:** `homelab-edge-services` live (§8 Phase 4 underway — edge complete). Remaining Phase 4: `homelab-observe-services`, svc-01 splits. Phase 5 cleanup in progress.
+**Status:** `homelab-edge-services` live (§8 Phase 4 underway — edge complete). `homelab-observe-services` extracted and registered, deploy-verify pending live node. `camunda-platform` and `n8n-automation` extracted and registered (svc-01 split, Milestone D1/D2) — deploy-verify pending `homelab-svc-01` bootstrap (Milestone B). Remaining Phase 4: `discord-gateway` (D3), gated on the keep/remove decision. Phase 5 cleanup in progress.
 **Origin repo:** https://github.com/GreenMachine582/HomeLab
 **Purpose of this doc:** Final design reference ahead of implementation.
 
-**Changelog from v5:**
-- **Concurrent/duplicate deploy requests are rejected, not queued** — decided for auditability and simplicity; rejection includes the reason and what's currently running.
-- **Approval expiry decided: 5 business days, configurable**, via a timer boundary event on the approval task. Stale approvals require re-approval rather than firing later against a possibly outdated ref.
-- **`depends_on` dropped entirely.** On reflection, services in this homelab are deliberately independent — no shared startup ordering or runtime calls — so there was nothing real to encode. Removed from the schema and from §6.5; the bootstrap lock (a different, already-justified mechanism) is unaffected.
-- §9 fully closed except one remaining build task: the bootstrap playbooks need a small addition to publish per-node lock messages, which doesn't exist yet and is needed before the bootstrap-lock mechanism can function.
+**Changelog from v6:**
+- **`camunda-platform` and `n8n-automation` extracted and registered** in `services.yml` (svc-01 split, Milestone D1/D2) — deploy-verify pending `homelab-svc-01` bootstrap.
+- **`deploy-service`'s `type: image` deployment path is implemented** (`deploy_service/cli.py`, `compose.py`) — the CLI no longer hard-exits on it; this was the last blocker noted for Milestone D3 (discord-gateway).
+- **§9 open items list restored to full resolved detail** (Camunda's role, deploy-service language/CLI/execution location, image registry, webhook auth, scheduling, queue/reject, approval expiry, `depends_on` — all closed) and the bootstrap-lock design fully resolved (auth = none needed, trust boundary; BPMN reuses the existing `global-deploy-lock` correlation pattern; a 30-60min stale-lock timeout) — this content had regressed to a vaguer state in-repo and is restored here.
 
 **Quick links:** [🎯 Goal](#-1-goal) · [❓ Why](#-2-why-context-from-prior-discussion) · [🗂️ Repo Structure](#-3-current-repo-structure-for-reference) · [✅ What Stays](#-4-what-stays-in-the-bootstraparchitecture-repo) · [📦 What Moves](#-5-what-moves-to-service-repos) · [🔄 Redeploy Mechanism](#-6-metadata-driven-redeploy--schema-revised-again-and-deploy-service-design) · [🖧 Clustering](#-7-clustering-by-node-role-vs-per-service-repos-resolved-heuristic) · [🌿 Branch Plan](#-8-branch-plan-revised-sequencing) · [✂️ Edge Compose Split](#-10-edge-node-compose-split-in-detail) · [📝 Open Items](#-9-remaining-open-items-for-the-repo-owner-to-confirm)
 
@@ -18,7 +17,7 @@
 <summary>Full outline</summary>
 
 <!-- TOC -->
-* [Homelab Repo Split — Planning Brief (v6)](#homelab-repo-split--planning-brief-v6)
+* [Homelab Repo Split — Planning Brief (v7)](#homelab-repo-split--planning-brief-v7)
   * [🎯 1. Goal](#-1-goal)
   * [❓ 2. Why (context from prior discussion)](#-2-why-context-from-prior-discussion)
   * [🗂️ 3. Current repo structure (for reference)](#-3-current-repo-structure-for-reference)
@@ -316,7 +315,7 @@ This resolves the original open question from v1: the schema in §6 already supp
 1. **Phase 1 — build the mechanism, in place.** Build `deploy-service` and `services.yml` inside the existing `HomeLab` monorepo, without moving anything yet. Confirm the webhook auth (custom headers, validated by n8n) and secrets injection path work end-to-end against a no-op or trivial target. Also in this phase: rename `docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml` and strip the network appliance services from it (they'll exist temporarily in neither compose until `homelab-edge-services` is stood up in Phase 4 — on a live node, coordinate this rename with a deploy window). Update `roles/infisical`, `roles/semaphore`, and `bootstrap_edge.yml` to reference the new filename.
 2. **Phase 2 — convert one service.** Extract BottleBot into its own repo (it's new, has no production dependents, and was always going to be standalone).
 3. **Phase 3 — prove the mechanism against it.** Deploy BottleBot through `deploy-service` end-to-end: webhook → (Camunda or n8n, per §6.4) → `deploy-service` → pull/layer-env/hooks/compose-up/healthcheck. BottleBot is a "custom application" per §6.1, so confirm its image-based rollback works by deliberately rolling back to a previous `ghcr.io` tag at least once.
-4. **Phase 4 — convert the rest, one at a time.** ✅ `homelab-edge-services` (network appliance tier — live). Remaining: `homelab-observe-services`, then svc-01's split (`camunda-platform`, `n8n-automation`, `discord-gateway`), each validated against the proven mechanism before moving to the next.
+4. **Phase 4 — convert the rest, one at a time.** ✅ `homelab-edge-services` (network appliance tier — live). ✅ `homelab-observe-services` (extracted, registered; deploy-verify pending live node). ✅ `camunda-platform` / `n8n-automation` (extracted, registered; deploy-verify pending `homelab-svc-01` bootstrap). Remaining: `discord-gateway`, gated on the B6 keep/remove decision — independent of the other splits.
    > Note: the `docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml` rename described in Phase 1 was intentionally deferred — the appliance service strip achieves the same isolation without requiring a filename change and reference update across bootstrap roles. The rename can be revisited in Phase 5.
 5. **Phase 5 — retire the old path.** Once all services are migrated and stable, remove the old direct `ansible-playbook`-driven deploy logic for services (bootstrap-level Ansible roles stay, per §4). Specifically: delete `roles/edge_services/`, delete `playbooks/deploy_edge.yml`, update `playbooks/update_all.yml` and `playbooks/backup.yml` to cover bootstrap-tier services only (Infisical, Semaphore).
 6. **Throughout:** keep README/BOOTSTRAP.md/NODES.md updated as structure stabilizes, rather than as a single end-of-migration step.
@@ -417,9 +416,9 @@ Cloudflared maintains the Cloudflare Tunnel. If it exits, all remote access via 
 - ~~Queue vs. reject behavior for a second concurrent deploy~~ — **closed**: rejected outright, with the reason (which service/ref is currently running) returned for both the requester and the audit trail.
 - ~~Approval expiry behavior~~ — **closed**: expires after 5 business days (configurable), via a timer boundary event on the approval task — re-approval required after that.
 - ~~`depends_on`~~ — **dropped**: services run independently by design, so there's nothing to encode. See §6.5.
-- **Bootstrap-lock signaling — design decided, implementation gated on `roles/camunda`.**  
-  The mechanism has three layers; the design decisions are closed, implementation deferred until the Camunda role is written:
-  - **Ansible side** (`bootstrap_node.yml`): two `ansible.builtin.uri` tasks — "bootstrap started" in `pre_tasks`, "bootstrap finished" in `post_tasks`, both `ignore_errors: true`. Endpoint: Zeebe REST API at `http://{{ ip_svc_01 }}:8080/v1/message/publication`. Correlation key: `"bootstrap-lock-{{ inventory_hostname }}"` (e.g. `"bootstrap-lock-homelab-svc-01"`). Credentials fetched from Infisical at runtime (same pattern as `roles/infisical/tasks/lookup.yml`) since vault.yml is not available on the edge. Auth method TBD when `roles/camunda` is written.
+- **Bootstrap-lock signaling — fully resolved**, implementation gated on `camunda-platform` being deployed and live:
+  - **Ansible side** (`bootstrap_node.yml`): two `ansible.builtin.uri` tasks — "bootstrap started" in `pre_tasks`, "bootstrap finished" in `post_tasks`, both `ignore_errors: true`. Endpoint: Zeebe REST API at `http://{{ ip_svc_01 }}:8080/v1/message/publication`. Correlation key: `"bootstrap-lock-{{ inventory_hostname }}"` (e.g. `"bootstrap-lock-homelab-svc-01"`). **Auth: none at the app level** — both `homelab-edge` and `homelab-svc-01` are already-trusted internal nodes on the Tailscale-only network, the same trust boundary already relied on for Infisical/Semaphore; no bearer token or Keycloak/Identity stack needed for a call between nodes that already trust each other.
   - **`bootstrap_edge.yml`**: explicitly excluded — Phase 1 runs before Camunda exists, and a first bootstrap has no concurrent deploys to race against. A comment in the playbook documents this.
-  - **Camunda BPMN side**: the deploy process needs a gateway or intermediate catch event that checks for an active bootstrap-lock instance before proceeding. Design and implementation deferred to when `roles/camunda` is built. The Ansible tasks above are inert until the BPMN side is wired.
-  - Both sides land together when `roles/camunda` is implemented — no partial implementation beforehand.
+  - **Camunda BPMN side**: no new query surface. The deploy process gains a second Zeebe message-correlation gate — alongside the existing global `"global-deploy-lock"` gate from §6.5 — dynamically keyed to `"bootstrap-lock-<target-node>"`. Zeebe's existing "a second correlation on the same key is rejected outright" behavior, already relied on for deploy-vs-deploy exclusion, handles bootstrap-vs-deploy exclusion identically — no Operate/REST query gateway, no new mechanism, just a second correlation attempt at the same point in the flow. Design and implementation deferred until `camunda-platform` is live (see Milestone D1) and a BPMN process is actually deployed to it — the Ansible tasks above are inert until the BPMN side is wired.
+  - **Stale-lock timeout**: a timer boundary event on the bootstrap-lock process instance (~30-60 minutes — bootstrap runs are minutes, not the 5-business-day approval-expiry window from §6.5) auto-releases the lock if "bootstrap finished" never arrives, so a crashed or interrupted bootstrap run can't permanently block future deploys to that node.
+  - Both sides land together — no partial implementation beforehand.
