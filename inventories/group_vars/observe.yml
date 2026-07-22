@@ -88,7 +88,7 @@ alertmanager_routes:
 uptime_kuma_port: 3001
 
 # Monitor config is currently applied manually via the Uptime Kuma UI.
-# Endpoint reference — keep in sync with MONITORING.md:
+# Endpoint reference — keep in sync with homelab-observe-services/docs/MONITORING.md:
 #   http://homelab-edge/health
 #   http://homelab-edge/admin
 #   http://homelab-observe:3000/api/health

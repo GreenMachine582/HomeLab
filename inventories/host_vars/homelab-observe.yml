@@ -11,7 +11,7 @@ node_hostname: homelab-observe
 # ── Storage ───────────────────────────────────────────────────────────────────
 # SD card only. Prometheus and Loki data can grow quickly.
 # If disk pressure occurs, mount a USB SSD and update docker_data_dir.
-# See MONITORING.md § Storage Pressure for guidance.
+# See homelab-observe-services/docs/MONITORING.md § Storage Pressure for guidance.
 docker_data_dir: /var/lib/docker
 
 # ── Prometheus scrape target overrides ────────────────────────────────────────
