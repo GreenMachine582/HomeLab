@@ -634,8 +634,9 @@ ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 # Bootstrap svc-01
 ansible-playbook playbooks/bootstrap_node.yml --limit homelab-svc-01
 
-# Deploy the Camunda stack
-ansible-playbook playbooks/deploy_svc.yml --tags camunda
+# Deploy Camunda + n8n
+deploy-service deploy camunda-platform --config /opt/homelab/services.yml
+deploy-service deploy n8n-automation --config /opt/homelab/services.yml
 ```
 
 For `svc-02` (when provisioned):
@@ -645,13 +646,6 @@ ansible-playbook playbooks/bootstrap_node.yml --limit homelab-svc-02
 
 ansible-playbook playbooks/deploy_svc.yml --tags greentechhub
 ```
-
-> Use Docker Compose profiles on `svc-01` to bring up databases before dependent services:
-> ```bash
-> docker compose --profile databases up -d
-> # Wait for health checks to pass, then:
-> docker compose --profile camunda up -d
-> ```
 
 ---
 

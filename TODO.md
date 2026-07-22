@@ -45,15 +45,21 @@ Branch `wip/svc` contains the roles and playbook. One conflict on merge: `TODO.m
   ```bash
   ansible-playbook playbooks/bootstrap_node.yml --limit homelab-svc-01 --ask-pass --ask-become-pass
   ```
-- [ ] **B4** — Deploy the Camunda/n8n stack:
+- [ ] **B4** — Deploy the Camunda + n8n stacks (now via `deploy-service`, not Ansible — see Milestone D):
   ```bash
-  ansible-playbook playbooks/deploy_svc.yml --limit homelab-svc-01 --tags camunda
+  /opt/deploy-service-venv/bin/deploy-service deploy camunda-platform --config /opt/homelab/services.yml
+  /opt/deploy-service-venv/bin/deploy-service deploy n8n-automation --config /opt/homelab/services.yml
   ```
-- [ ] **B5** — Verify: Camunda (:8088), Elasticsearch (:9200), n8n (:5678), PostgreSQL (:5432)
+  Then deploy the remaining Ansible-managed leftovers (discord-gateway + portainer-agent):
+  ```bash
+  ansible-playbook playbooks/deploy_svc.yml --limit homelab-svc-01 --tags discord_gateway
+  ```
+- [ ] **B5** — Verify: Camunda (:8088), Elasticsearch (:9200), n8n (:5678)
 - [ ] **B6** — Review discord-gateway (keep or remove):
   - **Keep**: if Discord slash-command automation (`/deploy`, `/status`) is wanted
-  - **Remove**: drop from `docker-compose.svc01.yml`, delete `roles/camunda/templates/discord_gateway/`, remove `vault_discord_public_key` and `vault_n8n_webhook_secret` from `vault.yml.example`
+  - **Remove**: drop from `docker-compose.svc01.yml`, delete `roles/discord_gateway/`, remove `vault_discord_public_key` and `vault_n8n_webhook_secret` from `vault.yml.example`
   - See context in git log for prior discussion
+- [ ] **B7** — Once `camunda-platform` is live (post-D1 deploy-verify), bootstrap-lock signaling is ready to implement — design fully resolved (auth, BPMN mechanism, stale-lock timeout) in [docs/repo_split_brief.md](./docs/repo_split_brief.md) §9. Both halves (`bootstrap_node.yml` pre_tasks/post_tasks, and the Camunda BPMN dual-correlation gate) land together, not separately.
 
 ---
 
@@ -61,7 +67,7 @@ Branch `wip/svc` contains the roles and playbook. One conflict on merge: `TODO.m
 
 See [docs/repo_split_brief.md](./docs/repo_split_brief.md) for full design rationale, `services.yml` schema, and `deploy-service` CLI spec.
 
-**Current status:** `homelab-edge-services` is live (Phase 4 complete for edge). `homelab-observe-services` repo is created, tagged `v0.1.0`, with compose/configs extracted, docs migrated, and registered in `services.yml` (Milestone C1–C4 done). `deploy-service` now actually executes `pre_hook`/`post_hook`. Remaining: C5 (deploy-verify — blocked on Phase 3 Milestone A being live, no real node yet), C6 (retire from HomeLab repo); then svc-01 splits (Milestone D).
+**Current status:** `homelab-edge-services` is live (Phase 4 complete for edge). `homelab-observe-services` repo is created, tagged `v0.1.0`, with compose/configs extracted, docs migrated, and registered in `services.yml` (Milestone C1–C4 done). `deploy-service` now actually executes `pre_hook`/`post_hook`. Remaining: C5 (deploy-verify — blocked on Phase 3 Milestone A being live, no real node yet), C6 (retire from HomeLab repo). svc-01 splits: `camunda-platform` and `n8n-automation` extracted and registered in `services.yml` (D1/D2 done, deploy-verify blocked on Milestone B); `discord-gateway` (D3) still open, gated on the B6 keep/remove decision.
 
 ---
 
@@ -120,27 +126,27 @@ All resolved and committed to master:
 
 Three repos; tackle in order (each depends on the prior being stable). For each, the pattern is: create repo → extract → register in `services.yml` → verify → retire from HomeLab repo.
 
-#### D1 — `camunda-platform`
+#### D1 — `camunda-platform` ✅ (extracted, verification blocked on hardware)
 
-- [ ] Create `GreenMachine582/camunda-platform`
+- [x] Create `GreenMachine582/camunda-platform`
   - **Description:** `Camunda 8 + Elasticsearch workflow engine on homelab-svc-01`
   - **Topics:** `homelab`, `camunda`, `bpmn`, `elasticsearch`, `docker-compose`, `self-hosted`
-  - **Default branch:** `master` | **Initial tag:** `v0.1.0`
-- [ ] Extract Camunda + Elasticsearch services from `docker-compose.svc01.yml` and `roles/camunda/templates/camunda/` + `templates/elasticsearch/` + `templates/postgres/`
-- [ ] Add to `services.yml` (type: compose, target_node: homelab-svc-01)
-- [ ] Verify via `deploy-service deploy camunda-platform`
-- [ ] Retire: remove Camunda/ES sections from `docker-compose.svc01.yml` and `roles/camunda/templates/camunda/`
+  - **Default branch:** `master`
+- [x] Extract Camunda + Elasticsearch into a standalone, env-driven `docker-compose.yml`; `roles/camunda/` deleted. (Postgres was briefly included as a shared instance, then dropped — repo owner is adding it to a different repo instead to keep this one simpler.)
+- [x] Add to `services.yml` (type: compose, target_node: homelab-svc-01, `pre_hook: scripts/predeploy.sh`)
+- [ ] Verify via `deploy-service deploy camunda-platform` — blocked on Milestone B (svc-01 not bootstrapped yet)
+- [x] Retire: removed Camunda/ES sections from `docker-compose.svc01.yml` and all of `roles/camunda/`
 
-#### D2 — `n8n-automation`
+#### D2 — `n8n-automation` ✅ (extracted, verification blocked on hardware)
 
-- [ ] Create `GreenMachine582/n8n-automation`
+- [x] Create `GreenMachine582/n8n-automation`
   - **Description:** `n8n workflow automation on homelab-svc-01`
   - **Topics:** `homelab`, `n8n`, `automation`, `workflows`, `docker-compose`, `self-hosted`
-  - **Default branch:** `master` | **Initial tag:** `v0.1.0`
-- [ ] Extract n8n services from `docker-compose.svc01.yml` and `roles/camunda/templates/n8n/`
-- [ ] Add to `services.yml` (type: compose, target_node: homelab-svc-01)
-- [ ] Verify via `deploy-service deploy n8n-automation`
-- [ ] Retire: remove n8n sections from `docker-compose.svc01.yml` and `roles/camunda/templates/n8n/`
+  - **Default branch:** `master`
+- [x] Extract n8n into a standalone, env-driven `docker-compose.yml`
+- [x] Add to `services.yml` (type: compose, target_node: homelab-svc-01)
+- [ ] Verify via `deploy-service deploy n8n-automation` — blocked on Milestone B (svc-01 not bootstrapped yet)
+- [x] Retire: removed n8n section from `docker-compose.svc01.yml`; n8n's env-rendering tasks in `roles/camunda/templates/n8n/` deleted along with the rest of that role
 
 #### D3 — `discord-gateway` *(only if kept after B6)*
 

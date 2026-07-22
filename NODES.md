@@ -132,7 +132,7 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 - `node-exporter` on all nodes
 - `cAdvisor` on `svc-*` nodes (container metrics)
 - Pi-hole exporter (DNS queries, blocked domains)
-- Future: Camunda exporter, PostgreSQL exporter
+- Future: Camunda exporter
 
 ---
 
@@ -157,26 +157,22 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 | Service             | Purpose                                                           |
 |---------------------|-------------------------------------------------------------------|
 | Tailscale           | Direct VPN node; independent of edge; own Tailscale IP (100.x.x.3) |
-| ufw / nftables      | Firewall: allow `ssh_port`, 8080, 5432, 9200 (LAN / VPN only)   |
+| ufw / nftables      | Firewall: allow `ssh_port`, 8080, 9200 (LAN / VPN only)   |
 | SSH hardening       | Key-only, no root, no password auth                               |
 | Unattended upgrades | Automatic security patches                                        |
 
 ### Dockerized Services
 
-**Camunda 8 stack:**
+**`camunda-platform`** (separate repo, deployed via `deploy-service` — not Ansible):
 
-| Component     | Notes                                                                                     |
-|---------------|-------------------------------------------------------------------------------------------|
-| Zeebe         | Workflow engine                                                                           |
-| Operate       | Workflow monitoring UI                                                                    |
-| Tasklist      | User task UI                                                                              |
-| Optimize      | Analytics                                                                                 |
-| Identity      | IAM                                                                                       |
-| WebModeler    | Browser-based BPMN modelling                                                              |
-| Keycloak      | Identity provider for Camunda                                                             |
-| Connectors    | Outbound connector runtime                                                                |
-| Elasticsearch | Required by Camunda components; heap: 2GB; data: `/mnt/nvme/elasticsearch`                |
-| PostgreSQL    | Camunda metadata; shared instance for future apps; daily `pg_dump` to `/mnt/nvme/backups` |
+| Component            | Notes                                                                        |
+|-----------------------|-------------------------------------------------------------------------------|
+| `camunda-orchestration` | Camunda 8 Run distribution (Zeebe, Operate, Tasklist bundled in one image), port 8088 |
+| Elasticsearch          | Backs the orchestration cluster; heap: configurable via `.env`, data dir env-driven (NVMe-backed on this node) |
+
+**`n8n-automation`** (separate repo, deployed via `deploy-service`): `n8n`, port 5678.
+
+**`docker-compose.svc01.yml`** (still Ansible-deployed, in this repo): `discord-gateway`, `portainer-agent`.
 
 **Observability:**
 
@@ -191,19 +187,15 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 | Component       | Allocation                 |
 |-----------------|----------------------------|
 | OS + monitoring | ~2GB RAM reserved          |
-| Elasticsearch   | 2GB heap                   |
-| PostgreSQL      | 1GB `shared_buffers`       |
-| Zeebe           | 2–3GB heap                 |
-| Remaining       | Operate, Tasklist, workers |
+| Elasticsearch   | ~1-2GB heap (`.env`)       |
+| Camunda         | Remaining                  |
 
 ### Deployment Notes
 
-Use Docker Compose profiles to bring up databases before dependent services:
-
 ```bash
-docker compose --profile databases up -d
-# Wait for health checks, then:
-docker compose --profile camunda up -d
+/opt/deploy-service-venv/bin/deploy-service deploy camunda-platform --config /opt/homelab/services.yml
+/opt/deploy-service-venv/bin/deploy-service deploy n8n-automation --config /opt/homelab/services.yml
+ansible-playbook playbooks/deploy_svc.yml --limit homelab-svc-01 --tags discord_gateway
 ```
 
 ---

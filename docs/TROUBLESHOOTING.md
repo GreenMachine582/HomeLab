@@ -636,15 +636,15 @@ If Camunda components are slow or Elasticsearch is logging GC pressure:
 docker logs elasticsearch --tail 50 | grep -i "gc\|heap"
 ```
 
-Adjust heap in `host_vars/homelab-svc-01.yml`:
+Adjust heap in `camunda-platform`'s `.env` (`ELASTICSEARCH_HEAP` — this moved out of Ansible/`host_vars` when Camunda was extracted into its own repo, see `docs/repo_split_brief.md` Milestone D1):
 
-```yaml
-elasticsearch_heap: "2g"   # Increase if RAM allows; do not exceed 50% of available RAM
+```bash
+ELASTICSEARCH_HEAP=2g   # Increase if RAM allows; do not exceed 50% of available RAM
 ```
 
 Redeploy:
 ```bash
-ansible-playbook playbooks/deploy_svc.yml --tags camunda
+deploy-service deploy camunda-platform --config /opt/homelab/services.yml
 ```
 
 ---

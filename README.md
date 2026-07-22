@@ -125,7 +125,9 @@ homelab/
   docker-compose.edge.yml     # Infisical (+ Postgres, Redis), Semaphore (+ Postgres) — bootstrap tier only
                               # homelab-edge-services (separate repo): cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent
                               # homelab-observe-services (separate repo): Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer
-  docker-compose.svc01.yml    # Camunda 8, Elasticsearch, n8n, discord-gateway, Portainer Agent — not yet split out (Milestone D)
+                              # camunda-platform (separate repo): Camunda 8, Elasticsearch
+                              # n8n-automation (separate repo): n8n
+  docker-compose.svc01.yml    # discord-gateway, Portainer Agent — remaining leftovers not yet split out (Milestone D3, gated on TODO.md B6)
 
   # Jinja2 templates live inside each role at roles/<role>/templates/
   # Key templates:
@@ -159,7 +161,9 @@ This repo is being split into a polyrepo — see [docs/repo_split_brief.md](./do
 |---|---|
 | `homelab-edge-services` (cloudflared, Caddy, Pi-hole, exporters) | ✅ Live |
 | `homelab-observe-services` (Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer) | ✅ Extracted, tagged `v0.1.0`, registered in `services.yml` — end-to-end deploy verification still pending `homelab-observe` going live |
-| `camunda-platform` / `n8n-automation` / `discord-gateway` (out of `homelab-svc-01`) | ⏳ Not started — `docker-compose.svc01.yml` still holds all three |
+| `camunda-platform` (Camunda 8, Elasticsearch) | ✅ Extracted, registered in `services.yml` — end-to-end deploy verification still pending `homelab-svc-01` going live |
+| `n8n-automation` (n8n) | ✅ Extracted, registered in `services.yml` — end-to-end deploy verification still pending `homelab-svc-01` going live |
+| `discord-gateway` (out of `homelab-svc-01`) | ⏳ Not started — gated on the keep/remove decision in `TODO.md` B6 |
 
 ---
 

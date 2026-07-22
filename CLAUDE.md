@@ -16,7 +16,7 @@ Node IPs are defined in `inventories/group_vars/all/overrides.yml` (gitignored �
 |-------------------|---------------|-----------------------------------------------------------------------------------------|
 | `homelab-edge`    | `ip_edge`     | Internet edge, DNS (Pi-hole), reverse proxy (Caddy, LAN only), Cloudflare Tunnel, Ansible control |
 | `homelab-observe` | `ip_observe`  | Prometheus, Loki, Grafana, Alertmanager, ntfy, discord-gateway, Uptime Kuma, Portainer |
-| `homelab-svc-01`  | `ip_svc_01`   | Camunda 8, Elasticsearch, n8n, PostgreSQL, 2TB NVMe                                    |
+| `homelab-svc-01`  | `ip_svc_01`   | Camunda 8, Elasticsearch, n8n (all via separate repos + `deploy-service`), discord-gateway (Ansible-deployed), 2TB NVMe |
 | `homelab-svc-02`  | `ip_svc_02`   | GreenTechHub (Django), Redis, Celery (planned)                                          |
 | `homelab-svc-03`  | `ip_svc_03`   | Jellyfin media server (future)                                                          |
 
@@ -33,7 +33,9 @@ Services are split across four compose files by concern:
 
 - `docker-compose.edge.yml` — Infisical (+ Postgres, Redis), Semaphore (+ Postgres) (runs on `homelab-edge`)
 - `homelab-edge-services` (separate repo, deployed via `deploy-service`) — cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent (runs on `homelab-edge`)
-- `docker-compose.svc01.yml` — Camunda, Elasticsearch, n8n, discord-gateway, Portainer Agent (runs on `homelab-svc-01`)
+- `camunda-platform` (separate repo, deployed via `deploy-service`) — Camunda 8, Elasticsearch (runs on `homelab-svc-01`)
+- `n8n-automation` (separate repo, deployed via `deploy-service`) — n8n (runs on `homelab-svc-01`)
+- `docker-compose.svc01.yml` — discord-gateway, Portainer Agent (runs on `homelab-svc-01`; still Ansible-deployed — see `roles/discord_gateway`)
 - `homelab-observe-services` (separate repo, deployed via `deploy-service`) — Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer (runs on `homelab-observe`)
 
 The in-progress polyrepo migration strategy (how future service repos are split, `deploy-service` design, `services.yml` schema) is documented in [`docs/repo_split_brief.md`](./docs/repo_split_brief.md).
@@ -66,7 +68,7 @@ The in-progress polyrepo migration strategy (how future service repos are split,
 | `unbound` | Unbound recursive resolver as host systemd service (port 5335); Pi-hole upstream | edge |
 | `infisical` | Self-hosted secrets manager — node-generated `.env`, container bring-up, additive seed from `vault.yml`, runtime lookup helper (`tasks/lookup.yml`) used by `deploy_edge.yml` (Tailscale-only) | edge |
 | `semaphore` | Web UI over this repo's playbooks — read-only repo bind mount + writable workspace volume (Tailscale-only) | edge |
-| `camunda` | Camunda 8, Elasticsearch, n8n, discord-gateway (env templates) | svc-01 |
+| `discord_gateway` | discord-gateway env file templates | svc-01 |
 | `greentechhub` | GreenTechHub Django app, Redis, Celery | svc-02 |
 | `jellyfin` | Jellyfin media server | svc-03 |
 
@@ -111,7 +113,9 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 # fresh vs already-hardened and connects accordingly)
 ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 /opt/deploy-service-venv/bin/deploy-service deploy homelab-observe-services --config /opt/homelab/services.yml
-ansible-playbook playbooks/deploy_svc.yml --tags camunda
+/opt/deploy-service-venv/bin/deploy-service deploy camunda-platform --config /opt/homelab/services.yml
+/opt/deploy-service-venv/bin/deploy-service deploy n8n-automation --config /opt/homelab/services.yml
+ansible-playbook playbooks/deploy_svc.yml --tags discord_gateway
 
 # Update firewall rules (after adding services or once ip_observe is set)
 ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge
@@ -149,8 +153,7 @@ Config files are rendered by Ansible roles from Jinja2 templates. Templates live
 
 Key templates and their data sources:
 - `roles/alloy/templates/config.alloy.j2` ← `inventories/group_vars/all.yml` (`alloy_loki_endpoint`, `alloy_scrape_systemd_units`)
-- `roles/camunda/templates/elasticsearch/elasticsearch.yml.j2` ← `inventories/host_vars/homelab-svc-01.yml`
-- `roles/camunda/templates/postgres/postgresql.conf.j2` ← `inventories/host_vars/homelab-svc-01.yml`
+- `roles/discord_gateway/templates/env.j2`, `env.secrets.j2` ← `inventories/host_vars/homelab-svc-01.yml`
 - `roles/infisical/templates/env.j2` ← node-generated secrets (idempotent: read back from `/opt/infisical/.env` if present, else `openssl rand -hex 32`) + `vault_infisical_encryption_key`
 - `roles/semaphore/templates/env.j2` ← node-generated Postgres password + `vault_semaphore_admin_*` + the read-only Infisical "runtime" identity's credentials, loaded via `include_vars` from the same node-local `/home/homelab/.infisical_runtime_auth.yml` file `deploy_edge.yml` reads (never `vault.yml` — see "Secrets")
 
