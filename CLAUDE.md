@@ -16,7 +16,7 @@ Node IPs are defined in `inventories/group_vars/all/overrides.yml` (gitignored �
 |-------------------|---------------|-----------------------------------------------------------------------------------------|
 | `homelab-edge`    | `ip_edge`     | Internet edge, DNS (Pi-hole), reverse proxy (Caddy, LAN only), Cloudflare Tunnel, Ansible control |
 | `homelab-observe` | `ip_observe`  | Prometheus, Loki, Grafana, Alertmanager, ntfy, discord-gateway, Uptime Kuma, Portainer |
-| `homelab-svc-01`  | `ip_svc_01`   | Camunda 8, Elasticsearch, n8n (all via separate repos + `deploy-service`), discord-gateway (Ansible-deployed), 2TB NVMe |
+| `homelab-svc-01`  | `ip_svc_01`   | Camunda 8, Elasticsearch, n8n, Authentik SSO (all via separate repos + `deploy-service`), discord-gateway (Ansible-deployed), 2TB NVMe |
 | `homelab-svc-02`  | `ip_svc_02`   | GreenTechHub (Django), Redis, Celery (planned)                                          |
 | `homelab-svc-03`  | `ip_svc_03`   | Jellyfin media server (future)                                                          |
 
@@ -29,12 +29,13 @@ Node IPs are defined in `inventories/group_vars/all/overrides.yml` (gitignored �
 
 ### Docker Compose Split
 
-Services are split across four compose files by concern:
+Services are split by concern, across a mix of in-repo compose files and separate `deploy-service`-managed repos:
 
 - `docker-compose.edge.yml` — Infisical (+ Postgres, Redis), Semaphore (+ Postgres) (runs on `homelab-edge`)
 - `homelab-edge-services` (separate repo, deployed via `deploy-service`) — cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent (runs on `homelab-edge`)
 - `camunda-platform` (separate repo, deployed via `deploy-service`) — Camunda 8, Elasticsearch (runs on `homelab-svc-01`)
 - `n8n-automation` (separate repo, deployed via `deploy-service`) — n8n (runs on `homelab-svc-01`)
+- `authentik-sso` (separate repo, deployed via `deploy-service`; in progress — created, not yet deployed) — Authentik server/worker/Redis + its own bundled Postgres (runs on `homelab-svc-01`)
 - `docker-compose.svc01.yml` — discord-gateway, Portainer Agent (runs on `homelab-svc-01`; still Ansible-deployed — see `roles/discord_gateway`)
 - `homelab-observe-services` (separate repo, deployed via `deploy-service`) — Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer (runs on `homelab-observe`)
 

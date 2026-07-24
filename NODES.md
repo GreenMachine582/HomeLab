@@ -172,6 +172,8 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 
 **`n8n-automation`** (separate repo, deployed via `deploy-service`): `n8n`, port 5678.
 
+**`authentik-sso`** (separate repo, deployed via `deploy-service`; 🚧 in progress — created, not yet deployed): Authentik server + worker + Redis + its own bundled Postgres, port 9000.
+
 **`docker-compose.svc01.yml`** (still Ansible-deployed, in this repo): `discord-gateway`, `portainer-agent`.
 
 **Observability:**

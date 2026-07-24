@@ -1,15 +1,21 @@
-# Homelab Repo Split — Planning Brief (v7)
+# Homelab Repo Split — Planning Brief (v9)
 
 > **This is an active design brief, not an operations reference.** It documents the in-progress polyrepo migration strategy (`deploy-service`, `services.yml`, service repo splits). For day-to-day operations, see [README.md](../README.md), [BOOTSTRAP.md](../BOOTSTRAP.md), or [NETWORK.md](./NETWORK.md).
 
-**Status:** `homelab-edge-services` live (§8 Phase 4 underway — edge complete). `homelab-observe-services` extracted and registered, deploy-verify pending live node. `camunda-platform` and `n8n-automation` extracted and registered (svc-01 split, Milestone D1/D2) — deploy-verify pending `homelab-svc-01` bootstrap (Milestone B). Remaining Phase 4: `discord-gateway` (D3), gated on the keep/remove decision. Phase 5 cleanup in progress.
+**Status:** `homelab-edge-services` live (§8 Phase 4 underway — edge complete). `homelab-observe-services` extracted and registered, deploy-verify pending live node. `camunda-platform` and `n8n-automation` extracted and registered (svc-01 split, Milestone D1/D2) — deploy-verify pending `homelab-svc-01` bootstrap (Milestone B). `authentik-sso` created and compose written (Milestone E0/E1, bundled Postgres) — not yet tagged, registered in `services.yml`, or deployed. Remaining Phase 4: `discord-gateway` (D3), gated on the keep/remove decision. Phase 5 cleanup in progress.
 **Origin repo:** https://github.com/GreenMachine582/HomeLab
 **Purpose of this doc:** Final design reference ahead of implementation.
 
-**Changelog from v6:**
+**Changelog from v8:**
+- **`authentik-sso` repo created** (`GreenMachine582/authentik-sso`, `main` branch) with `docker-compose.yml` (server, worker, Redis, bundled `postgres:16-alpine`) and `scripts/postdeploy.sh` (verifies Authentik's own `AUTHENTIK_BOOTSTRAP_*` automated setup succeeded) — confirms the bundled-Postgres direction from v8. Milestone E0/E1 done; E2-E6 remain.
+
+**Changelog from v7:**
 - **`camunda-platform` and `n8n-automation` extracted and registered** in `services.yml` (svc-01 split, Milestone D1/D2) — deploy-verify pending `homelab-svc-01` bootstrap.
+- **Authentik will bundle its own Postgres container, for now** in `authentik-sso` (§5), superseding this doc's earlier draft wording ("reuses the existing svc-01 PostgreSQL instance, no bundled container") — self-contained, matching the "each service repo owns its own backup" principle (§10.7) already applied to every other split repo. A pragmatic starting point while Authentik work is just getting underway, not a final architectural commitment — may move to a shared instance later if that proves more efficient.
 - **`deploy-service`'s `type: image` deployment path is implemented** (`deploy_service/cli.py`, `compose.py`) — the CLI no longer hard-exits on it; this was the last blocker noted for Milestone D3 (discord-gateway).
-- **§9 open items list restored to full resolved detail** (Camunda's role, deploy-service language/CLI/execution location, image registry, webhook auth, scheduling, queue/reject, approval expiry, `depends_on` — all closed) and the bootstrap-lock design fully resolved (auth = none needed, trust boundary; BPMN reuses the existing `global-deploy-lock` correlation pattern; a 30-60min stale-lock timeout) — this content had regressed to a vaguer state in-repo and is restored here.
+
+**Changelog from v6:**
+- **Small/new-service repo default made explicit (§7).** A service defaults to its own repo unless it demonstrably shares deploy/upgrade/rollback/backup cadence with an existing repo — size alone isn't a reason to cluster. First applied to `authentik-sso` (§5), which gets its own repo rather than folding into `docker-compose.svc01.yml`.
 
 **Quick links:** [🎯 Goal](#-1-goal) · [❓ Why](#-2-why-context-from-prior-discussion) · [🗂️ Repo Structure](#-3-current-repo-structure-for-reference) · [✅ What Stays](#-4-what-stays-in-the-bootstraparchitecture-repo) · [📦 What Moves](#-5-what-moves-to-service-repos) · [🔄 Redeploy Mechanism](#-6-metadata-driven-redeploy--schema-revised-again-and-deploy-service-design) · [🖧 Clustering](#-7-clustering-by-node-role-vs-per-service-repos-resolved-heuristic) · [🌿 Branch Plan](#-8-branch-plan-revised-sequencing) · [✂️ Edge Compose Split](#-10-edge-node-compose-split-in-detail) · [📝 Open Items](#-9-remaining-open-items-for-the-repo-owner-to-confirm)
 
@@ -17,7 +23,7 @@
 <summary>Full outline</summary>
 
 <!-- TOC -->
-* [Homelab Repo Split — Planning Brief (v7)](#homelab-repo-split--planning-brief-v7)
+* [Homelab Repo Split — Planning Brief (v9)](#homelab-repo-split--planning-brief-v9)
   * [🎯 1. Goal](#-1-goal)
   * [❓ 2. Why (context from prior discussion)](#-2-why-context-from-prior-discussion)
   * [🗂️ 3. Current repo structure (for reference)](#-3-current-repo-structure-for-reference)
@@ -79,22 +85,20 @@ homelab/
   group_vars/             # all/main.yml, all/vault.yml, edge.yml, observe.yml, svc.yml
   host_vars/              # per-node: edge, observe, svc-01, svc-02, svc-03
   playbooks/              # bootstrap_*, deploy_*, update_all, backup, rollback, healthcheck
-  roles/                  # base_hardening, docker, docker_compose, tailscale, firewall,
-                          #   fail2ban, node_exporter, cadvisor, alloy, users,
-                          #   edge_services, observe_services, camunda
+  roles/                  # alloy, base_hardening, docker, docker_compose, fail2ban, firewall,
+                          #  infisical, semaphore, tailscale, unbound, users
   docker-compose.edge.yml
-  docker-compose.observe.yml
   docker-compose.svc01.yml
   secrets/vault.yml(.example)
   scripts/                # backup_databases.sh, test_connectivity.sh
-  docs/                   # NETWORK.md, MONITORING.md, TROUBLESHOOTING.md
+  docs/                   # NETWORK.md, TROUBLESHOOTING.md
   discord-gateway/
   .github/workflows/      # deploy.yml, test.yml
 ```
 
-Node roles today: `homelab-edge` (active), `homelab-observe` (active), `homelab-svc-01` (active — Camunda 8, Elasticsearch, n8n, discord-gateway), `homelab-svc-02` (planned), `homelab-svc-03` (future, Jellyfin).
+Node roles today: `homelab-edge` (active), `homelab-observe` (active), `homelab-svc-01` (active — Camunda 8 + Elasticsearch via `camunda-platform`, n8n via `n8n-automation`, discord-gateway still Ansible-managed), `homelab-svc-02` (planned), `homelab-svc-03` (future, Jellyfin).
 
-> **Current state (post-edge-split):** `roles/edge_services/` has been deleted; `docker-compose.edge.yml` now contains only Infisical + Semaphore (bootstrap tier). The network appliance services run in `homelab-edge-services`. The compose file rename (`docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml`) remains deferred — the service strip achieves the same isolation without requiring a reference update across bootstrap roles.
+> **Current state (post-edge-split, post-observe-split, post-svc01-split):** `roles/edge_services/`, `roles/observe_services/`, and `roles/camunda/` have all been deleted; `docker-compose.edge.yml` now contains only Infisical + Semaphore (bootstrap tier), `docker-compose.observe.yml`/`docs/MONITORING.md` are gone (migrated to `homelab-observe-services`), and Camunda/Elasticsearch/n8n are gone from `docker-compose.svc01.yml` (migrated to `camunda-platform`/`n8n-automation`, leaving only discord-gateway + portainer-agent there). The network appliance services run in `homelab-edge-services`. The compose file rename (`docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml`) remains deferred — the service strip achieves the same isolation without requiring a reference update across bootstrap roles.
 
 ---
 
@@ -125,6 +129,7 @@ Decided/concrete moves:
 | `discord-gateway/` | `discord-gateway` |
 | `scripts/backup_databases.sh` | Moves with whichever repo owns the data it backs up; cross-service backup orchestration (if any) stays central |
 | BottleBot | Own repo from day one — proof-of-concept for the whole pattern, and the **first service migrated** under the revised sequencing in §8 |
+| Authentik SSO (server, worker, Redis, own Postgres for now) | `authentik-sso` — own repo from day one (created, `docker-compose.yml` written; TODO.md Milestone E0/E1 done, E2-E6 remain). Bundles its own Postgres container for now — self-contained, like every other split repo (see §10.7 "each service repo owns its own backup"); may move to a shared instance later if that proves more efficient. See §7 for why this doesn't cluster into `camunda-platform`/`n8n-automation` despite being small. |
 
 > **Edge compose note:** `docker-compose.edge.yml` currently holds two distinct tiers that must be split before anything moves. Only the **network appliance tier** goes to `homelab-edge-services` (cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent). 
 The **bootstrap tooling tier** (Infisical stack, Semaphore stack) stays in the HomeLab repo in a renamed `docker-compose.bootstrap-edge.yml`. `roles/edge_services/` is retired post-migration (its Jinja2 templates become plain config files in `homelab-edge-services/`). 
@@ -298,11 +303,14 @@ Raised directly by the repo owner: some services are too small to justify their 
 
 **Secondary lens — lifecycle/sharing intent:** kept alongside the primary heuristic, not replaced by it, because deployment-unit alone doesn't fully capture sharing potential. A service could be co-deployed today but still warrant its own repo if it has independent versioning needs or could plausibly be open-sourced or run standalone later (BottleBot is the clear example — it has no operational coupling to anything else in the homelab).
 
+**Default for new/small services:** because service repos are lightweight by design (§5 — no Ansible, just a compose file plus optional hooks), the default for any new service, however small, is its own repo — a single container is not, by itself, a reason to cluster. Clustering is the exception, reserved for services that actually pass the deployment-unit test above. Example: Authentik SSO (`authentik-sso`, §5) is one Compose stack (server, worker, Redis, own Postgres for now) but gets its own repo rather than folding into `camunda-platform` or `n8n-automation`, because it shares no deploy/upgrade/rollback cadence with either, and other services will come to depend on it for auth — an independent deploy/rollback path matters more here than the small size would otherwise suggest.
+
 **Applying both lenses, the resolved split:**
 - **`homelab-edge-services`** (clustered): Caddy, Cloudflared, Pi-hole, Unbound — operationally "one appliance," same deploy/upgrade/rollback/backup cycle, no independent lifecycle or sharing intent.
 - **`homelab-observe-services`** (clustered): Grafana, Prometheus, Loki, Alertmanager, Uptime Kuma, ntfy — same reasoning, one appliance.
 - **svc-01 splits further rather than clustering**: `camunda-platform`, `n8n-automation`, `discord-gateway` as separate repos, since they have different upgrade cadences, backup requirements, and failure domains — they fail the "deployment unit" test even though they currently live in one compose file.
 - **BottleBot**: separate repo, no clustering — proof-of-concept for the whole pattern.
+- **`authentik-sso`**: separate repo despite being small — see "Default for new/small services" above.
 
 This resolves the original open question from v1: the schema in §6 already supports this via `repos:` → nested `services:`, so no further schema work is needed to accommodate clustering.
 
@@ -416,6 +424,7 @@ Cloudflared maintains the Cloudflare Tunnel. If it exits, all remote access via 
 - ~~Queue vs. reject behavior for a second concurrent deploy~~ — **closed**: rejected outright, with the reason (which service/ref is currently running) returned for both the requester and the audit trail.
 - ~~Approval expiry behavior~~ — **closed**: expires after 5 business days (configurable), via a timer boundary event on the approval task — re-approval required after that.
 - ~~`depends_on`~~ — **dropped**: services run independently by design, so there's nothing to encode. See §6.5.
+- ~~Small/new-service repo default~~ — **closed**: a service defaults to its own repo unless it demonstrably shares deploy/upgrade/rollback/backup cadence with an existing repo — size alone isn't a reason to cluster. See §7.
 - **Bootstrap-lock signaling — fully resolved**, implementation gated on `camunda-platform` being deployed and live:
   - **Ansible side** (`bootstrap_node.yml`): two `ansible.builtin.uri` tasks — "bootstrap started" in `pre_tasks`, "bootstrap finished" in `post_tasks`, both `ignore_errors: true`. Endpoint: Zeebe REST API at `http://{{ ip_svc_01 }}:8080/v1/message/publication`. Correlation key: `"bootstrap-lock-{{ inventory_hostname }}"` (e.g. `"bootstrap-lock-homelab-svc-01"`). **Auth: none at the app level** — both `homelab-edge` and `homelab-svc-01` are already-trusted internal nodes on the Tailscale-only network, the same trust boundary already relied on for Infisical/Semaphore; no bearer token or Keycloak/Identity stack needed for a call between nodes that already trust each other.
   - **`bootstrap_edge.yml`**: explicitly excluded — Phase 1 runs before Camunda exists, and a first bootstrap has no concurrent deploys to race against. A comment in the playbook documents this.

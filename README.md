@@ -127,6 +127,7 @@ homelab/
                               # homelab-observe-services (separate repo): Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer
                               # camunda-platform (separate repo): Camunda 8, Elasticsearch
                               # n8n-automation (separate repo): n8n
+                              # authentik-sso (separate repo, in progress): Authentik server/worker/Redis + own Postgres
   docker-compose.svc01.yml    # discord-gateway, Portainer Agent — remaining leftovers not yet split out (Milestone D3, gated on TODO.md B6)
 
   # Jinja2 templates live inside each role at roles/<role>/templates/
@@ -164,6 +165,7 @@ This repo is being split into a polyrepo — see [docs/repo_split_brief.md](./do
 | `camunda-platform` (Camunda 8, Elasticsearch) | ✅ Extracted, registered in `services.yml` — end-to-end deploy verification still pending `homelab-svc-01` going live |
 | `n8n-automation` (n8n) | ✅ Extracted, registered in `services.yml` — end-to-end deploy verification still pending `homelab-svc-01` going live |
 | `discord-gateway` (out of `homelab-svc-01`) | ⏳ Not started — gated on the keep/remove decision in `TODO.md` B6 |
+| `authentik-sso` (Authentik SSO, own repo + bundled Postgres) | 🚧 In progress — repo created, `docker-compose.yml` written; not yet registered in `services.yml` or deployed |
 
 ---
 

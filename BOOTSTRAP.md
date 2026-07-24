@@ -634,9 +634,10 @@ ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 # Bootstrap svc-01
 ansible-playbook playbooks/bootstrap_node.yml --limit homelab-svc-01
 
-# Deploy Camunda + n8n
+# Deploy Camunda + n8n + authentik
 deploy-service deploy camunda-platform --config /opt/homelab/services.yml
 deploy-service deploy n8n-automation --config /opt/homelab/services.yml
+deploy-service deploy authentik-sso --config /opt/homelab/services.yml
 ```
 
 For `svc-02` (when provisioned):

@@ -132,7 +132,7 @@ Three repos; tackle in order (each depends on the prior being stable). For each,
   - **Description:** `Camunda 8 + Elasticsearch workflow engine on homelab-svc-01`
   - **Topics:** `homelab`, `camunda`, `bpmn`, `elasticsearch`, `docker-compose`, `self-hosted`
   - **Default branch:** `master`
-- [x] Extract Camunda + Elasticsearch into a standalone, env-driven `docker-compose.yml`; `roles/camunda/` deleted. (Postgres was briefly included as a shared instance, then dropped — repo owner is adding it to a different repo instead to keep this one simpler.)
+- [x] Extract Camunda + Elasticsearch into a standalone, env-driven `docker-compose.yml`; `roles/camunda/` deleted. (Postgres was briefly included as a shared instance, then dropped — it's bundled in `authentik-sso` instead, see Milestone E, keeping this repo simpler.)
 - [x] Add to `services.yml` (type: compose, target_node: homelab-svc-01, `pre_hook: scripts/predeploy.sh`)
 - [ ] Verify via `deploy-service deploy camunda-platform` — blocked on Milestone B (svc-01 not bootstrapped yet)
 - [x] Retire: removed Camunda/ES sections from `docker-compose.svc01.yml` and all of `roles/camunda/`
@@ -175,16 +175,19 @@ Three repos; tackle in order (each depends on the prior being stable). For each,
 
 ## Identity & Access
 
-### Milestone E — Authentik SSO
+### Milestone E — Authentik SSO (own repo: `authentik-sso`) ⏳ (in progress)
 
-Authentik provides SSO and forward-auth for externally-exposed services. See current design in [CLAUDE.md](./CLAUDE.md) (architecture) and [docs/NETWORK.md](./docs/NETWORK.md) (Caddy LAN bypass pattern).
+Authentik provides SSO and forward-auth for externally-exposed services. See current design in [CLAUDE.md](./CLAUDE.md) (architecture) and [docs/NETWORK.md](./docs/NETWORK.md) (Caddy LAN bypass pattern). Gets its own repo rather than folding into `docker-compose.svc01.yml` — see [docs/repo_split_brief.md](./docs/repo_split_brief.md) §7 for the "default to own repo" rationale.
 
-**Prerequisite:** Phase 3 complete (svc-01 running PostgreSQL).
+**Prerequisite:** Phase 3 complete (svc-01 bootstrapped — Authentik bundles its own Postgres for now, so it has no dependency on a shared svc-01 database instance).
 
-- [ ] **E1** — Create `roles/authentik/` (tasks + templates for Authentik config)
-- [ ] **E2** — Add Authentik server + worker + Redis to `docker-compose.svc01.yml`
-  - Uses the existing svc-01 PostgreSQL instance
-- [ ] **E3** — Add Authentik proxy outpost to `homelab-edge-services`:
+- [x] **E0** — Create `GreenMachine582/authentik-sso`
+  - **Description:** `Authentik SSO / forward-auth provider for the homelab, fronting externally-exposed services via Caddy. Config-only repo deployed via deploy-service; secrets from Infisical; runs on homelab-svc-01, with its own bundled Postgres for now.`
+  - **Topics:** `homelab`, `authentik`, `sso`, `forward-auth`, `docker-compose`, `self-hosted`
+  - **Default branch:** `main` — not yet tagged
+- [x] **E1** — Add Authentik server + worker + Redis + its own Postgres container to `authentik-sso/docker-compose.yml`
+  - Bundled Postgres (`postgres:16-alpine`, `pg_isready` healthcheck), not a shared svc-01 instance — self-contained like `camunda-platform`/`n8n-automation`, and owns its own backup script (see §10.7 "each service repo owns its own backup" — `playbooks/backup.yml` deliberately has no Authentik entry). A pragmatic starting point, not a final commitment — may move to a shared instance later if that proves more efficient. `scripts/postdeploy.sh` verifies Authentik's own `AUTHENTIK_BOOTSTRAP_*` env vars actually created the akadmin user + API token (fully automated, no manual setup wizard).
+- [ ] **E2** — Add Authentik proxy outpost to `homelab-edge-services`:
   - New container in `homelab-edge-services/docker-compose.yml`
   - Update `configs/caddy/Caddyfile` with LAN bypass + forward_auth blocks:
     ```caddyfile
@@ -196,15 +199,17 @@ Authentik provides SSO and forward-auth for externally-exposed services. See cur
                      }
                      reverse_proxy ... }
     ```
-- [ ] **E4** — Update `inventories/group_vars/edge.yml`:
+- [ ] **E3** — Update `inventories/group_vars/edge.yml`:
   - Add `authentik_outpost_url`
   - Update `caddy_routes` structure with `lan_bypass: true/false` per route
   - Add `auth.homelab.local` to `pihole_custom_dns`
   - Add `auth.yourdomain.com` to `cloudflared_ingress`
-- [ ] **E5** — Add to `inventories/group_vars/all/vault.yml.example`:
-  - `vault_authentik_secret_key`
-  - `vault_authentik_postgres_password`
-- [ ] **E6** — Update `CLAUDE.md` (add `roles/authentik/`, update svc-01 services list) and `BOOTSTRAP.md` (add Authentik deploy step to Phase 3)
+- [ ] **E4** — Add `authentik-sso` entry to `services.yml` (type: compose, target_node: homelab-svc-01) with Infisical secrets:
+  - `authentik/SECRET_KEY`
+  - `authentik/POSTGRES_PASSWORD`
+  - Plus `AUTHENTIK_BOOTSTRAP_PASSWORD`/`AUTHENTIK_BOOTSTRAP_TOKEN` (akadmin's credentials) — deployer-provided, not Infisical-sourced, per the repo's own README
+- [ ] **E5** — Verify via `deploy-service deploy authentik-sso`
+- [x] **E6** — Update `CLAUDE.md` (add `authentik-sso` to the service repos list, update svc-01 services list), `README.md`, and `NODES.md` — `BOOTSTRAP.md` already has the `deploy-service deploy authentik-sso` call alongside camunda-platform/n8n-automation in Phase 3's "Deploy Service Nodes" step
 
 ---
 
