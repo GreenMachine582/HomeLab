@@ -1,10 +1,13 @@
-# Homelab Repo Split — Planning Brief (v9)
+# Homelab Repo Split — Planning Brief (v10)
 
-> **This is an active design brief, not an operations reference.** It documents the in-progress polyrepo migration strategy (`deploy-service`, `services.yml`, service repo splits). For day-to-day operations, see [README.md](../README.md), [BOOTSTRAP.md](../BOOTSTRAP.md), or [NETWORK.md](./NETWORK.md).
+> **This is an active design brief, not an operations reference.** It documents the in-progress polyrepo migration strategy (`deploy-service`, `services.yml`, service repo splits). For day-to-day operations, see [README.md](../README.md), [BOOTSTRAP.md](../BOOTSTRAP.md), or [NETWORK.md](./NETWORK.md). For node/device topology and the shared data tier direction, see the companion [topology_data_brief.md](./topology_data_brief.md).
 
 **Status:** `homelab-edge-services` live (§8 Phase 4 underway — edge complete). `homelab-observe-services` extracted and registered, deploy-verify pending live node. `camunda-platform` and `n8n-automation` extracted and registered (svc-01 split, Milestone D1/D2) — deploy-verify pending `homelab-svc-01` bootstrap (Milestone B). `authentik-sso` created and compose written (Milestone E0/E1, bundled Postgres) — not yet tagged, registered in `services.yml`, or deployed. Remaining Phase 4: `discord-gateway` (D3), gated on the keep/remove decision. Phase 5 cleanup in progress.
 **Origin repo:** https://github.com/GreenMachine582/HomeLab
 **Purpose of this doc:** Final design reference ahead of implementation.
+
+**Changelog from v9:**
+- **Companion brief added:** [`docs/topology_data_brief.md`](./topology_data_brief.md) (v2) now covers node/device topology (`topology.yml`, `host_roles`) and a shared Postgres/Redis data tier (`homelab-data-services`) — scope this doc never covered. It builds on the decisions here and changes none of them.
 
 **Changelog from v8:**
 - **`authentik-sso` repo created** (`GreenMachine582/authentik-sso`, `main` branch) with `docker-compose.yml` (server, worker, Redis, bundled `postgres:16-alpine`) and `scripts/postdeploy.sh` (verifies Authentik's own `AUTHENTIK_BOOTSTRAP_*` automated setup succeeded) — confirms the bundled-Postgres direction from v8. Milestone E0/E1 done; E2-E6 remain.
@@ -23,7 +26,7 @@
 <summary>Full outline</summary>
 
 <!-- TOC -->
-* [Homelab Repo Split — Planning Brief (v9)](#homelab-repo-split--planning-brief-v9)
+* [Homelab Repo Split — Planning Brief (v10)](#homelab-repo-split--planning-brief-v10)
   * [🎯 1. Goal](#-1-goal)
   * [❓ 2. Why (context from prior discussion)](#-2-why-context-from-prior-discussion)
   * [🗂️ 3. Current repo structure (for reference)](#-3-current-repo-structure-for-reference)
@@ -408,6 +411,8 @@ Cloudflared maintains the Cloudflare Tunnel. If it exits, all remote access via 
 | `playbooks/backup.yml` (service sections) | All services migrated | Narrows to bootstrap-tier DBs; each service repo owns its own backup |
 
 `roles/infisical` and `roles/semaphore` are **not** retired — they are permanent bootstrap roles.
+
+> **Forward direction:** "each service repo owns its own backup" is the *current* principle, applied consistently through v9 (e.g. `authentik-sso`'s bundled Postgres, §5). The planned shared data tier (`homelab-data-services`) in the companion [topology_data_brief.md](./topology_data_brief.md) §4 will eventually replace per-repo Postgres/Redis with one platform data stack — not a contradiction of this table, but its planned successor.
 
 ---
 

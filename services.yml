@@ -6,7 +6,7 @@
 # it to clone/pull the service repo, inject secrets from Infisical, and run
 # the appropriate deploy mechanism.
 #
-# Schema reference: repo_split_breif.md §6.2
+# Schema reference: repo_split_brief.md §6.2
 # deploy-service CLI: deploy-service/deploy_service/cli.py
 
 repos:
