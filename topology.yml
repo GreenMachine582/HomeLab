@@ -1,0 +1,28 @@
+# topology.yml — the ONLY file that changes when hardware changes.
+#
+# Single source of truth for devices. services.yml entries reference a
+# device by key (device: rpi-02) instead of hardcoding a hostname; deploy-service
+# resolves device -> hostname (Tailscale MagicDNS name) via this file.
+# See docs/topology_data_brief.md §3.1 for the full design rationale.
+#
+# svc-02/svc-03 are deliberately omitted — not yet provisioned. Add them
+# here once real hardware exists.
+
+devices:
+  rpi-01:
+    hostname: homelab-edge
+    arch: arm64
+    host_roles: [edge]
+    # lan_ip: set from inventories/group_vars/all/overrides.yml (ip_edge) —
+    # gitignored, not duplicated here. Only needed for LAN-only paths (Pi-hole :53).
+
+  rpi-02:
+    hostname: homelab-observe
+    arch: arm64
+    host_roles: [observe]
+
+  rpi-03:
+    hostname: homelab-svc-01
+    arch: arm64
+    host_roles: [svc]
+    notes: "Pi 5 8GB + NVMe"

@@ -8,13 +8,17 @@
 #
 # Schema reference: repo_split_brief.md §6.2
 # deploy-service CLI: deploy-service/deploy_service/cli.py
+#
+# `device:` resolves against topology.yml (device -> hostname); see
+# docs/topology_data_brief.md §3. `target_node:` (a bare hostname) still
+# works as a fallback for any entry not yet migrated.
 
 repos:
   homelab-edge-services:
     repo: github.com/GreenMachine582/homelab-edge-services
     ref: master
     path: /srv/services/homelab-edge-services
-    target_node: homelab-edge
+    device: rpi-01
     deployment:
       type: compose
     deploy:
@@ -54,7 +58,7 @@ repos:
     repo: github.com/GreenMachine582/homelab-observe-services
     ref: master
     path: /srv/services/homelab-observe-services
-    target_node: homelab-observe
+    device: rpi-02
     deployment:
       type: compose
     deploy:
@@ -99,7 +103,7 @@ repos:
     repo: github.com/GreenMachine582/camunda-platform
     ref: master
     path: /srv/services/camunda-platform
-    target_node: homelab-svc-01
+    device: rpi-03
     deployment:
       type: compose
     deploy:
@@ -124,7 +128,7 @@ repos:
     repo: github.com/GreenMachine582/n8n-automation
     ref: master
     path: /srv/services/n8n-automation
-    target_node: homelab-svc-01
+    device: rpi-03
     deployment:
       type: compose
     deploy:

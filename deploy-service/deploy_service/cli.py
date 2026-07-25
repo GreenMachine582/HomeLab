@@ -1,13 +1,13 @@
 """deploy-service — metadata-driven service deployer.
 
 Usage:
-  deploy-service deploy <repo> [--config PATH] [--inventory PATH] [--dry-run]
+  deploy-service deploy <repo> [--config PATH] [--inventory PATH] [--topology PATH] [--dry-run]
 """
 import argparse
 import sys
 from pathlib import Path
 
-from . import config, compose, infisical
+from . import config, compose, infisical, topology
 from . import target as target_mod
 
 _DEFAULT_CONFIG = "/opt/homelab/services.yml"
@@ -45,9 +45,20 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     ref = args.ref if (args.ref and dtype == "compose") else entry.get("ref", "main")
     image_tag = args.ref if (args.ref and dtype == "image") else "latest"
 
-    target_node = entry.get("target_node")
-    if not target_node:
-        sys.exit(f"[deploy-service] '{args.repo}' has no target_node set in {args.config}")
+    device = entry.get("device")
+    if device:
+        topology_path = (
+            Path(args.topology) if args.topology
+            else Path(args.config).resolve().parent / "topology.yml"
+        )
+        target_node = topology.resolve_hostname(device, topology.load(str(topology_path)))
+        print(f"[deploy-service] device '{device}' -> '{target_node}'")
+    else:
+        target_node = entry.get("target_node")
+        if not target_node:
+            sys.exit(
+                f"[deploy-service] '{args.repo}' has no device or target_node set in {args.config}"
+            )
 
     inventory_path = (
         Path(args.inventory) if args.inventory
@@ -106,6 +117,14 @@ def main() -> None:
         metavar="PATH",
         help="Path to the Ansible inventory used to resolve remote target_nodes "
         "(default: <services.yml's dir>/inventories/prod.yml)",
+    )
+    deploy_p.add_argument(
+        "--topology",
+        default=None,
+        metavar="PATH",
+        help="Path to topology.yml, used to resolve a repo's device: field to a "
+        "hostname (default: <services.yml's dir>/topology.yml). Ignored for "
+        "repos still using target_node: directly.",
     )
     deploy_p.add_argument(
         "--ref",

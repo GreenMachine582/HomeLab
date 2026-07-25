@@ -2,7 +2,7 @@
 
 Open tasks only. Completed tasks are tracked via git history — this file holds only pending work.
 
-Node roles, ports, and playbook commands are in [CLAUDE.md](./CLAUDE.md), [NODES.md](./NODES.md), and [docs/NETWORK.md](./docs/NETWORK.md). Polyrepo migration design is in [docs/repo_split_brief.md](./docs/repo_split_brief.md).
+Node roles, ports, and playbook commands are in [CLAUDE.md](./CLAUDE.md), [NODES.md](./NODES.md), and [docs/NETWORK.md](./docs/NETWORK.md). Polyrepo migration design is in [docs/repo_split_brief.md](./docs/repo_split_brief.md); node/device topology and the shared data tier direction is in [docs/topology_data_brief.md](./docs/topology_data_brief.md).
 
 ---
 
@@ -210,6 +210,26 @@ Authentik provides SSO and forward-auth for externally-exposed services. See cur
   - Plus `AUTHENTIK_BOOTSTRAP_PASSWORD`/`AUTHENTIK_BOOTSTRAP_TOKEN` (akadmin's credentials) — deployer-provided, not Infisical-sourced, per the repo's own README
 - [ ] **E5** — Verify via `deploy-service deploy authentik-sso`
 - [x] **E6** — Update `CLAUDE.md` (add `authentik-sso` to the service repos list, update svc-01 services list), `README.md`, and `NODES.md` — `BOOTSTRAP.md` already has the `deploy-service deploy authentik-sso` call alongside camunda-platform/n8n-automation in Phase 3's "Deploy Service Nodes" step
+
+---
+
+## Topology & Shared Data Tier
+
+See [docs/topology_data_brief.md](./docs/topology_data_brief.md) for full design rationale (`topology.yml` schema, `host_roles`, the `homelab-data-services` shared Postgres/Redis tier). Companion to `repo_split_brief.md` — doesn't change any decision there.
+
+### Milestone G — `topology.yml` migration (§6 of the brief)
+
+- [x] **G1** — `topology.yml` created at repo root, encoding the 3 real devices (`rpi-01`/`homelab-edge`, `rpi-02`/`homelab-observe`, `rpi-03`/`homelab-svc-01`) with `host_roles`. `svc-02`/`svc-03` deliberately omitted — no real hardware yet, add when provisioned.
+- [x] **G2** — `deploy-service` resolves a new `device:` field against `topology.yml` (`deploy_service/topology.py` + `cli.py`), falling back to `target_node:` unchanged for any entry not yet migrated — nothing already deployed breaks.
+- [x] **G3** — All 4 current `services.yml` entries migrated from `target_node:` to `device:`.
+- [ ] **G4** — Generate `inventories/prod.yml` from `topology.yml`, diff against the hand-written version, swap once identical (brief §6 step 1's remaining half — deliberately deferred from G1-G3, higher risk, wants its own verification pass).
+- [ ] **G5** — De-collide co-residency: drop `container_name:` from service repos, add a deploy-service port-collision pre-flight, role-prefix `group_vars` (brief §6 step 2 / §5).
+- [ ] **G6** — Extract `homelab-host-agents` (node-exporter, portainer-agent), deployed once per device (brief §6 step 3 / §5.4).
+- [ ] **G7** — Stand up `homelab-data-services` (shared Postgres/Redis) + `requires:` provisioning (brief §6 step 4).
+- [ ] **G8** — Migrate `n8n-automation` and `authentik-sso` to the shared data tier — `authentik-sso` needs zero repo changes (already gates its bundled Postgres/Redis behind `COMPOSE_PROFILES=local-infra`, see its README); `n8n-automation` needs a `requires:` block added (brief §6 step 5).
+- [ ] **G9** — Replace `IP_*` Infisical secrets with `ADDR_<REPO>` addressing; delete `/prod/network/IP_*` once migrated (brief §6 step 6).
+- [ ] **G10** — Cleanup: drop the `target_node:` fallback, add the no-embedded-DB lint, collapse `NODES.md` tables, retire moved `host_vars` (brief §6 step 7).
+- [ ] **Wire `host_roles` into `bootstrap_node.yml`** — not part of G1-G3; `topology.yml` declares `host_roles` as data today, but the bootstrap playbook doesn't consume them yet to select role-specific Ansible roles/firewall rules (brief §3.3). Needed before G5's co-residency work lands for real.
 
 ---
 
