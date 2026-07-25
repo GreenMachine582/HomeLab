@@ -163,7 +163,7 @@ Key templates and their data sources:
 ### Adding a New Node
 
 1. Add `ip_svc_0x` to `inventories/group_vars/all/overrides.yml` (the gitignored file with real IPs) — `main.yml` keeps its `EDIT_BEFORE_USE` placeholder
-2. Uncomment (or add) the host entry in `inventories/prod.yml` with `ansible_host: "{{ ip_svc_0x }}"` — no manual IP sync needed
+2. Add the device to `topology.yml` (`hostname`, `host_roles`), then run `scripts/generate_inventory.py` to regenerate `inventories/prod.yml` — it's generated from `topology.yml`, don't hand-edit it (see `docs/topology_data_brief.md` §3)
 3. Create `inventories/host_vars/<hostname>.yml` with node-specific overrides
 4. Uncomment/add to relevant `inventories/group_vars/` file if needed
 5. Add Prometheus scrape target in `inventories/group_vars/observe.yml` (`prometheus_scrape_targets`)

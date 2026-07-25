@@ -1,15 +1,18 @@
-# Homelab Topology & Shared Data Tier — Planning Brief (v3)
+# Homelab Topology & Shared Data Tier — Planning Brief (v4)
 
 > Companion to [repo_split_brief.md](./repo_split_brief.md). That brief answers *how services are packaged and deployed*; this one answers *where they run* and *where their state lives*. It builds on the decided items there (central `services.yml`, `deploy-service` on edge, bootstrap-tier circularity, cloudflared rolling constraint) and changes none of them.
 
-**Status:** §6 step 1 (core) implemented — `topology.yml` created with the 3 real devices; `deploy-service` resolves `device:` against it (`target_node:` fallback preserved); all 4 `services.yml` entries migrated to `device:`. Remaining step 1 work (generating `inventories/prod.yml` from `topology.yml`) and steps 2-7 not started — see `TODO.md` Milestone G.
+**Status:** §6 step 1 fully implemented — `topology.yml` created with the 3 real devices; `deploy-service` resolves `device:` against it (`target_node:` fallback preserved); all 4 `services.yml` entries migrated to `device:`; `inventories/prod.yml` is now generated from `topology.yml` via `scripts/generate_inventory.py` rather than hand-edited. Steps 2-7 not started — see `TODO.md` Milestone G.
 **Origin repo:** https://github.com/GreenMachine582/HomeLab
+
+**Changelog from v3:**
+- **`scripts/generate_inventory.py` created** — derives `inventories/prod.yml` from `topology.yml` (static connection-defaults block plus one group per `host_roles` value, `ansible_host: "{{ ip_<suffix> }}"` per device). `inventories/prod.yml` swapped to the generated output; diff against the hand-written version showed only the expected difference (commented-out `svc-02`/`svc-03` placeholder hints, superseded by "add to `topology.yml`, regenerate"). `CLAUDE.md`'s "Adding a New Node" step 2 updated to match — §6 step 1 is now complete end-to-end.
 
 **Changelog from v2:**
 - **`topology.yml` created** at repo root with the 3 real devices (`rpi-01`/`rpi-02`/`rpi-03`), matching §3.1's example exactly. `svc-02`/`svc-03` deliberately omitted — no hardware yet.
 - **`deploy-service` resolves `device:`** (`deploy_service/topology.py`, wired into `cli.py`) — falls back to `target_node:` unchanged, so nothing already deployed breaks. A new `--topology` CLI flag mirrors `--inventory`'s override pattern.
 - **`services.yml`'s 4 entries migrated** from `target_node:` to `device:`, proving the mechanism end-to-end.
-- Inventory generation/diffing (the second half of §6 step 1) and `host_roles` consumption by `bootstrap_node.yml` (§3.3) are explicitly **not** part of this pass — tracked separately in `TODO.md` Milestone G.
+- `host_roles` consumption by `bootstrap_node.yml` (§3.3) is explicitly **not** part of this pass — tracked separately in `TODO.md` Milestone G.
 
 **Changelog from v1:**
 - **Placement layer dropped.** v1 introduced `placements:` (edge/observe/data/apps/media) as an indirection between repos and devices. Challenged and removed — `services.yml` now maps repo → device directly; devices carry `host_roles:` tags for bootstrap. Rationale in §3.4.
