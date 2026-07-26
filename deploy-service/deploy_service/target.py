@@ -43,9 +43,17 @@ def _deref(value, hostvars: dict, var_name: str, target_node: str):
     return hostvars[referenced]
 
 
+_TAILSCALE_UNSET = "EDIT_BEFORE_USE"
+
+
 def _live_ip(target_node: str) -> str:
-    """Same suffix convention as resolve_node_ips.yml / bootstrap_node.yml's probe."""
+    """Same suffix convention as resolve_node_ips.yml / bootstrap_node.yml's probe.
+    Prefers Tailscale (stable, unaffected by LAN DHCP drift) when an operator has
+    registered it; falls back to the LAN IP otherwise."""
     suffix = target_node.removeprefix("homelab-").replace("-", "_").upper()
+    tailscale_ip = infisical.fetch_optional(f"prod/network/TAILSCALE_IP_{suffix}")
+    if tailscale_ip and tailscale_ip != _TAILSCALE_UNSET:
+        return tailscale_ip
     result = infisical.fetch([{"path": f"prod/network/IP_{suffix}", "env": "_ip"}])
     return result["_ip"]
 

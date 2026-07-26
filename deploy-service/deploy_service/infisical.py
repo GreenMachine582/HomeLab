@@ -18,7 +18,8 @@ _API_BASE = "http://127.0.0.1:8222/api"
 _RUNTIME_AUTH_PATH = Path.home() / ".infisical_runtime_auth.yml"
 
 
-def _http(method: str, url: str, body: dict | None = None, token: str | None = None) -> Any:
+def _http(method: str, url: str, body: dict | None = None, token: str | None = None,
+          required: bool = True) -> Any:
     data = json.dumps(body).encode() if body else None
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if token:
@@ -28,6 +29,8 @@ def _http(method: str, url: str, body: dict | None = None, token: str | None = N
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
+        if not required and e.code == 404:
+            return None
         body_text = e.read().decode(errors="replace")
         sys.exit(f"[deploy-service] Infisical API error {e.code} {method} {url}: {body_text}")
     except urllib.error.URLError as e:
@@ -72,7 +75,7 @@ def _login(client_id: str, client_secret: str) -> str:
     return token
 
 
-def _fetch_secret(token: str, secret_path: str, project_id: str) -> str:
+def _fetch_secret(token: str, secret_path: str, project_id: str, required: bool = True) -> str | None:
     """secret_path is e.g. '/production/cloudflare/TUNNEL_TOKEN'."""
     parts = secret_path.strip("/").split("/")
     if len(parts) < 3:
@@ -87,9 +90,9 @@ def _fetch_secret(token: str, secret_path: str, project_id: str) -> str:
         "environment": env,
         "secretPath": folder,
     })
-    result = _http("GET", f"{_API_BASE}/v3/secrets/raw/{key}?{qs}", token=token)
-    value = result.get("secret", {}).get("secretValue")
-    if value is None:
+    result = _http("GET", f"{_API_BASE}/v3/secrets/raw/{key}?{qs}", token=token, required=required)
+    value = result.get("secret", {}).get("secretValue") if result else None
+    if value is None and required:
         sys.exit(f"[deploy-service] Secret not found or empty: {secret_path}")
     return value
 
@@ -109,3 +112,12 @@ def fetch(secret_specs: list[dict]) -> dict[str, str]:
         print(f"  fetching {path} → {env_name}")
         env_vars[env_name] = _fetch_secret(token, path, project_id)
     return env_vars
+
+
+def fetch_optional(secret_path: str) -> str | None:
+    """Like fetch(), but for a single secret that may not exist yet -- returns
+    None instead of exiting. For callers with a fallback (e.g. Tailscale IPs
+    that aren't registered until an operator sets them)."""
+    client_id, client_secret, project_id = _load_runtime_creds()
+    token = _login(client_id, client_secret)
+    return _fetch_secret(token, secret_path, project_id, required=False)
