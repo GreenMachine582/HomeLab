@@ -128,15 +128,16 @@
   when: _ssh_port_probe is failed
   tags: [ssh, security]
 
-# Restart sshd in the background over the current SSH session.
-# Avoids reconnecting before sshd starts listening on the new port.
-- name: "Security | Restart sshd to apply config changes (async, non-blocking)"
+# Polled (not fire-and-forget) so a failed restart actually fails the play.
+- name: "Security | Restart sshd to apply config changes"
   ansible.builtin.systemd:
     name: ssh
     state: restarted
-  async: 30
-  poll: 0
-  when: sshd_config.changed or (_sshd_port_config.changed | default(false))
+  async: 60
+  poll: 3
+  when: >-
+    sshd_config.changed or sshd_include.changed or sshd_dropin.changed
+    or (_sshd_port_config.changed | default(false))
   tags: [ssh, security]
 
 # Check from the controller that sshd is listening on the target port.
@@ -149,7 +150,9 @@
     timeout: 60
   delegate_to: localhost
   become: false
-  when: sshd_config.changed or (_sshd_port_config.changed | default(false))
+  when: >-
+    sshd_config.changed or sshd_include.changed or sshd_dropin.changed
+    or (_sshd_port_config.changed | default(false))
   tags: [ssh, security]
 
 # Update Ansible to use the new SSH port for remaining tasks.
