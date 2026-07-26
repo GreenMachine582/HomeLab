@@ -158,32 +158,36 @@
 # A listening port proves nothing about which auth methods it accepts.
 # Always re-parse the effective, merged config (no `when:`, so drift from
 # outside this role is caught on every re-run too) and fail if it's wrong.
-- name: "Security | Dump effective (merged) sshd config"
-  ansible.builtin.command: sshd -T
-  register: _sshd_effective
-  changed_when: false
+# --check never actually writes the config this run pretends to apply, so
+# there's nothing real to verify here under check mode — skip the block
+# rather than assert against whatever happens to already be on disk.
+- name: "Security | Verify effective sshd config matches intended hardening"
+  when: not ansible_check_mode
   tags: [ssh, security]
+  block:
+    - name: "Security | Dump effective (merged) sshd config"
+      ansible.builtin.command: sshd -T
+      register: _sshd_effective
+      changed_when: false
 
-- name: "Security | Parse effective sshd config into a lookup dict"
-  ansible.builtin.set_fact:
-    _sshd_effective_map: "{{ dict(_sshd_effective.stdout_lines | map('lower') | map('split', ' ', 1)) }}"
-  tags: [ssh, security]
+    - name: "Security | Parse effective sshd config into a lookup dict"
+      ansible.builtin.set_fact:
+        _sshd_effective_map: "{{ dict(_sshd_effective.stdout_lines | map('lower') | map('split', ' ', 1)) }}"
 
-- name: "Security | Assert effective sshd config matches intended hardening"
-  ansible.builtin.assert:
-    that:
-      - _sshd_effective_map['passwordauthentication'] == (ssh_password_authentication | lower)
-      - _sshd_effective_map['permitrootlogin'] == (ssh_permit_root_login | lower)
-      - _sshd_effective_map['pubkeyauthentication'] == (ssh_pubkey_authentication | lower)
-      - _sshd_effective_map['maxauthtries'] == (ssh_max_auth_tries | string)
-      - _sshd_effective_map['port'] == (ssh_port | string)
-    fail_msg: >-
-      sshd -T (the actual merged/effective config) does not match intended
-      hardening — something in /etc/ssh/sshd_config.d/*.conf, or a duplicate
-      directive earlier in /etc/ssh/sshd_config, is overriding
-      base_hardening's settings under OpenSSH's first-match-wins Include
-      semantics. Effective values: {{ _sshd_effective_map }}
-  tags: [ssh, security]
+    - name: "Security | Assert effective sshd config matches intended hardening"
+      ansible.builtin.assert:
+        that:
+          - _sshd_effective_map['passwordauthentication'] == (ssh_password_authentication | lower)
+          - _sshd_effective_map['permitrootlogin'] == (ssh_permit_root_login | lower)
+          - _sshd_effective_map['pubkeyauthentication'] == (ssh_pubkey_authentication | lower)
+          - _sshd_effective_map['maxauthtries'] == (ssh_max_auth_tries | string)
+          - _sshd_effective_map['port'] == (ssh_port | string)
+        fail_msg: >-
+          sshd -T (the actual merged/effective config) does not match intended
+          hardening — something in /etc/ssh/sshd_config.d/*.conf, or a duplicate
+          directive earlier in /etc/ssh/sshd_config, is overriding
+          base_hardening's settings under OpenSSH's first-match-wins Include
+          semantics. Effective values: {{ _sshd_effective_map }}
 
 # Update Ansible to use the new SSH port for remaining tasks.
 - name: "Security | Persist new SSH port for subsequent Ansible connections"
