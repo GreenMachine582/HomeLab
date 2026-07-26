@@ -5,10 +5,11 @@ own hostname -- reliable here because playbooks/bootstrap_edge.yml and
 playbooks/bootstrap_node.yml both set the OS hostname to exactly the
 inventory/services.yml node name during bootstrap (ansible.builtin.hostname).
 
-Remote connection details (host/port/user/key) are resolved by shelling out
-to `ansible-inventory --host <target_node>`, so they always match whatever
-Ansible itself would use -- never duplicated into services.yml or a new
-config file.
+Remote connection details (port/user/key) are resolved by shelling out to
+`ansible-inventory --host <target_node>`. The host/IP itself is resolved
+live from Infisical instead, for the same reason playbooks/resolve_node_ips.yml
+does the same: inventories/group_vars/all/overrides.yml's static IP is a
+documented fallback only and can drift from the real DHCP-assigned address.
 """
 import json
 import re
@@ -17,6 +18,10 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from . import infisical
+
+_EDGE_HOSTNAME = "homelab-edge"
 
 # ansible-inventory doesn't template Jinja2 in host vars, so resolve
 # single-level references (e.g. "{{ ssh_port }}") ourselves.
@@ -36,6 +41,13 @@ def _deref(value, hostvars: dict, var_name: str, target_node: str):
             f"template referencing undefined var '{referenced}': {value!r}"
         )
     return hostvars[referenced]
+
+
+def _live_ip(target_node: str) -> str:
+    """Same suffix convention as resolve_node_ips.yml / bootstrap_node.yml's probe."""
+    suffix = target_node.removeprefix("homelab-").replace("-", "_").upper()
+    result = infisical.fetch([{"path": f"prod/network/IP_{suffix}", "env": "_ip"}])
+    return result["_ip"]
 
 
 @dataclass
@@ -95,6 +107,9 @@ def resolve(target_node: str, inventory_path: Path) -> Target:
             f"[deploy-service] '{target_node}' has no ansible_host in {inventory_path} "
             "-- is it a valid host in the inventory?"
         )
+
+    if target_node != _EDGE_HOSTNAME:
+        host = _live_ip(target_node)
 
     port = _deref(hostvars.get("ansible_port", 22), hostvars, "ansible_port", target_node)
 
