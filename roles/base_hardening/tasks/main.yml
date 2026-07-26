@@ -128,13 +128,13 @@
   when: _ssh_port_probe is failed
   tags: [ssh, security]
 
-# Polled (not fire-and-forget) so a failed restart actually fails the play.
+# Synchronous (not fire-and-forget) so a failed restart actually fails the
+# play — also required for --check compatibility, since Ansible refuses to
+# run any task with `async` set under check mode.
 - name: "Security | Restart sshd to apply config changes"
   ansible.builtin.systemd:
     name: ssh
     state: restarted
-  async: 60
-  poll: 3
   when: >-
     sshd_config.changed or sshd_include.changed or sshd_dropin.changed
     or (_sshd_port_config.changed | default(false))
