@@ -57,6 +57,43 @@
   changed_when: false
   tags: [ssh, security]
 
+# sshd_config Includes this dir near the top, and OpenSSH uses first-value-wins
+# per keyword — so a stray drop-in here (e.g. imager first-boot config) can
+# silently beat what we set below. Our "00-" file wins that race instead.
+- name: "Security | Ensure sshd_config.d directory exists"
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [ssh, security]
+
+- name: "Security | Ensure sshd_config Includes sshd_config.d"
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^Include\s+/etc/ssh/sshd_config\.d/\*\.conf'
+    line: "Include /etc/ssh/sshd_config.d/*.conf"
+    insertbefore: BOF
+    state: present
+    backup: true
+    validate: "sshd -t -f %s"
+  register: sshd_include
+  tags: [ssh, security]
+
+- name: "Security | Deploy authoritative sshd hardening drop-in"
+  ansible.builtin.template:
+    src: sshd_config.d/00-homelab-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-homelab-hardening.conf
+    owner: root
+    group: root
+    mode: "0600"
+    backup: true
+    validate: "sshd -t -f %s"
+  register: sshd_dropin
+  tags: [ssh, security]
+
+# Second line of defense in case Include is somehow missing.
 - name: "Security | Harden SSH config"
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config

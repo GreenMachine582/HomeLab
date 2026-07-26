@@ -1,0 +1,12 @@
+# Managed by Ansible (roles/base_hardening) — DO NOT EDIT BY HAND.
+# Named "00-" to sort first in sshd's Include glob — first value wins per
+# keyword, so this beats any other drop-in that might set these differently.
+PermitRootLogin {{ ssh_permit_root_login }}
+PasswordAuthentication {{ ssh_password_authentication }}
+PubkeyAuthentication {{ ssh_pubkey_authentication }}
+ChallengeResponseAuthentication no
+UsePAM yes
+X11Forwarding no
+MaxAuthTries {{ ssh_max_auth_tries }}
+ClientAliveInterval {{ ssh_client_alive_interval }}
+ClientAliveCountMax {{ ssh_client_alive_count_max }}
