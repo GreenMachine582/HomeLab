@@ -44,15 +44,28 @@ def _deref(value, hostvars: dict, var_name: str, target_node: str):
 
 
 _TAILSCALE_UNSET = "EDIT_BEFORE_USE"
+_PROBE_TIMEOUT = 5
 
 
-def _live_ip(target_node: str) -> str:
+def _reachable(host: str, port: int) -> bool:
+    """TCP-only reachability check, same technique (and intent) as
+    bootstrap_node.yml/bootstrap_edge.yml's own probe plays' wait_for tasks --
+    not an auth check, just "is anything listening"."""
+    try:
+        with socket.create_connection((host, port), timeout=_PROBE_TIMEOUT):
+            return True
+    except OSError:
+        return False
+
+
+def _live_ip(target_node: str, port: int) -> str:
     """Same suffix convention as resolve_node_ips.yml / bootstrap_node.yml's probe.
     Prefers Tailscale (stable, unaffected by LAN DHCP drift) when an operator has
-    registered it; falls back to the LAN IP otherwise."""
+    registered it and it's actually reachable; falls back to the LAN IP otherwise
+    (unregistered, or the tailnet connection itself is down/timing out)."""
     suffix = target_node.removeprefix("homelab-").replace("-", "_").upper()
     tailscale_ip = infisical.fetch_optional(f"prod/network/TAILSCALE_IP_{suffix}")
-    if tailscale_ip and tailscale_ip != _TAILSCALE_UNSET:
+    if tailscale_ip and tailscale_ip != _TAILSCALE_UNSET and _reachable(tailscale_ip, port):
         return tailscale_ip
     result = infisical.fetch([{"path": f"prod/network/IP_{suffix}", "env": "_ip"}])
     return result["_ip"]
@@ -116,10 +129,10 @@ def resolve(target_node: str, inventory_path: Path) -> Target:
             "-- is it a valid host in the inventory?"
         )
 
-    if target_node != _EDGE_HOSTNAME:
-        host = _live_ip(target_node)
-
     port = _deref(hostvars.get("ansible_port", 22), hostvars, "ansible_port", target_node)
+
+    if target_node != _EDGE_HOSTNAME:
+        host = _live_ip(target_node, int(port))
 
     key_file = hostvars.get("ansible_ssh_private_key_file")
     if key_file:
