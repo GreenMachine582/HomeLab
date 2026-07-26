@@ -214,6 +214,13 @@
         ansible_user: admin
         ansible_password: "{{ _admin_pw }}"
         ansible_become_password: "{{ _admin_pw }}"
+        # admin has no key Ansible can use — only the operator holds that,
+        # for manual access. base_hardening will flip this node to key-only
+        # auth partway through the next play; hand off to the homelab
+        # identity roles/users authorizes on this same node so later tasks
+        # can still reconnect (see the post-base_hardening tasks below).
+        ssh_post_harden_user: homelab
+        ssh_post_harden_key: /home/homelab/.ssh/homelab
         vault_admin_ssh_pubkey: "{{ infisical_secrets['network/SSH_ADMIN_PUBKEY'] }}"
         vault_homelab_ssh_pubkey: "{{ infisical_secrets['network/SSH_HOMELAB_PUBKEY'] }}"
         vault_deploy_ssh_pubkey: "{{ infisical_secrets['network/SSH_DEPLOY_PUBKEY'] }}"
@@ -261,23 +268,71 @@
         name: "{{ base_packages }}"
         state: present
 
-  roles:
-    - role: users
+  tasks:
+    - name: "Roles | Users"
+      ansible.builtin.include_role:
+        name: users
       tags: [base, users]
 
-    - role: base_hardening
+    - name: "Roles | Base hardening"
+      ansible.builtin.include_role:
+        name: base_hardening
       tags: [base, hardening]
 
-    - role: docker
+    # base_hardening may have just switched sshd to key-only auth on a new
+    # port. If this bootstrap connected as admin+password (the probe play's
+    # "fresh" tier), that identity is now a dead end — sshd no longer
+    # accepts passwords, and admin has no key Ansible can use. Trust the
+    # (possibly new) port's host key, then switch to the homelab identity
+    # roles/users just authorized on this node, so every task from here on
+    # can actually reconnect. No-op (all skipped) on the far more common
+    # already-hardened/re-run path, where this is never defined.
+    - name: "Ansible | Scan target node SSH host key on hardened port"
+      ansible.builtin.shell:
+        cmd: "ssh-keyscan -p {{ ssh_port }} {{ ansible_host }} 2>/dev/null"
+      register: _post_harden_host_keys
+      changed_when: false
+      delegate_to: localhost
+      become: false
+      when: ssh_post_harden_user is defined
+      tags: [base, hardening]
+
+    - name: "Ansible | Trust target node SSH host key on hardened port"
+      ansible.builtin.known_hosts:
+        name: "{{ item.split(' ')[0] }}"
+        key: "{{ item }}"
+        path: /home/homelab/.ssh/known_hosts
+        state: present
+      loop: "{{ _post_harden_host_keys.stdout_lines | select('match', '^[^#]') | list }}"
+      no_log: true
+      delegate_to: localhost
+      become: false
+      when: ssh_post_harden_user is defined
+      tags: [base, hardening]
+
+    - name: "Ansible | Switch connection to key auth post-hardening"
+      ansible.builtin.set_fact:
+        ansible_user: "{{ ssh_post_harden_user }}"
+        ansible_ssh_private_key_file: "{{ ssh_post_harden_key }}"
+        ansible_ssh_common_args: "-o PreferredAuthentications=publickey"
+      when: ssh_post_harden_user is defined
+      tags: [base, hardening]
+
+    - name: "Roles | Docker"
+      ansible.builtin.include_role:
+        name: docker
       tags: [docker]
 
-    - role: docker_compose
+    - name: "Roles | Docker Compose"
+      ansible.builtin.include_role:
+        name: docker_compose
       tags: [docker]
 
-    - role: tailscale
+    - name: "Roles | Tailscale"
+      ansible.builtin.include_role:
+        name: tailscale
       tags: [tailscale]
 
-  tasks:
     - name: "Firewall | Configure and enable"
       ansible.builtin.include_role:
         name: firewall
