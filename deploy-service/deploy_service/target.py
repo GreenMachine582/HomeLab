@@ -11,11 +11,31 @@ Ansible itself would use -- never duplicated into services.yml or a new
 config file.
 """
 import json
+import re
 import socket
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+# ansible-inventory doesn't template Jinja2 in host vars, so resolve
+# single-level references (e.g. "{{ ssh_port }}") ourselves.
+_SIMPLE_VAR_REF = re.compile(r"^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$")
+
+
+def _deref(value, hostvars: dict, var_name: str, target_node: str):
+    if not isinstance(value, str):
+        return value
+    match = _SIMPLE_VAR_REF.match(value)
+    if not match:
+        return value
+    referenced = match.group(1)
+    if referenced not in hostvars:
+        sys.exit(
+            f"[deploy-service] '{var_name}' for '{target_node}' is an unresolved "
+            f"template referencing undefined var '{referenced}': {value!r}"
+        )
+    return hostvars[referenced]
 
 
 @dataclass
@@ -69,12 +89,14 @@ def resolve(target_node: str, inventory_path: Path) -> Target:
     except json.JSONDecodeError as e:
         sys.exit(f"[deploy-service] ansible-inventory returned invalid JSON for '{target_node}': {e}")
 
-    host = hostvars.get("ansible_host")
+    host = _deref(hostvars.get("ansible_host"), hostvars, "ansible_host", target_node)
     if not host:
         sys.exit(
             f"[deploy-service] '{target_node}' has no ansible_host in {inventory_path} "
             "-- is it a valid host in the inventory?"
         )
+
+    port = _deref(hostvars.get("ansible_port", 22), hostvars, "ansible_port", target_node)
 
     key_file = hostvars.get("ansible_ssh_private_key_file")
     if key_file:
@@ -83,7 +105,7 @@ def resolve(target_node: str, inventory_path: Path) -> Target:
     return Target(
         is_local=False,
         host=host,
-        port=int(hostvars.get("ansible_port", 22)),
+        port=int(port),
         user=hostvars.get("ansible_user", "homelab"),
         key_file=key_file,
     )
