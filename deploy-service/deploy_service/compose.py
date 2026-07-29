@@ -214,7 +214,7 @@ def deploy(
         file_args += ["-f", cf]
 
     print(f"[deploy-service] Pulling images ({', '.join(compose_files)})")
-    _run_on(target, ["docker", "compose"] + file_args + ["pull"], cwd=path, injected_env=injected_env, dry_run=dry_run)
+    _run_on(target, ["docker", "compose"] + file_args + ["pull", "-q"], cwd=path, injected_env=injected_env, dry_run=dry_run)
 
     _up(path, compose_files, injected_env, target=target, dry_run=dry_run)
 
@@ -232,7 +232,7 @@ def pull_image(
     target = target or Target.local()
     ref = f"{image}:{tag}"
     print(f"[deploy-service] Pulling image ({ref})")
-    _run_on(target, ["docker", "pull", ref], injected_env=None, dry_run=dry_run)
+    _run_on(target, ["docker", "pull", "-q", ref], injected_env=None, dry_run=dry_run)
 
 
 def deploy_image(
