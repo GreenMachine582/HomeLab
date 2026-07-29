@@ -352,6 +352,17 @@
         mode: "0755"
       tags: [base, deploy-service]
 
+    # Mirrors deploy_edge.yml's own "deploy-service | Ensure python3-venv is
+    # present" -- pre_hook/post_hook scripts (e.g. homelab-observe-services'
+    # setup_monitors.sh) may self-provision a venv on the remote target too,
+    # not just the edge.
+    - name: "deploy-service | Ensure python3-venv is present"
+      ansible.builtin.apt:
+        name: python3-venv
+        state: present
+        cache_valid_time: 3600
+      tags: [base, deploy-service]
+
     - name: "Observability | Deploy node-exporter"
       community.docker.docker_container:
         name: node-exporter
