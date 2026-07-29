@@ -528,7 +528,7 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 **Option A — SSH into the edge node:**
 
 ```bash
-ssh -p <ssh_port> admin@<ip_edge>
+ssh -p <ssh_port> -i .ssh/homelab-edge admin@<ip_edge>
 ```
 
 ```bash
@@ -596,7 +596,7 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 **All commands in this phase run from `homelab-edge` itself** — SSH in first:
 
 ```bash
-ssh -p <ssh_port> admin@<ip_edge>
+ssh -p <ssh_port> -i .ssh/homelab-edge admin@<ip_edge>
 sudo su - homelab
 cd /opt/homelab
 ```

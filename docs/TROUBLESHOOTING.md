@@ -65,7 +65,7 @@ Quick health check across all nodes:
 ansible all -m ping
 
 # Check all Docker services on a node
-ssh admin@<node>
+ssh -p <ssh_port> -i .ssh/homelab-edge admin@<node>
 docker ps -a
 
 # Check systemd services
@@ -118,6 +118,13 @@ sudo fail2ban-client set sshd unbanip <your-ip>
 **Check 4 — Are you using the right key?**
 ```bash
 ssh -i .ssh/homelab-edge admin@homelab-edge.local
+```
+
+**Tip — stop passing `-p`/`-i` every time:** the same `admin` key and `ssh_port` work on every node (`roles/users` authorizes the same key everywhere). Add this to `~/.ssh/config` once and plain `ssh admin@homelab-edge` / `homelab-observe` / `homelab-svc-01` just works:
+```
+Host homelab-*
+    Port <ssh_port>
+    IdentityFile ~/homelab/.ssh/homelab-edge
 ```
 
 ### Ansible cannot reach a node
@@ -330,7 +337,7 @@ tailscale status
 All nodes should appear with a direct connection. If a node is missing, SSH to it over LAN and check:
 
 ```bash
-ssh admin@192.168.1.<x>
+ssh -p <ssh_port> -i .ssh/homelab-edge admin@192.168.1.<x>
 systemctl status tailscaled
 journalctl -u tailscaled --no-pager -n 50
 ```
@@ -677,7 +684,7 @@ tail -n 100 /opt/homelab/logs/ansible.log
 If the automated pipeline is broken, deploy manually at any time:
 
 ```bash
-ssh -p <ssh_port> deploy@homelab-edge
+ssh -p <ssh_port> -i .ssh/deploy deploy@homelab-edge
 cd /opt/homelab
 sudo ansible-playbook playbooks/deploy_edge.yml
 deploy-service deploy homelab-observe-services
