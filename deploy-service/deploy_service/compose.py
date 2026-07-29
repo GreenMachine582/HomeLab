@@ -28,7 +28,17 @@ def _run(cmd: list[str], cwd: str | None = None, env: dict | None = None,
 
 
 def _ssh_base_cmd(target: Target) -> list[str]:
-    cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-p", str(target.port)]
+    # Same multiplexing ansible.cfg's [ssh_connection] uses -- a deploy runs
+    # many separate ssh invocations (git steps, hooks, docker compose), and
+    # without this each one is a brand-new login (and a fresh on-ssh-success
+    # notification). ControlMaster reuses one real connection across all of
+    # them; same ControlPath template as Ansible's so the two can even share
+    # a master if a run overlaps.
+    cmd = [
+        "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+        "-o", "ControlMaster=auto", "-o", "ControlPath=/tmp/ansible-ssh-%h-%p-%r", "-o", "ControlPersist=60s",
+        "-p", str(target.port),
+    ]
     if target.key_file:
         cmd += ["-i", target.key_file]
     cmd.append(f"{target.user}@{target.host}")
