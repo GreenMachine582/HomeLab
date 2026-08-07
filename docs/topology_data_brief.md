@@ -1,9 +1,15 @@
-# Homelab Topology & Shared Data Tier — Planning Brief (v4)
+# Homelab Topology & Shared Data Tier — Planning Brief (v5)
 
 > Companion to [repo_split_brief.md](./repo_split_brief.md). That brief answers *how services are packaged and deployed*; this one answers *where they run* and *where their state lives*. It builds on the decided items there (central `services.yml`, `deploy-service` on edge, bootstrap-tier circularity, cloudflared rolling constraint) and changes none of them.
 
 **Status:** §6 step 1 fully implemented — `topology.yml` created with the 3 real devices; `deploy-service` resolves `device:` against it (`target_node:` fallback preserved); all 4 `services.yml` entries migrated to `device:`; `inventories/prod.yml` is now generated from `topology.yml` via `scripts/generate_inventory.py` rather than hand-edited. Steps 2-7 not started — see `TODO.md` Milestone G.
 **Origin repo:** https://github.com/GreenMachine582/HomeLab
+
+**Changelog from v4:**
+- **Addressing identity locked (§3.5): MagicDNS hostnames are the single canonical identity.** A separate internal-DNS namespace (`.internal` CNAMEs in front of MagicDNS) was considered and **rejected** for the same reason placements were (§3.4): one more indirection (`repo → device → internal DNS → MagicDNS`) that must be maintained, buying nothing at this scale. The `hostname:` field in `topology.yml` is the one name used for SSH, deploy targeting, and every injected address.
+- **Path selection delegated to Tailscale (§3.5).** No app-level "try LAN first" logic anywhere. Apps connect to the hostname; Tailscale picks LAN-direct → direct WireGuard → DERP transparently. Consequently `lan_ip` is **demoted to protocol-exceptional**: kept only where the protocol itself needs a LAN address (Pi-hole :53/DHCP advertisement, WoL, router/static firewall rules). No service config ever consumes it.
+- **Device-name vs service-name addressing resolved (§3.5).** Consumers already see service-shaped names (`PG_HOST`, `REDIS_HOST` via `requires:`) — the device binding resolves inside deploy-service at deploy time. The residual cost (redeploying consumers when a dependency's stack moves devices) is accepted at this scale; DNS-level service names (Tailscale service aliases / split-DNS CNAMEs) recorded in §7 as the zero-schema-change evolution if that churn ever materializes.
+- **Two verification gates added to step 6** before `IP_*` deletion: confirm LAN-direct paths (`tailscale ping` between every device pair) and confirm MagicDNS resolves *from inside containers* on every device — the latter is the one place this design can bite, especially on edge where Pi-hole rewrites DNS (§3.5, §7).
 
 **Changelog from v3:**
 - **`scripts/generate_inventory.py` created** — derives `inventories/prod.yml` from `topology.yml` (static connection-defaults block plus one group per `host_roles` value, `ansible_host: "{{ ip_<suffix> }}"` per device). `inventories/prod.yml` swapped to the generated output; diff against the hand-written version showed only the expected difference (commented-out `svc-02`/`svc-03` placeholder hints, superseded by "add to `topology.yml`, regenerate"). `CLAUDE.md`'s "Adding a New Node" step 2 updated to match — §6 step 1 is now complete end-to-end.
@@ -28,6 +34,7 @@
 2. **Safe co-residency.** Any subset of stacks must be able to share a device without bootstrap, deploy, or rollback conflicts. "One stack per Pi" must be a choice, not a load-bearing assumption.
 3. **One data tier.** Service repos don't ship Postgres/Redis, and no service reaches into another service's store.
 4. **Devices as data, not repos.** Devices declared once, in one file, in the HomeLab repo.
+5. **One name per thing.** A device has exactly one canonical identity (its MagicDNS hostname); applications never see IPs, and no parallel naming layer exists to drift out of sync.
 
 ## ❓ 2. The problem today
 
@@ -54,10 +61,12 @@ Single source of truth for devices. Everything else — Ansible inventory, deplo
 # topology.yml — the ONLY file that changes when hardware changes.
 devices:
   rpi-01:
-    hostname: homelab-edge          # Tailscale MagicDNS name
+    hostname: homelab-edge          # Tailscale MagicDNS name — the device's ONE canonical identity (§3.5)
     arch: arm64
     host_roles: [edge]              # consumed by bootstrap only (§3.3)
-    lan_ip: 192.168.1.10            # only where LAN-only paths need it (Pi-hole :53)
+    lan_ip: 192.168.1.10            # EXCEPTIONAL — only where the protocol itself needs a LAN
+                                    # address (Pi-hole :53/DHCP advertisement, WoL, firewall
+                                    # rules). Never injected into service config.
   rpi-02:
     hostname: homelab-observe
     arch: arm64
@@ -103,13 +112,25 @@ v1's placement layer (`repo → placement → device`) bought one thing: rebindi
 
 The layer saves a few lines per topology change — an event that happens a few times a year at most — at the permanent cost of a second lookup everywhere. And its addressing role was actually wrong: things don't need to know "where observe *stuff* is", they need to know "where *Prometheus* is" (§3.5). Placements only start paying rent at tens of repos. **Dropped.** If repo count ever grows past that, YAML anchors in `services.yml` (`device: *big-box`) recover 90% of the benefit with zero schema.
 
-### 3.5 Addressing: per-repo, via MagicDNS — `IP_*` deprecated
+### 3.5 Addressing: MagicDNS hostnames are the canonical identity — `IP_*` deprecated
 
-`deploy-service` injects, for any repo that asks, `ADDR_<REPO>` = the MagicDNS hostname of the device that repo is bound to (e.g. `ADDR_OBSERVE_SERVICES=homelab-observe`). Identical whether the target is a Pi, a PC, or a cloud VM, and **automatically correct when repos co-reside** — no config edit when observe moves onto the edge box.
+Three decisions, then the mechanics.
+
+**One namespace (resolved: no internal-DNS layer).** The `hostname:` in `topology.yml` — the MagicDNS name — is the device's single identity for everything: SSH, deploy targeting, every injected address, monitoring targets. A parallel `.internal` namespace (CNAMEs pointing at MagicDNS names) was considered and rejected by the same accounting that killed placements (§3.4): it adds a lookup (`repo → device → internal DNS → MagicDNS`) and a thing to keep in sync, and its one benefit — renaming a device without touching consumers — is already covered because consumers never see device names anyway (below). One name per device, defined once.
+
+**Path selection is Tailscale's job, not the config's.** Services connect to `homelab-observe`; Tailscale resolves and routes it — LAN-direct where both peers are on the same LAN, direct WireGuard otherwise, DERP as last resort. No app-level "prefer the LAN IP" logic exists anywhere in the design, which is what makes the same config correct on three Pis, one PC, or a Pi + cloud VM mix. `lan_ip` survives in `topology.yml` only for cases where the *protocol* demands a LAN address — Pi-hole's :53/DHCP advertisement to LAN clients, WoL, static router/firewall rules — and is never injected into service config.
+
+This also settles the failure-mode question: every inter-device path already rides the tailnet (SSH, deploy-service itself), so making addressing tailnet-native adds **no new dependency** — tailscaled was already effectively bootstrap-tier. The only paths that must survive a tailnet outage are precisely the LAN-protocol ones `lan_ip` covers.
+
+**Device names vs service names (resolved: deploy-time injection now, DNS service names only if churn demands).** The observation that consumers should care about *services* (`PG_HOST=postgres`) rather than *machines* (`PG_HOST=homelab-svc-01`) is right — and the design already delivers the consumer-facing half of it: via `requires:` (§4), a service writes `PG_HOST`/`REDIS_HOST` in its config and never names a device; deploy-service resolves the data stack's device and injects the hostname at deploy time. The indirection lives in deploy-service instead of DNS. The honest cost of that choice: when a dependency's stack moves devices, its consumers must be redeployed to pick up the new value — versus a DNS service name, where only the record changes. At current scale (one data stack, a handful of consumers, moves a few times a year) that's one `deploy-service` loop and is accepted. If dependency churn ever makes it painful, the escape hatch is cheap and schema-free: introduce DNS-level service names (Tailscale service aliases / split-DNS CNAMEs) and have deploy-service inject those instead — consumers already address by role-named vars, so nothing in any service repo changes. Deferred; tracked in §7. The same trade applies to `ADDR_<REPO>` consumers (Caddy re-deploys when a routed repo moves) and is accepted for the same reason.
+
+**Mechanics.** `deploy-service` injects, for any repo that asks, `ADDR_<REPO>` = the MagicDNS hostname of the device that repo is bound to (e.g. `ADDR_OBSERVE_SERVICES=homelab-observe`). Identical whether the target is a Pi, a PC, or a cloud VM, and **automatically correct when repos co-reside** — no config edit when observe moves onto the edge box.
 
 - Caddy's routes stop consuming `IP_SVC_01` and route to `ADDR_CAMUNDA_PLATFORM`, `ADDR_N8N_AUTOMATION` — per-repo is what a reverse proxy actually means anyway.
 - Prometheus scrape targets are generated from topology per **device** (§5.5), not per repo.
 - Infisical `/prod/network/IP_*` paths are deleted once migrated. `lan_ip` in `topology.yml` covers the genuinely-LAN paths (Pi-hole :53 advertisement).
+
+> **Container DNS caveat (the one place this can bite).** Injected hostnames are resolved *inside containers*: Docker's embedded DNS forwards to the host's resolver, which under MagicDNS is `100.100.100.100`. That chain usually just works — but edge is exactly the device where it might not, since Pi-hole rewrites the host's DNS story there. Step 6 therefore gates on verifying MagicDNS resolution from inside a container on **every** device before `IP_*` is deleted. If it proves flaky on some device, the fallback keeps the design intact: deploy-service resolves the hostname itself at deploy time and injects the Tailscale `100.x` IP as the `ADDR_*`/`PG_HOST` value — identity stays canonical in `topology.yml`, and no service config changes either way.
 
 > **Grounding in the real repo:** today's `services.yml` already injects `IP_OBSERVE`, `IP_SVC_01`, `IP_SVC_02`, `IP_SVC_03`, `IP_EDGE`, and `TAILNET` per-repo as Infisical-sourced secrets (`homelab-edge-services` and `homelab-observe-services` entries) — this is more advanced than `repo_split_brief.md`'s own §6.2 schema examples show (those only illustrate `TUNNEL_TOKEN`/`PIHOLE_WEB_PASSWORD`). Migration step 6 below has real, named env vars to replace, not a hypothetical pattern.
 
@@ -119,7 +140,7 @@ Becomes hardware notes plus "see `topology.yml`". Optionally a script regenerate
 
 ## 🛢️ 4. Design: one platform data stack
 
-*(Unchanged from v1 except placement references → device references.)*
+*(Unchanged from v1 except placement references → device references, and §3.5's addressing decisions threaded through the provisioning wording.)*
 
 New repo **`homelab-data-services`** (Postgres 16 + Redis 7, one deployment unit), registered in `services.yml` with a `device:` binding like any other stack. Ports bound to Tailscale interface + localhost only.
 
@@ -127,11 +148,11 @@ New repo **`homelab-data-services`** (Postgres 16 + Redis 7, one deployment unit
 
 > **`authentik-sso` is the reference implementation of this transition, not an exception to it.** It bundles its own `postgres`/`redis` containers today (per `repo_split_brief.md`'s v7-v9 changelog and its "each service repo owns its own backup" principle, §10.7) — but both are gated behind a `local-infra` Compose profile (`docker-compose.yml:81,91`), and `authentik-server`/`worker`'s dependency on them is `required: false` (`docker-compose.yml:34-38,66-70`). `.env.example:16` documents the toggle directly: `COMPOSE_PROFILES=local-infra` (default, bundled containers start) vs. blank (bundled containers skip; point `AUTHENTIK_POSTGRESQL__HOST`/`AUTHENTIK_REDIS__HOST` at a shared instance instead) — and the comment already names `homelab-data-services` as that future shared instance. Nothing in `authentik-sso` needs to change for it to comply with this rule; only `homelab-data-services` needs to exist and the `requires:`/secret-path wiring needs adding on the consuming side (§6 step 5).
 
-**Provisioning (`requires:` block):** on deploy, deploy-service idempotently creates role/DB (admin creds from Infisical `/prod/data/ADMIN_*`), generates and stores per-service credentials at `/prod/data/<service>/…` on first run, and injects `PG_HOST` (= the data stack's device hostname), `PG_PORT/DATABASE/USER/PASSWORD` and Redis equivalents. Service repos stay standalone-runnable via `.env.example`.
+**Provisioning (`requires:` block):** on deploy, deploy-service idempotently creates role/DB (admin creds from Infisical `/prod/data/ADMIN_*`), generates and stores per-service credentials at `/prod/data/<service>/…` on first run, and injects `PG_HOST` (= the data stack's device MagicDNS hostname, resolved at deploy time — consumers never hardcode a device name, per §3.5), `PG_PORT/DATABASE/USER/PASSWORD` and Redis equivalents. Service repos stay standalone-runnable via `.env.example`.
 
 **Exceptions (deliberate):** Infisical's Postgres+Redis and Semaphore's Postgres stay bootstrap-tier (circular — credentials live *in* Infisical; matches repo_split_brief §10). Camunda's Elasticsearch stays in `camunda-platform` (version-locked, single consumer, own snapshot mechanism).
 
-**Portability:** same box → `PG_HOST` resolves locally, nothing changes. Cloud managed DB → `homelab-data-services` entry gains `external: {host, port, sslmode}`; deploy-service skips the stack and injects the endpoint. Backups consolidate to one per-DB `pg_dump` job in the data repo.
+**Portability:** same box → `PG_HOST` resolves locally, nothing changes (Tailscale short-circuits same-host traffic; no config is aware of the co-residency). Cloud managed DB → `homelab-data-services` entry gains `external: {host, port, sslmode}`; deploy-service skips the stack and injects the endpoint. Backups consolidate to one per-DB `pg_dump` job in the data repo.
 
 ## 🖇️ 5. Co-residency: what happens when edge + observe share a device
 
@@ -175,18 +196,20 @@ Prometheus scrape targets generated per **device** (from `topology.yml`) rather 
 
 Each step independently shippable; `target_node:` keeps working until step 7.
 
-1. **`topology.yml` + resolver.** Encode current layout; teach deploy-service `device:` (fallback `target_node:`); generate inventory from topology, diff against hand-written `prod.yml`, swap when identical.
+1. **`topology.yml` + resolver.** ✅ Done (see Status). Encode current layout; teach deploy-service `device:` (fallback `target_node:`); generate inventory from topology, diff against hand-written `prod.yml`, swap when identical.
 2. **De-collide the stacks.** Remove `container_name:` from service repos; add the port-collision pre-flight; role-prefix group vars. (All safe on today's one-stack-per-device layout — this step just makes co-residency *legal*.)
 3. **Extract `homelab-host-agents`.** Move node-exporter + portainer-agent out of `homelab-edge-services` (and the bootstrap-compose duplicate); deploy once per device.
 4. **Stand up `homelab-data-services`**, then implement `requires:` provisioning; prove with a throwaway service.
 5. **Migrate n8n and authentik-sso to shared Postgres.** Both are ready: n8n needs a `requires:` block added; `authentik-sso` needs no repo change at all — it already gates its bundled containers behind `COMPOSE_PROFILES=local-infra` (see §4) and just needs `COMPOSE_PROFILES=` blank plus `AUTHENTIK_POSTGRESQL__HOST`/`AUTHENTIK_REDIS__HOST` pointed at the new stack's device hostname, wired via `requires:`. Future apps (BottleBot, greentechhub) use `requires:` from day one.
-6. **Replace `IP_*` with `ADDR_<REPO>`/generated targets**; delete `/prod/network/IP_*` from Infisical once green.
+6. **Replace `IP_*` with `ADDR_<REPO>`/generated targets**; delete `/prod/network/IP_*` from Infisical once green. **Two gates before deletion** (§3.5): (a) `tailscale ping` between every device pair confirms LAN-direct paths (so dropping raw LAN IPs costs no throughput — Pi-hole :53 traffic especially); (b) MagicDNS resolves from *inside a container* on every device — test on edge first, where Pi-hole complicates host DNS. If (b) fails anywhere, switch deploy-service to injecting the deploy-time-resolved `100.x` IP instead of the hostname (same schema, same canonicalness).
 7. **Cleanup:** drop `target_node:` fallback, add the no-embedded-DB lint, collapse NODES.md tables, retire moved host_vars.
 
 ## 📝 7. Open items
 
 - **Which device gets `homelab-data-services` first?** rpi-03/NVMe recommended.
 - **Redis isolation:** ACL users (recommended) vs. DB indexes — decide before step 4.
-- **Inventory generation:** committed-generated file (recommended — diffable) vs. dynamic plugin.
+- **Inventory generation:** ~~committed-generated file vs. dynamic plugin~~ — resolved in v4: committed-generated file (`scripts/generate_inventory.py`), diffable.
 - **Bootstrap-compose node-exporter vs. edge-services node-exporter** — confirm which is actually running on edge today; step 3 supersedes both.
 - **Port pre-flight scope:** published ports only, or also host-network / `pid: host` clashes? Start with published ports.
+- **MagicDNS-in-container verification (step 6 gate b)** — run before any `IP_*` deletion; edge/Pi-hole is the likely failure point. Fallback (inject resolved `100.x` IP) is pre-decided in §3.5, so a failure here delays nothing.
+- **DNS-level service names** (Tailscale service aliases / split-DNS `postgres`, `prometheus`, …) — deliberately deferred (§3.5). Revisit only if dependency moves become frequent enough that redeploying consumers on each move hurts. No schema change needed to adopt later.
