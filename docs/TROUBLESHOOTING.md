@@ -327,6 +327,21 @@ sudo tailscale up --authkey=<new-key>
 
 Update the key in `inventories/group_vars/all/vault.yml` and re-run the deploy playbook to keep it in sync.
 
+### Play fails with "A Tailscale device named '<host>' already exists in the tailnet"
+
+This is an intentional guard (`roles/tailscale/tasks/main.yml`), not a bug. It only fires when a
+node's local Tailscale state was lost (SD re-flash, wiped `tailscaled.state`, manual `tailscale
+logout`) while its old device registration is still sitting in the tailnet. Left unhandled, the
+next `tailscale up` would silently register a *second* device and Tailscale would rename the new
+one to `<hostname>-1` — leaving the old entry orphaned, permanently offline, and confusing (this
+is exactly what happened to `homelab-observe`).
+
+Fix: delete the stale device shown in the error message at
+`login.tailscale.com/admin/machines`, then re-run the playbook. If the node also has a stale
+Tailscale IP recorded elsewhere (Infisical's `/production/network/TAILSCALE_IP_*`, seeded once
+from `vault.yml`'s `tailscale_ip_*` and never auto-reconciled), update that too once the node
+re-registers under its real hostname.
+
 ### Cannot reach a node over Tailscale
 
 **Check 1 — Is the node connected?**

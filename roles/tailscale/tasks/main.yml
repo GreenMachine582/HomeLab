@@ -56,6 +56,34 @@
     - ts_status.rc != 0
   tags: [tailscale]
 
+- name: "Tailscale | List existing devices for this tailnet"
+  ansible.builtin.uri:
+    url: "https://api.tailscale.com/api/v2/tailnet/-/devices"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ ts_token_result.json.access_token }}"
+    status_code: 200
+  register: ts_devices_result
+  when:
+    - tailscale_up
+    - ts_status.rc != 0
+  tags: [tailscale]
+
+- name: "Tailscale | Abort if a device with this hostname already exists"
+  ansible.builtin.fail:
+    msg: >-
+      A Tailscale device named '{{ item.hostname }}' already exists in the tailnet
+      (id={{ item.id }}, lastSeen={{ item.lastSeen }}). Minting a new identity now
+      would silently register a second device and Tailscale would rename this one
+      to '{{ inventory_hostname }}-1' -- this is exactly how homelab-observe ended
+      up with an orphaned offline duplicate. Delete the stale device at
+      https://login.tailscale.com/admin/machines, then re-run this play.
+  loop: "{{ (ts_devices_result.json.devices | default([])) if (tailscale_up and ts_status.rc != 0) else [] }}"
+  loop_control:
+    label: "{{ item.hostname | default('') }}"
+  when: item.hostname is defined and item.hostname == inventory_hostname
+  tags: [tailscale]
+
 - name: "Tailscale | Mint auth key via OAuth access token"
   ansible.builtin.uri:
     url: "https://api.tailscale.com/api/v2/tailnet/-/keys"

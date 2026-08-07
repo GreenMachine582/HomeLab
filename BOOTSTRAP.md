@@ -316,7 +316,12 @@ Tailscale needs three things configured in the admin console **before** you popu
 **Step 3 — Create OAuth credentials** (`login.tailscale.com/admin/settings/trust-credentials`):
 
 1. Click **Add credentials**
-2. Under **Scopes**, enable **Auth Keys (write)**
+2. Under **Scopes**, enable **Auth Keys (write)** and **Devices Core (read)** — the latter lets
+   `roles/tailscale` check the tailnet's existing device list before minting a new identity, so a
+   node whose local Tailscale state was lost (re-flash, wiped `tailscaled.state`) fails loudly
+   instead of silently registering as a duplicate (see `docs/TROUBLESHOOTING.md` § Tailscale).
+   > Scope names can drift between Tailscale API releases — if "Devices Core (read)" isn't the
+   > exact label shown, pick whichever read-only devices-list scope is offered.
 3. Under **Tags**, select `tag:homelab`
 4. Click **Create** and copy the **Client ID** and **Client secret** immediately — the secret is only shown once
 
@@ -525,7 +530,7 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 
 **Goal:** The edge node deploys its own services using Ansible running locally.
 
-**Option A — SSH into the edge node:**
+**SSH into the edge node:**
 
 ```bash
 ssh -p <ssh_port> -i .ssh/homelab-edge admin@<ip_edge>
@@ -536,26 +541,6 @@ sudo /opt/homelab/scripts/deploy.sh
 ```
 
 > `scripts/deploy.sh` git-pulls the repo first (so the playbook is always current before Ansible loads it), then runs `ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge` as the `homelab` user. No need to switch users or `cd` into the repo — the script handles it. Pass extra args after the defaults if needed (see `scripts/deploy.sh --help`).
-
-**Option B — run directly from your PC/WSL:**
-
-`prod.yml` connects as `homelab` via `ansible_ssh_private_key_file: ~/.ssh/homelab`
-— on the edge that resolves to `/home/homelab/.ssh/homelab` (copied there
-during Phase 1), but on your PC/WSL the same literal path resolves to
-`~/.ssh/homelab`, not the repo-relative `~/homelab/.ssh/homelab` where the key
-was generated (step 1.4). Symlink it in once so both environments resolve the
-same path:
-
-```bash
-ln -s ~/homelab/.ssh/homelab     ~/.ssh/homelab
-ln -s ~/homelab/.ssh/homelab.pub ~/.ssh/homelab.pub
-```
-
-Then, from the repo root:
-
-```bash
-ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
-```
 
 > `ansible.cfg` sets the default inventory (`prod.yml`) — no `-i` flag needed. Re-run either option anytime (e.g. after pulling new changes, or recovering from a partial failure) — `deploy_edge.yml` is idempotent.
 
@@ -597,7 +582,11 @@ ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
 
 ```bash
 ssh -p <ssh_port> -i .ssh/homelab-edge admin@<ip_edge>
+```
+```bash
 sudo su - homelab
+```
+```bash
 cd /opt/homelab
 ```
 
