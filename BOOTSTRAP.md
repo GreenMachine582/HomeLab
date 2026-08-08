@@ -316,12 +316,16 @@ Tailscale needs three things configured in the admin console **before** you popu
 **Step 3 — Create OAuth credentials** (`login.tailscale.com/admin/settings/trust-credentials`):
 
 1. Click **Add credentials**
-2. Under **Scopes**, enable **Auth Keys (write)** and **Devices Core (read)** — the latter lets
-   `roles/tailscale` check the tailnet's existing device list before minting a new identity, so a
-   node whose local Tailscale state was lost (re-flash, wiped `tailscaled.state`) fails loudly
-   instead of silently registering as a duplicate (see `docs/TROUBLESHOOTING.md` § Tailscale).
-   > Scope names can drift between Tailscale API releases — if "Devices Core (read)" isn't the
-   > exact label shown, pick whichever read-only devices-list scope is offered.
+2. Under **Scopes**, enable **Auth Keys (write)** and, under the **Devices** category, **Read**
+   (API scope `devices:core`, read) — the latter lets `roles/tailscale` check the tailnet's
+   existing device list before minting a new identity, so a node whose local Tailscale state was
+   lost (re-flash, wiped `tailscaled.state`) fails loudly instead of silently registering as a
+   duplicate (see `docs/TROUBLESHOOTING.md` § Tailscale).
+   > If you're editing an OAuth client created before this note existed, check whether the admin
+   > console lets you add a scope to it in place. If not, create a new client with both scopes
+   > instead and update `vault_tailscale_oauth_client_id`/`vault_tailscale_oauth_client_secret`
+   > in `vault.yml` — a device-list 403 (`"missing devices:core read access"`) means whichever
+   > client is configured is missing this scope.
 3. Under **Tags**, select `tag:homelab`
 4. Click **Create** and copy the **Client ID** and **Client secret** immediately — the secret is only shown once
 

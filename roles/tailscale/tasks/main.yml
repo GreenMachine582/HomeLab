@@ -72,11 +72,28 @@
     method: GET
     headers:
       Authorization: "Bearer {{ ts_token_result.json.access_token }}"
-    status_code: 200
+    status_code: [200, 403]
   register: ts_devices_result
   when:
     - tailscale_up
     - ts_needs_auth
+  tags: [tailscale]
+
+- name: "Tailscale | Fail clearly if the OAuth client lacks the devices:core read scope"
+  ansible.builtin.fail:
+    msg: >-
+      Tailscale API returned 403 listing tailnet devices -- the OAuth client
+      (vault_tailscale_oauth_client_id) is missing 'devices:core' read access.
+      This scope is required for the duplicate-registration guard below it.
+      Add read access under Devices to the existing OAuth client if the
+      admin console allows editing scopes, or create a new client with both
+      Auth Keys (write) and Devices (read), tagged tag:homelab, and update
+      vault_tailscale_oauth_client_id/_secret in vault.yml. See BOOTSTRAP.md
+      §1.8 Step 3.
+  when:
+    - tailscale_up
+    - ts_needs_auth
+    - ts_devices_result.status == 403
   tags: [tailscale]
 
 - name: "Tailscale | Abort if a device with this hostname already exists"
