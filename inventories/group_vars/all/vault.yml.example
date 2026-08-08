@@ -17,7 +17,7 @@
 # folders:
 #   /camunda  /n8n  /discord  /cloudflare  /pihole  /grafana
 #   /ntfy     /greentechhub   /deploy      /network  /semaphore
-#   /tailscale  /observe
+#   /tailscale  /observe  /uptime_kuma  /portainer
 #
 # Mapping rule:  vault_<service>_<field>  →  /production/<service-folder>/<FIELD>
 #   e.g. vault_camunda_db_password  →  /production/camunda/DB_PASSWORD
@@ -54,6 +54,9 @@
 #   vault_semaphore_admin_password    → /production/semaphore/ADMIN_PASSWORD
 #   vault_uptime_kuma_admin_user      → /production/uptime_kuma/UPTIME_KUMA_ADMIN_USER
 #   vault_uptime_kuma_admin_password  → /production/uptime_kuma/UPTIME_KUMA_ADMIN_PASSWORD
+#   vault_portainer_admin_user        → /production/portainer/ADMIN_USER
+#   vault_portainer_admin_password    → /production/portainer/ADMIN_PASSWORD
+#   vault_portainer_setup_token       → /production/portainer/SETUP_TOKEN
 #   vault_network_ip_edge             → /production/network/IP_EDGE
 #   vault_network_ip_observe          → /production/network/IP_OBSERVE
 #   vault_network_ip_svc_01           → /production/network/IP_SVC_01
@@ -121,6 +124,13 @@ vault_grafana_admin_password: "changeme"
 # ── Uptime Kuma ───────────────────────────────────────────────────────────────
 vault_uptime_kuma_admin_user: "admin"
 vault_uptime_kuma_admin_password: "changeme"
+
+# ── Portainer ─────────────────────────────────────────────────────────────────
+# vault_portainer_setup_token gates the admin-init API on a fresh instance
+# (Portainer's own security requirement) — generate one with: openssl rand -hex 16
+vault_portainer_admin_user: "admin"
+vault_portainer_admin_password: "changeme"
+vault_portainer_setup_token: "changeme"
 
 # ── Discord webhook URLs ──────────────────────────────────────────────────────
 # Create webhooks in Discord → Server Settings → Integrations → Webhooks

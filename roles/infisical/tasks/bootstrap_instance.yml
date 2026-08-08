@@ -417,6 +417,9 @@
           semaphore/ADMIN_PASSWORD: "{{ vault_semaphore_admin_password }}"
           uptime_kuma/ADMIN_USER:     "{{ vault_uptime_kuma_admin_user }}"
           uptime_kuma/ADMIN_PASSWORD: "{{ vault_uptime_kuma_admin_password }}"
+          portainer/ADMIN_USER:     "{{ vault_portainer_admin_user }}"
+          portainer/ADMIN_PASSWORD: "{{ vault_portainer_admin_password }}"
+          portainer/SETUP_TOKEN:    "{{ vault_portainer_setup_token }}"
 
     - name: "Infisical bootstrap | Check which application-secret keys already exist"
       ansible.builtin.uri:
