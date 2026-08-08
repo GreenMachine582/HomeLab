@@ -7,6 +7,7 @@ Before=shutdown.target reboot.target halt.target
 [Service]
 Type=oneshot
 ExecStart={{ notify_script_dir }}/on-shutdown.sh
+RemainAfterExit=yes
 TimeoutStartSec=15
 
 [Install]

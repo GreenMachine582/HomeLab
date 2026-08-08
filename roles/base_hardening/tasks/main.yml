@@ -257,14 +257,20 @@
   notify: Reload systemd
   tags: [notify]
 
-- name: "Notify | Enable and start notification services"
+- name: "Notify | Enable boot/shutdown notification units (event-triggered, never manually started)"
   ansible.builtin.systemd:
     name: "{{ item }}"
     enabled: true
-    state: started
     daemon_reload: true
   loop:
     - on-boot.service
     - on-shutdown.service
-    - on-ssh-success.service
+  tags: [notify]
+
+- name: "Notify | Enable and start SSH login notification daemon"
+  ansible.builtin.systemd:
+    name: on-ssh-success.service
+    enabled: true
+    state: started
+    daemon_reload: true
   tags: [notify]
