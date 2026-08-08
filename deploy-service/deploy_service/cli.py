@@ -45,12 +45,13 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     ref = args.ref if (args.ref and dtype == "compose") else entry.get("ref", "main")
     image_tag = args.ref if (args.ref and dtype == "image") else "latest"
 
+    topology_path = (
+        Path(args.topology) if args.topology
+        else Path(args.config).resolve().parent / "topology.yml"
+    )
+
     device = entry.get("device")
     if device:
-        topology_path = (
-            Path(args.topology) if args.topology
-            else Path(args.config).resolve().parent / "topology.yml"
-        )
         target_node = topology.resolve_hostname(device, topology.load(str(topology_path)))
         print(f"[deploy-service] device '{device}' -> '{target_node}'")
     else:
@@ -78,6 +79,16 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     # Consumed here for git auth only — never forwarded into the deployed
     # containers' environment.
     github_token = injected_env.pop("GITHUB_PAT", None)
+
+    address_specs = secrets_cfg.get("addresses", [])
+    if address_specs:
+        print(f"[deploy-service] Resolving addresses for: {', '.join(address_specs)}")
+        all_repos = config.load_all(args.config)
+        topo = topology.load(str(topology_path))
+        for other_repo in address_specs:
+            env_name = topology.addr_env_name(other_repo)
+            injected_env[env_name] = topology.hostname_for_repo(other_repo, all_repos, topo)
+            print(f"  {other_repo} -> {env_name}={injected_env[env_name]}")
 
     compose.clone_or_pull(repo_url, path, ref=ref, target=tgt, github_token=github_token, dry_run=args.dry_run)
     compose.run_hooks(path, pre_hook, injected_env, "pre-deploy", target=tgt, dry_run=args.dry_run)

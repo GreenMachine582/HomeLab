@@ -50,6 +50,10 @@ repos:
           env: IP_SVC_03
         - path: /prod/network/TAILNET
           env: TAILNET
+      addresses:
+        - homelab-observe-services
+        - camunda-platform
+        - n8n-automation
     rollback:
       strategy: git
     services: [cloudflared, caddy, pihole, pihole-exporter, portainer-agent]
