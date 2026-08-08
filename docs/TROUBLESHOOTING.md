@@ -319,22 +319,38 @@ systemctl status tailscaled
 journalctl -u tailscaled --no-pager -n 50
 ```
 
-Common cause: auth key expired. Re-authenticate:
+Common cause: the node's registration was deleted or otherwise desynced server-side (e.g. by hand
+in the admin console) while its local `tailscaled` never found out — it still reports itself
+connected from cached local state. `roles/tailscale/tasks/main.yml` detects this by checking
+`tailscale status --json`'s `BackendState`/`Self.Online` fields, not just the process exit code,
+so an ordinary re-run should now self-heal it:
 
 ```bash
-sudo tailscale up --authkey=<new-key>
+ansible-playbook playbooks/bootstrap_node.yml --limit <node> --tags tailscale
 ```
 
-Update the key in `inventories/group_vars/all/vault.yml` and re-run the deploy playbook to keep it in sync.
+If that doesn't clear it (e.g. on code predating this check), force it manually:
+
+```bash
+sudo tailscale logout
+```
+
+then re-run the same playbook — the local exit code will now correctly show non-zero, and the
+role will mint a fresh key and re-authenticate. Only fall back to
+`sudo tailscale up --authkey=<new-key>` (a manually minted key from the admin console) if the
+OAuth-driven path itself is unavailable.
 
 ### Play fails with "A Tailscale device named '<host>' already exists in the tailnet"
 
-This is an intentional guard (`roles/tailscale/tasks/main.yml`), not a bug. It only fires when a
-node's local Tailscale state was lost (SD re-flash, wiped `tailscaled.state`, manual `tailscale
-logout`) while its old device registration is still sitting in the tailnet. Left unhandled, the
-next `tailscale up` would silently register a *second* device and Tailscale would rename the new
-one to `<hostname>-1` — leaving the old entry orphaned, permanently offline, and confusing (this
-is exactly what happened to `homelab-observe`).
+This is an intentional guard (`roles/tailscale/tasks/main.yml`), not a bug — a different failure
+mode from the one above. It only fires when a node's local Tailscale state was lost (SD re-flash,
+wiped `tailscaled.state`, manual `tailscale logout`) *and* its old device registration is still
+sitting in the tailnet. Left unhandled, the next `tailscale up` would silently register a
+*second* device and Tailscale would rename the new one to `<hostname>-1` — leaving the old entry
+orphaned, permanently offline, and confusing (this is exactly what happened to `homelab-observe`
+the first time). The *other* section above ("Node not appearing") is the opposite shape: the old
+registration is already gone, but the node's local state never noticed and stayed silent instead
+of failing loudly — that's what the `BackendState`/`Self.Online` check now catches.
 
 Fix: delete the stale device shown in the error message at
 `login.tailscale.com/admin/machines`, then re-run the playbook. If the node also has a stale

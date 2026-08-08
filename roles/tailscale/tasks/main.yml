@@ -32,11 +32,21 @@
     state: started
   tags: [tailscale]
 
-- name: "Tailscale | Check if already connected"
-  ansible.builtin.command: tailscale status
+- name: "Tailscale | Check current connection state"
+  ansible.builtin.command: tailscale status --json
   register: ts_status
   changed_when: false
   failed_when: false
+  tags: [tailscale]
+
+- name: "Tailscale | Parse connection state"
+  ansible.builtin.set_fact:
+    _ts_state: "{{ (ts_status.stdout | from_json) if (ts_status.rc == 0 and (ts_status.stdout | trim | length) > 0) else {} }}"
+  tags: [tailscale]
+
+- name: "Tailscale | Determine whether (re)authentication is needed"
+  ansible.builtin.set_fact:
+    ts_needs_auth: "{{ ts_status.rc != 0 or (_ts_state.BackendState | default('')) != 'Running' or not (_ts_state.Self.Online | default(false)) }}"
   tags: [tailscale]
 
 - name: "Tailscale | Exchange client credentials for access token"
@@ -53,7 +63,7 @@
   no_log: true
   when:
     - tailscale_up
-    - ts_status.rc != 0
+    - ts_needs_auth
   tags: [tailscale]
 
 - name: "Tailscale | List existing devices for this tailnet"
@@ -66,7 +76,7 @@
   register: ts_devices_result
   when:
     - tailscale_up
-    - ts_status.rc != 0
+    - ts_needs_auth
   tags: [tailscale]
 
 - name: "Tailscale | Abort if a device with this hostname already exists"
@@ -78,7 +88,7 @@
       to '{{ inventory_hostname }}-1' -- this is exactly how homelab-observe ended
       up with an orphaned offline duplicate. Delete the stale device at
       https://login.tailscale.com/admin/machines, then re-run this play.
-  loop: "{{ (ts_devices_result.json.devices | default([])) if (tailscale_up and ts_status.rc != 0) else [] }}"
+  loop: "{{ (ts_devices_result.json.devices | default([])) if (tailscale_up and ts_needs_auth) else [] }}"
   loop_control:
     label: "{{ item.hostname | default('') }}"
   when: item.hostname is defined and item.hostname == inventory_hostname
@@ -105,7 +115,7 @@
   no_log: true
   when:
     - tailscale_up
-    - ts_status.rc != 0
+    - ts_needs_auth
   tags: [tailscale]
 
 - name: "Tailscale | Authenticate and bring up"
@@ -121,7 +131,7 @@
       {{ tailscale_extra_args }}
   when:
     - tailscale_up
-    - ts_status.rc != 0
+    - ts_needs_auth
   changed_when: true
   no_log: true
   tags: [tailscale]
