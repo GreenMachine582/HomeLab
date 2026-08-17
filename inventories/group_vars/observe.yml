@@ -48,10 +48,6 @@ grafana_admin_user: admin
 grafana_admin_password: "{{ vault_grafana_admin_password }}"
 grafana_allow_signup: false
 
-# Datasources and dashboards are provisioned as code in homelab-observe-services
-# (configs/grafana/provisioning/), not templated from this repo — see that
-# repo's docs/MONITORING.md.
-
 # ── Alertmanager ──────────────────────────────────────────────────────────────
 alertmanager_port: 9093
 

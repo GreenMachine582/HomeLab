@@ -72,7 +72,7 @@ repos:
       # placeholders in them need envsubst before `docker compose up` — see
       # scripts/predeploy.sh.
       pre_hook: [scripts/predeploy.sh]
-      post_hook: [scripts/setup_monitors.sh, scripts/setup_portainer.sh]
+      post_hook: [scripts/setup_monitors.sh, scripts/setup_portainer.sh, scripts/reload_grafana.sh]
     secrets:
       infisical:
         - path: /prod/deploy/GITHUB_PAT
