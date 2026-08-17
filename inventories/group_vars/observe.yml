@@ -87,16 +87,6 @@ alertmanager_routes:
 # ── Uptime Kuma ───────────────────────────────────────────────────────────────
 uptime_kuma_port: 3001
 
-# Monitor config is currently applied manually via the Uptime Kuma UI.
-# Endpoint reference — keep in sync with homelab-observe-services/docs/MONITORING.md:
-#   http://homelab-edge/health
-#   http://homelab-edge/admin
-#   http://homelab-observe:3000/api/health
-#   http://homelab-observe:9093/-/healthy
-#   http://homelab-svc-01:8081
-#   http://homelab-svc-02:8000/health
-#   http://homelab-svc-03:8096/health
-
 # ── ntfy ──────────────────────────────────────────────────────────────────────
 ntfy_port: 8085          # host port (container serves on 80)
 ntfy_base_url: "http://{{ ip_observe }}:8085"
