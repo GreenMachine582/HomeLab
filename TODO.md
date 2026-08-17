@@ -110,11 +110,16 @@ All resolved and committed to master:
   > **Hook gap resolved:** `deploy-service` previously declared but never executed `pre_hook`/`post_hook` from `services.yml`. Implemented in `deploy-service/deploy_service/compose.py` (`run_hooks()`, invoked via `bash <script>` so the executable bit doesn't matter) and wired into `cli.py`'s deploy sequence: clone/pull → `pre_hook` → compose deploy → `post_hook`. `clone_or_pull()` now also does `git reset --hard` before every pull, since hooks like `homelab-observe-services`'s `scripts/predeploy.sh` (envsubst) mutate tracked config files in place. This also fixes `homelab-edge-services`'s previously silently-skipped `post_hook` (pihole password).
 - [ ] **C5** — Deploy via `deploy-service` and verify end-to-end:
   ```bash
-  deploy-service deploy homelab-observe-services
+  deploy-service deploy homelab-observe-services --config /opt/homelab/services.yml
   ```
   > `deploy-service` was extended with remote (SSH) execution and GitHub PAT auth
   > for private repos to make this possible, but the run has not yet been verified
-  > against the real `homelab-observe` node — still open.
+  > against the real `homelab-observe` node — still open. "Verified" means more than
+  > `docker compose up` succeeding: confirm both `post_hook` scripts completed —
+  > `setup_monitors.sh` reconciling Uptime Kuma's monitors (`[setup_monitors]
+  > Updating/Adding monitor: ...` log lines) and `setup_portainer.sh` initializing
+  > the Portainer admin account (`[setup_portainer] Admin account created`) inside
+  > its 5-minute setup-token window.
 - [x] **C6** — Retire from HomeLab repo: remove `roles/observe_services/`, `docker-compose.observe.yml`, `playbooks/deploy_observe.yml`; update `CLAUDE.md` role table and `NODES.md`
   > Done ahead of C5 verification per explicit instruction (to reduce having two
   > parallel deploy paths). If C5 verification surfaces a problem with

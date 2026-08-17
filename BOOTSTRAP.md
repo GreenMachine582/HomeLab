@@ -619,6 +619,14 @@ ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 - Edge's Alloy agent begins forwarding logs to Loki
 - Prometheus begins scraping edge's `node-exporter`
 
+Nothing manual is needed after the `deploy-service` command finishes — its `pre_hook`/`post_hook`
+chain (`homelab-observe-services/services.yml` entry) handles the rest: `predeploy.sh` expands
+`${IP_*}`/`${DISCORD_WEBHOOK_*}` placeholders in the mounted config files before `docker compose
+up`, then `setup_monitors.sh` reconciles Uptime Kuma's monitors against `monitors.yml` and
+`setup_portainer.sh` bootstraps the Portainer admin account via its REST API — see
+`homelab-observe-services/docs/MONITORING.md` for both. You don't need to configure Uptime Kuma
+monitors or create a Portainer admin account by hand.
+
 ---
 
 ### 3.2 Deploy Service Nodes
