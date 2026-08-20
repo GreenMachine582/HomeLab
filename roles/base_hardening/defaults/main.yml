@@ -34,5 +34,5 @@ ssh_client_alive_count_max: 2
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 notify_script_dir: /usr/local/lib/homelab/notify
-# notify_ntfy_url, notify_ntfy_token, notify_discord_webhook have no safe defaults
+# notify_ntfy_url, notify_discord_webhook have no safe defaults
 # (they require vault vars and ip_observe) — must be set in group_vars/all/main.yml.

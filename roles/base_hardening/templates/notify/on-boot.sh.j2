@@ -15,7 +15,6 @@ TIME=$(date "+%Y-%m-%d %H:%M:%S")
 MSG="$HOST booted at $TIME"
 
 curl -sf \
-  -H "Authorization: Bearer {{ notify_ntfy_token }}" \
   -H "Title: {{ inventory_hostname }} booted" \
   -H "Priority: default" \
   -H "Tags: white_check_mark" \

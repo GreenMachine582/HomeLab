@@ -11,7 +11,6 @@ notify() {
     local msg="$user logged in to $HOST from $ip at $time"
 
     curl -sf \
-      -H "Authorization: Bearer {{ notify_ntfy_token }}" \
       -H "Title: SSH login on {{ inventory_hostname }}" \
       -H "Priority: high" \
       -H "Tags: key" \

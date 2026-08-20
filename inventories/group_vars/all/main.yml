@@ -105,7 +105,6 @@ alloy_loki_endpoint: "http://{{ ip_observe }}:3100/loki/api/v1/push"
 # Fallback: curl → Discord webhook (fires only if ntfy returns non-2xx or times out)
 notify_script_dir: /usr/local/lib/homelab/notify
 notify_ntfy_url: "http://{{ ip_observe }}:8085/homelab"
-notify_ntfy_token: "{{ vault_ntfy_token }}"
 notify_discord_webhook: "{{ vault_discord_alerts_webhook }}"
 
 # ── Tailscale (common) ───────────────────────────────────────────────────────

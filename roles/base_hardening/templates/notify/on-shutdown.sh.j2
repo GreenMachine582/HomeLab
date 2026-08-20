@@ -8,7 +8,6 @@ TIME=$(date "+%Y-%m-%d %H:%M:%S")
 MSG="$HOST is shutting down at $TIME"
 
 curl -sf \
-  -H "Authorization: Bearer {{ notify_ntfy_token }}" \
   -H "Title: {{ inventory_hostname }} shutting down" \
   -H "Priority: high" \
   -H "Tags: warning" \
