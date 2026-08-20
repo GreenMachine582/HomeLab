@@ -154,6 +154,28 @@ def clone_or_pull(
         _run_on(target, ["git", "-C", path, "checkout", ref], dry_run=dry_run)
 
 
+def read_file(path: str, target: Target | None = None, dry_run: bool = False) -> str | None:
+    """Read a file's content from the repo checkout, local or remote, or None
+    if it doesn't exist. Used to load a repo's own secrets.yml after cloning
+    -- mirrors clone_or_pull's existing local/remote/dry-run branching.
+    """
+    target = target or Target.local()
+
+    if target.is_local:
+        p = Path(path)
+        return p.read_text() if p.exists() else None
+
+    if dry_run:
+        # Same deliberate simplification as clone_or_pull/run_conventional_hook:
+        # no SSH connection attempts under --dry-run.
+        print(f"  [dry-run] remote content of {path} on {target.label()} unknown without connecting")
+        return None
+
+    cmd = _ssh_base_cmd(target) + [f"cat {shlex.quote(path)} 2>/dev/null"]
+    result = subprocess.run(cmd, capture_output=True)
+    return result.stdout.decode() if result.returncode == 0 else None
+
+
 def run_conventional_hook(
     path: str,
     filename: str,

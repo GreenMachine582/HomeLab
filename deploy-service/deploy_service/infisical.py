@@ -5,6 +5,7 @@ Uses stdlib urllib only — no third-party HTTP library needed.
 """
 import getpass
 import json
+import secrets as _secrets_mod
 import sys
 import urllib.error
 import urllib.parse
@@ -16,6 +17,11 @@ import yaml
 
 _API_BASE = "http://127.0.0.1:8222/api"
 _RUNTIME_AUTH_PATH = Path.home() / ".infisical_runtime_auth.yml"
+
+# Fixed, deploy-service-level secret (not declared per-repo) -- needed to
+# authenticate the git clone itself, before any repo's own secrets.yml can
+# even be read from its checkout.
+GITHUB_PAT_PATH = "/prod/deploy/GITHUB_PAT"
 
 
 def _http(method: str, url: str, body: dict | None = None, token: str | None = None,
@@ -121,3 +127,39 @@ def fetch_optional(secret_path: str) -> str | None:
     client_id, client_secret, project_id = _load_runtime_creds()
     token = _login(client_id, client_secret)
     return _fetch_secret(token, secret_path, project_id, required=False)
+
+
+def check_missing(secret_specs: list[dict]) -> list[dict]:
+    """Return the subset of secret_specs not currently present in Infisical
+    (missing or empty), without exiting on the first miss. Used for a
+    pre-flight report before a deploy tries to inject secrets that don't
+    exist yet -- uses the same read-only runtime identity as fetch(), no
+    write access needed just to check.
+    """
+    if not secret_specs:
+        return []
+
+    client_id, client_secret, project_id = _load_runtime_creds()
+    token = _login(client_id, client_secret)
+
+    missing = []
+    for spec in secret_specs:
+        value = _fetch_secret(token, spec["path"], project_id, required=False)
+        if not value:
+            missing.append(spec)
+    return missing
+
+
+def format_remediation(missing_specs: list[dict]) -> list[str]:
+    """Turn missing secret specs into ready-to-paste `infisical secrets set`
+    commands. Entries with generate: true get a fresh random value inline
+    (nothing external to source it from); everything else gets a
+    <FILL_ME_IN> placeholder -- can't guess a Discord webhook or license key.
+    """
+    lines = []
+    for spec in missing_specs:
+        env, *folder_parts, key = spec["path"].strip("/").split("/")
+        folder = "/" + "/".join(folder_parts)
+        value = _secrets_mod.token_hex(16) if spec.get("generate") else "<FILL_ME_IN>"
+        lines.append(f'infisical secrets set {key}="{value}" --path="{folder}" --env={env}')
+    return lines

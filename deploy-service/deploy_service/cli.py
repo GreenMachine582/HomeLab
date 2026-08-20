@@ -71,14 +71,33 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     compose_files = deploy_cfg.get("compose_files", ["docker-compose.yml"])
     strategy = deploy_cfg.get("strategy", "rolling")
 
-    print(f"[deploy-service] Fetching secrets from Infisical")
-    secret_specs = secrets_cfg.get("infisical", [])
-    injected_env = infisical.fetch(secret_specs)
-    # Consumed here for git auth only — never forwarded into the deployed
-    # containers' environment.
-    github_token = injected_env.pop("GITHUB_PAT", None)
+    # Fixed, deploy-service-level secret -- authenticates the clone itself,
+    # before any repo's own secrets.yml can be read from its checkout.
+    github_token = infisical.fetch_optional(infisical.GITHUB_PAT_PATH)
 
-    address_specs = secrets_cfg.get("addresses", [])
+    compose.clone_or_pull(repo_url, path, ref=ref, target=tgt, github_token=github_token, dry_run=args.dry_run)
+
+    # A repo declares its own required secrets in secrets.yml at its root
+    # (discovered by convention, same as predeploy.sh/postdeploy.sh) —
+    # falls back to services.yml's secrets.infisical/addresses fields for
+    # repos not yet migrated to that convention.
+    secrets_file = compose.read_file(f"{path}/secrets.yml", target=tgt, dry_run=args.dry_run)
+    secret_specs, address_specs = config.parse_repo_secrets(secrets_file)
+    if not secret_specs and not address_specs:
+        secret_specs = secrets_cfg.get("infisical", [])
+        address_specs = secrets_cfg.get("addresses", [])
+
+    print(f"[deploy-service] Checking declared secrets exist in Infisical")
+    missing = infisical.check_missing(secret_specs)
+    if missing:
+        print(f"[deploy-service] {len(missing)} secret(s) missing — create them, then re-run deploy:")
+        for line in infisical.format_remediation(missing):
+            print(f"  {line}")
+        sys.exit(1)
+
+    print(f"[deploy-service] Fetching secrets from Infisical")
+    injected_env = infisical.fetch(secret_specs)
+
     if address_specs:
         print(f"[deploy-service] Resolving addresses for: {', '.join(address_specs)}")
         all_repos = config.load_all(args.config)
@@ -88,7 +107,6 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
             injected_env[env_name] = topology.hostname_for_repo(other_repo, all_repos, topo)
             print(f"  {other_repo} -> {env_name}={injected_env[env_name]}")
 
-    compose.clone_or_pull(repo_url, path, ref=ref, target=tgt, github_token=github_token, dry_run=args.dry_run)
     compose.run_conventional_hook(path, "predeploy.sh", injected_env, "pre-deploy", target=tgt, dry_run=args.dry_run)
     if dtype == "image":
         compose.deploy_image(

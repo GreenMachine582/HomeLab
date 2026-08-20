@@ -13,13 +13,20 @@
 # docs/topology_data_brief.md §3. `target_node:` (a bare hostname) still
 # works as a fallback for any entry not yet migrated.
 #
-# Hook discovery: there is no pre_hook:/post_hook: field. deploy-service
-# auto-runs scripts/predeploy.sh and/or scripts/postdeploy.sh from the
-# deployed repo if present, silently skipping whichever doesn't exist — a
-# repo opts in just by adding the file, no registry entry here. Ordering of
-# more than one step within either phase is that repo's own responsibility
-# (see homelab-observe-services/scripts/postdeploy.sh for an example that
-# calls several sub-scripts in sequence).
+# Hook & secrets discovery: there is no pre_hook:/post_hook:/secrets: field.
+# deploy-service auto-runs scripts/predeploy.sh and/or scripts/postdeploy.sh
+# from the deployed repo if present, silently skipping whichever doesn't
+# exist — a repo opts in just by adding the file, no registry entry here.
+# Ordering of more than one step within either phase is that repo's own
+# responsibility (see homelab-observe-services/scripts/postdeploy.sh for an
+# example that calls several sub-scripts in sequence). Likewise, a repo
+# declares its own required Infisical secrets in a secrets.yml at its root
+# (path/env pairs, plus an optional addresses: list — see
+# homelab-observe-services/secrets.yml or homelab-edge-services/secrets.yml
+# for examples); deploy-service checks they all exist before deploying and
+# prints ready-to-run `infisical secrets set` commands for anything missing.
+# Repos without a secrets.yml yet (camunda-platform, n8n-automation) still
+# fall back to this file's own secrets:/addresses: fields below.
 
 repos:
   homelab-edge-services:
@@ -36,31 +43,6 @@ repos:
       # calls `docker compose down` for this stack.
       strategy: rolling
       # Pi-hole v6 ignores WEBPASSWORD env var.
-
-    secrets:
-      infisical:
-        # deploy-service reads /home/homelab/.infisical_runtime_auth.yml,
-        # authenticates with Infisical at http://localhost:8222, fetches each
-        # path, and injects the result as the named env var into docker compose.
-        # Secrets are never written to disk or the service repo checkout.
-        - path: /prod/cloudflare/TUNNEL_TOKEN
-          env: TUNNEL_TOKEN
-        - path: /prod/pihole/WEB_PASSWORD
-          env: PIHOLE_WEB_PASSWORD
-        - path: /prod/network/IP_OBSERVE
-          env: IP_OBSERVE
-        - path: /prod/network/IP_SVC_01
-          env: IP_SVC_01
-        - path: /prod/network/IP_SVC_02
-          env: IP_SVC_02
-        - path: /prod/network/IP_SVC_03
-          env: IP_SVC_03
-        - path: /prod/network/TAILNET
-          env: TAILNET
-      addresses:
-        - homelab-observe-services
-        - camunda-platform
-        - n8n-automation
     rollback:
       strategy: git
     services: [cloudflared, caddy, pihole, pihole-exporter, portainer-agent]
@@ -77,42 +59,6 @@ repos:
       # prometheus.yml/alertmanager.yml/monitors.yml are mounted config files,
       # not read by docker compose itself, so ${IP_*}/${DISCORD_WEBHOOK_*}
       # placeholders in them need envsubst before `docker compose up`.
-    secrets:
-      infisical:
-        - path: /prod/deploy/GITHUB_PAT
-          env: GITHUB_PAT
-        - path: /prod/network/IP_EDGE
-          env: IP_EDGE
-        - path: /prod/network/IP_OBSERVE
-          env: IP_OBSERVE
-        - path: /prod/network/IP_SVC_01
-          env: IP_SVC_01
-        - path: /prod/network/IP_SVC_02
-          env: IP_SVC_02
-        - path: /prod/network/IP_SVC_03
-          env: IP_SVC_03
-        - path: /prod/grafana/ADMIN_PASSWORD
-          env: GRAFANA_ADMIN_PASSWORD
-        - path: /prod/discord/WEBHOOK_CRITICAL
-          env: DISCORD_WEBHOOK_CRITICAL
-        - path: /prod/discord/WEBHOOK_WARNING
-          env: DISCORD_WEBHOOK_WARNING
-        - path: /prod/discord/WEBHOOK_INFO
-          env: DISCORD_WEBHOOK_INFO
-        - path: /prod/uptime_kuma/ADMIN_USER
-          env: UPTIME_KUMA_ADMIN_USER
-        - path: /prod/uptime_kuma/ADMIN_PASSWORD
-          env: UPTIME_KUMA_ADMIN_PASSWORD
-        - path: /prod/portainer/ADMIN_USER
-          env: PORTAINER_ADMIN_USER
-        - path: /prod/portainer/ADMIN_PASSWORD
-          env: PORTAINER_ADMIN_PASSWORD
-        - path: /prod/portainer/SETUP_TOKEN
-          env: PORTAINER_SETUP_TOKEN
-        - path: /prod/ntfy/ADMIN_USER
-          env: NTFY_ADMIN_USER
-        - path: /prod/ntfy/ADMIN_PASSWORD
-          env: NTFY_ADMIN_PASSWORD
     rollback:
       strategy: git
     services: [prometheus, loki, grafana, alertmanager, ntfy, uptime-kuma, portainer]

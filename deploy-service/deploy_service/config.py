@@ -24,3 +24,15 @@ def load(config_path: str, repo_name: str) -> dict:
             f"  Available: {available}"
         )
     return repos[repo_name]
+
+
+def parse_repo_secrets(content: str | None) -> tuple[list[dict], list[str]]:
+    """Parse a repo's own secrets.yml content into (secret_specs, addresses).
+    Returns ([], []) if the file doesn't exist (content is None) -- callers
+    fall back to services.yml's secrets.infisical/addresses fields for repos
+    not yet migrated to the convention.
+    """
+    if content is None:
+        return [], []
+    data = yaml.safe_load(content) or {}
+    return data.get("secrets", []), data.get("addresses", [])

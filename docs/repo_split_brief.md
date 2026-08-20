@@ -192,20 +192,24 @@ repos:
       # call `docker compose down` for this stack (dropping cloudflared
       # would cut the Cloudflare Tunnel and SSH access mid-session).
       strategy: rolling
-    secrets:
-      infisical:
-        # deploy-service reads /home/homelab/.infisical_runtime_auth.yml
-        # (written by Phase 1 bootstrap), calls the Infisical API at
-        # http://localhost:8222, fetches each path, and injects the result
-        # as the named env var before running docker compose up.
-        # Secrets are never written to the service repo or to disk.
-        - path: /prod/cloudflare/TUNNEL_TOKEN
-          env: TUNNEL_TOKEN
-        - path: /prod/pihole/WEB_PASSWORD
-          env: PIHOLE_WEB_PASSWORD
     rollback:
       strategy: git
     services: [cloudflared, caddy, pihole, pihole-exporter, node-exporter, portainer-agent]
+```
+
+That repo's own `secrets.yml`:
+```yaml
+secrets:
+  # deploy-service reads /home/homelab/.infisical_runtime_auth.yml (written
+  # by Phase 1 bootstrap), calls the Infisical API at http://localhost:8222,
+  # fetches each path, and injects the result as the named env var before
+  # running docker compose up. Secrets are never written to the service repo
+  # or to disk. 
+  - path: /prod/cloudflare/TUNNEL_TOKEN
+    env: TUNNEL_TOKEN
+  - path: /prod/pihole/WEB_PASSWORD
+    env: PIHOLE_WEB_PASSWORD
+    generate: true
 ```
 
 **Custom application repo (builds and pushes an image):**
@@ -227,9 +231,6 @@ repos:
 
     deploy:
       compose_files: [docker-compose.yml]
-      # scripts/predeploy.sh and scripts/postdeploy.sh (if present in the repo)
-      # are run automatically -- no field to declare them here. See "Hook
-      # discovery" below.
 
     healthchecks:
       - http://localhost:8080/health
@@ -242,15 +243,31 @@ repos:
 
 GitHub Container Registry (`ghcr.io`) is the natural choice for any service in the "custom application" row — free for public images, integrates directly with GitHub Actions, immutable tags, no extra infrastructure to stand up. Only services that actually build a custom image need this; everything else in the config-only/upstream row never touches a registry at all.
 
-**Hook discovery:** there is no `pre_hook:`/`post_hook:` field in the schema. `deploy-service` checks
-the deployed repo for `scripts/predeploy.sh` and `scripts/postdeploy.sh` at those fixed paths and runs
-whichever exists (silently skipping whichever doesn't) — a repo opts in purely by adding the file, and
-`services.yml` never needs an edit when a repo's hook scripts change. Ordering of more than one step
-within a phase is the deployed repo's own responsibility: `postdeploy.sh` can itself call several
-sub-scripts in whatever sequence it needs, rather than `services.yml` declaring an explicit list. (This
-replaced an earlier design where `pre_hook`/`post_hook` were explicit arrays of script paths declared
-per repo — dropped because it coupled every hook change in a service repo to an edit in this repo, and
-put ordering responsibility in the wrong place.)
+**Hook & secrets discovery:** there is no `pre_hook:`/`post_hook:`/`secrets:` field in the schema.
+`deploy-service` checks the deployed repo for `scripts/predeploy.sh` and `scripts/postdeploy.sh` at
+those fixed paths and runs whichever exists (silently skipping whichever doesn't) — a repo opts in
+purely by adding the file, and `services.yml` never needs an edit when a repo's hook scripts change.
+Ordering of more than one step within a phase is the deployed repo's own responsibility: `postdeploy.sh`
+can itself call several sub-scripts in whatever sequence it needs, rather than `services.yml` declaring
+an explicit list. (This replaced an earlier design where `pre_hook`/`post_hook` were explicit arrays of
+script paths declared per repo — dropped because it coupled every hook change in a service repo to an
+edit in this repo, and put ordering responsibility in the wrong place.)
+
+Likewise, a repo declares its own required Infisical secrets in a `secrets.yml` at its root (`path`/`env`
+pairs, plus an optional `addresses:` list for cross-repo IP resolution — see `homelab-edge-services`'s
+example above). After cloning, `deploy-service` reads that file, checks every declared path actually
+exists in Infisical using the existing read-only runtime identity, and — if anything's missing — prints
+ready-to-run `infisical secrets set` commands (with a freshly generated value inline for entries marked
+`generate: true`, which flags secrets with no external source to copy from) instead of deploying with a
+missing secret and failing deep inside `docker compose up`. The write itself stays attended (you paste
+the printed command into your own already-authenticated `infisical` CLI session) rather than
+`deploy-service` holding a persisted write-capable Infisical identity — deliberately: every other
+identity in this design is read-only (see `CLAUDE.md`'s "Important Constraints" for why a persisted
+write-capable identity was eliminated from Phase 1 bootstrap for the same reason), and Infisical's
+fine-grained custom-role permissions aren't used anywhere in this repo, so a narrowly-scoped
+create-only identity would be unproven territory. Repos without a `secrets.yml` yet fall back to
+`services.yml`'s own (now legacy) `secrets.infisical`/`addresses` fields, kept only for repos not yet
+migrated to the convention.
 
 ### 6.3 `deploy-service` — CLI design
 
@@ -261,11 +278,13 @@ Draft interface:
 ```
 deploy-service deploy <repo> [--ref <tag>] [--dry-run]
     Reads the named repo's entry from services.yml, pulls/checks out the
-    given ref (default: latest per the registry entry), layers env files,
-    runs scripts/predeploy.sh if present, performs the deploy (compose
-    pull+up for type=compose, or pull image + compose up for type=image),
-    runs scripts/postdeploy.sh if present, then polls healthchecks.
-    --dry-run prints the planned actions without executing them.
+    given ref (default: latest per the registry entry), reads the repo's own
+    secrets.yml and confirms every declared secret exists in Infisical --
+    aborting with ready-to-run `infisical secrets set` commands if not --
+    layers env files, runs scripts/predeploy.sh if present, performs the
+    deploy (compose pull+up for type=compose, or pull image + compose up for
+    type=image), runs scripts/postdeploy.sh if present, then polls
+    healthchecks. --dry-run prints the planned actions without executing them.
 
 deploy-service rollback <repo> [--to <tag>] [--dry-run]
     Mechanism depends on the repo's rollback.strategy:
