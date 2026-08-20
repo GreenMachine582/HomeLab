@@ -45,8 +45,8 @@ def _ssh_base_cmd(target: Target) -> list[str]:
     return cmd
 
 
-def _remote_path_exists(target: Target, path: str) -> bool:
-    cmd = _ssh_base_cmd(target) + [f"test -d {shlex.quote(path)}"]
+def _remote_path_exists(target: Target, path: str, test_flag: str = "-d") -> bool:
+    cmd = _ssh_base_cmd(target) + [f"test {test_flag} {shlex.quote(path)}"]
     result = subprocess.run(cmd, capture_output=True)
     return result.returncode == 0
 
@@ -154,26 +154,45 @@ def clone_or_pull(
         _run_on(target, ["git", "-C", path, "checkout", ref], dry_run=dry_run)
 
 
-def run_hooks(
+def run_conventional_hook(
     path: str,
-    scripts: list[str],
+    filename: str,
     injected_env: dict[str, str],
     label: str,
     target: Target | None = None,
     dry_run: bool = False,
 ) -> None:
-    """Run pre/post-deploy hook scripts from the repo checkout, in order.
+    """Run scripts/<filename> from the repo checkout if present, silently
+    skipping otherwise -- a repo opts in just by adding the file at this
+    fixed conventional path (scripts/predeploy.sh, scripts/postdeploy.sh),
+    no services.yml registry entry needed. Ordering of anything more
+    elaborate than "one script" is the deployed repo's own responsibility
+    (e.g. postdeploy.sh can itself call further sub-scripts in whatever
+    order it needs).
 
     Invoked via `bash` rather than executed directly so a missing +x bit on
     the script (e.g. after a fresh git clone) doesn't fail the deploy.
     """
-    if not scripts:
+    target = target or Target.local()
+    rel_script = f"scripts/{filename}"
+
+    if target.is_local:
+        exists = Path(path, rel_script).exists()
+    elif dry_run:
+        # Same deliberate simplification as clone_or_pull: no SSH connection
+        # attempts under --dry-run -- remote state can't be probed without
+        # connecting, so assume the hook exists and show the run-path plan.
+        print(f"  [dry-run] remote presence of {rel_script} on {target.label()} unknown without connecting — showing run plan")
+        exists = True
+    else:
+        exists = _remote_path_exists(target, f"{path}/{rel_script}", test_flag="-f")
+
+    if not exists:
+        print(f"[deploy-service] No {label} hook ({rel_script}) -- skipping")
         return
 
-    target = target or Target.local()
-    for script in scripts:
-        print(f"[deploy-service] Running {label} hook: {script}")
-        _run_on(target, ["bash", script], cwd=path, injected_env=injected_env, dry_run=dry_run)
+    print(f"[deploy-service] Running {label} hook: {rel_script}")
+    _run_on(target, ["bash", rel_script], cwd=path, injected_env=injected_env, dry_run=dry_run)
 
 
 def _check_rolling(strategy: str) -> None:

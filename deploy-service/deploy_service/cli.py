@@ -70,8 +70,6 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
 
     compose_files = deploy_cfg.get("compose_files", ["docker-compose.yml"])
     strategy = deploy_cfg.get("strategy", "rolling")
-    pre_hook = deploy_cfg.get("pre_hook", [])
-    post_hook = deploy_cfg.get("post_hook", [])
 
     print(f"[deploy-service] Fetching secrets from Infisical")
     secret_specs = secrets_cfg.get("infisical", [])
@@ -91,7 +89,7 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
             print(f"  {other_repo} -> {env_name}={injected_env[env_name]}")
 
     compose.clone_or_pull(repo_url, path, ref=ref, target=tgt, github_token=github_token, dry_run=args.dry_run)
-    compose.run_hooks(path, pre_hook, injected_env, "pre-deploy", target=tgt, dry_run=args.dry_run)
+    compose.run_conventional_hook(path, "predeploy.sh", injected_env, "pre-deploy", target=tgt, dry_run=args.dry_run)
     if dtype == "image":
         compose.deploy_image(
             path, compose_files, injected_env, image=image, tag=image_tag,
@@ -99,7 +97,7 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
         )
     else:
         compose.deploy(path, compose_files, injected_env, strategy=strategy, target=tgt, dry_run=args.dry_run)
-    compose.run_hooks(path, post_hook, injected_env, "post-deploy", target=tgt, dry_run=args.dry_run)
+    compose.run_conventional_hook(path, "postdeploy.sh", injected_env, "post-deploy", target=tgt, dry_run=args.dry_run)
 
     if args.dry_run:
         print(f"[deploy-service] Dry run complete — no changes made")

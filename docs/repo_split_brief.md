@@ -227,8 +227,9 @@ repos:
 
     deploy:
       compose_files: [docker-compose.yml]
-      pre_hook: [scripts/predeploy.sh]
-      post_hook: [scripts/postdeploy.sh]
+      # scripts/predeploy.sh and scripts/postdeploy.sh (if present in the repo)
+      # are run automatically -- no field to declare them here. See "Hook
+      # discovery" below.
 
     healthchecks:
       - http://localhost:8080/health
@@ -241,6 +242,16 @@ repos:
 
 GitHub Container Registry (`ghcr.io`) is the natural choice for any service in the "custom application" row — free for public images, integrates directly with GitHub Actions, immutable tags, no extra infrastructure to stand up. Only services that actually build a custom image need this; everything else in the config-only/upstream row never touches a registry at all.
 
+**Hook discovery:** there is no `pre_hook:`/`post_hook:` field in the schema. `deploy-service` checks
+the deployed repo for `scripts/predeploy.sh` and `scripts/postdeploy.sh` at those fixed paths and runs
+whichever exists (silently skipping whichever doesn't) — a repo opts in purely by adding the file, and
+`services.yml` never needs an edit when a repo's hook scripts change. Ordering of more than one step
+within a phase is the deployed repo's own responsibility: `postdeploy.sh` can itself call several
+sub-scripts in whatever sequence it needs, rather than `services.yml` declaring an explicit list. (This
+replaced an earlier design where `pre_hook`/`post_hook` were explicit arrays of script paths declared
+per repo — dropped because it coupled every hook change in a service repo to an edit in this repo, and
+put ordering responsibility in the wrong place.)
+
 ### 6.3 `deploy-service` — CLI design
 
 Runtime: **Python** (decided). Runs **only on `homelab-edge`** (decided) — consistent with Ansible's existing control-node pattern, and necessary because other nodes aren't guaranteed to have Ansible installed. Reaches target nodes over **SSH via Tailscale**, matching the existing Tailscale-only routing approach already used elsewhere in the homelab.
@@ -251,10 +262,10 @@ Draft interface:
 deploy-service deploy <repo> [--ref <tag>] [--dry-run]
     Reads the named repo's entry from services.yml, pulls/checks out the
     given ref (default: latest per the registry entry), layers env files,
-    runs pre_hook, performs the deploy (compose pull+up for type=compose,
-    or pull image + compose up for type=image), runs post_hook, then
-    polls healthchecks. --dry-run prints the planned actions without
-    executing them.
+    runs scripts/predeploy.sh if present, performs the deploy (compose
+    pull+up for type=compose, or pull image + compose up for type=image),
+    runs scripts/postdeploy.sh if present, then polls healthchecks.
+    --dry-run prints the planned actions without executing them.
 
 deploy-service rollback <repo> [--to <tag>] [--dry-run]
     Mechanism depends on the repo's rollback.strategy:
