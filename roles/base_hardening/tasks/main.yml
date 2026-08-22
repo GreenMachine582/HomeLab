@@ -241,6 +241,7 @@
     - on-boot
     - on-shutdown
     - on-ssh-success
+  register: _notify_scripts
   tags: [notify]
 
 - name: "Notify | Deploy systemd service units"
@@ -271,6 +272,9 @@
   ansible.builtin.systemd:
     name: on-ssh-success.service
     enabled: true
-    state: started
+    state: >-
+      {{ 'restarted'
+         if (_notify_scripts.results | selectattr('item', 'equalto', 'on-ssh-success') | map(attribute='changed') | first)
+         else 'started' }}
     daemon_reload: true
   tags: [notify]
