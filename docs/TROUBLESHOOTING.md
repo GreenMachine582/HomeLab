@@ -12,6 +12,7 @@ Common issues, diagnostic commands, and recovery procedures. Organised by area.
   * [🩺 General Diagnostics](#-general-diagnostics)
   * [🔑 SSH & Connectivity](#-ssh--connectivity)
     * [Cannot SSH to a node](#cannot-ssh-to-a-node)
+    * [SSH from homelab-edge to another node](#ssh-from-homelab-edge-to-another-node)
     * [Ansible cannot reach a node](#ansible-cannot-reach-a-node)
   * [⚙️ Ansible](#-ansible)
     * [Playbook fails mid-run](#playbook-fails-mid-run)
@@ -125,6 +126,35 @@ ssh -i .ssh/homelab-edge admin@homelab-edge.local
 Host homelab-*
     Port <ssh_port>
     IdentityFile ~/homelab/.ssh/homelab-edge
+```
+
+### SSH from homelab-edge to another node
+
+A manual login to `homelab-edge` (e.g. from the Tailscale admin console, or `ssh admin@homelab-edge`)
+lands you as `admin` — a different user and key from the one `deploy-service`/Ansible use to reach
+*other* nodes. To follow the same path they use:
+
+**Step 1 — switch to the `homelab` user.** The automation key is owned `homelab:homelab`, mode
+`0600` — `admin` can't read it directly, even with sudo pointed at the file path:
+```bash
+sudo su - homelab
+```
+
+**Step 2 — SSH onward using the homelab key.** Same key/path `inventories/prod.yml` declares
+(`ansible_ssh_private_key_file: ~/.ssh/homelab`) and that `deploy-service` itself uses:
+```bash
+ssh -p <ssh_port> -i ~/.ssh/homelab homelab@<node-ip-or-hostname>
+```
+(`<node-ip-or-hostname>` — LAN IP, or the node's MagicDNS hostname if you're off-LAN over Tailscale.)
+
+**Once connected**, `deploy-service`-managed compose projects don't live in `homelab`'s home
+directory — they're checked out under `/srv/services/<repo>` (the `path:` each repo declares in
+`services.yml`). Running `docker compose ps`/`logs` from `~` fails with "no configuration file
+provided" — `cd` into the repo's path first:
+```bash
+cd /srv/services/homelab-observe-services
+docker compose ps
+docker logs <container>
 ```
 
 ### Ansible cannot reach a node
