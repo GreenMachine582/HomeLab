@@ -10,3 +10,5 @@ backend  = {{ item.backend | default('auto') }}
 maxretry = {{ item.max_retry | default(3) }}
 bantime  = {{ item.ban_time | default(3600) }}
 findtime = {{ item.find_time | default(600) }}
+action   = %(action_)s
+           notify-homelab

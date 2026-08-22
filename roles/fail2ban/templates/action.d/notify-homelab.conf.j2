@@ -1,0 +1,12 @@
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/fail2ban/templates/action.d/notify-homelab.conf.j2
+# Notify-only action, layered alongside the normal ban action via jail.conf.j2's
+# `action = %(action_)s` + `notify-homelab`. <name>/<ip>/<failures> are fail2ban's
+# own interpolation tags.
+
+[Definition]
+actionstart =
+actionstop =
+actioncheck =
+actionban = curl -sf -H "Title: fail2ban: <name>" -H "Priority: high" -H "Tags: no_entry_sign" -d "Banned <ip> in jail <name> after <failures> failures" "{{ notify_ntfy_url }}" > /dev/null || curl -sf -H "Content-Type: application/json" --data-raw "{\"content\": \"🚫 [fail2ban] Banned <ip> in jail <name> after <failures> failures\"}" "{{ notify_discord_webhook }}" > /dev/null || true
+actionunban =

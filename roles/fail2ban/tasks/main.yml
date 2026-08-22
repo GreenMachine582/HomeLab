@@ -7,6 +7,16 @@
     state: present
   tags: [fail2ban]
 
+- name: "fail2ban | Deploy ban notification action"
+  ansible.builtin.template:
+    src: action.d/notify-homelab.conf.j2
+    dest: /etc/fail2ban/action.d/notify-homelab.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+  tags: [fail2ban]
+
 - name: "fail2ban | Write jail configs"
   ansible.builtin.template:
     src: jail.conf.j2
