@@ -198,6 +198,29 @@
       become: false
       tags: [verify, tailscale]
 
+    - name: "Verify | fail2ban ban-notification delivers to ntfy"
+      block:
+        - name: "Verify | fail2ban notify — trigger a test ban (TEST-NET-3, non-routable, harmless)"
+          ansible.builtin.command:
+            cmd: fail2ban-client set sshd banip 203.0.113.1
+          changed_when: false
+
+        - name: "Verify | fail2ban notify — poll ntfy for the resulting message"
+          ansible.builtin.uri:
+            url: "{{ notify_ntfy_url }}/json?poll=1&since=30s"
+            return_content: true
+          register: _fail2ban_notify_check
+          retries: 5
+          delay: 2
+          until: "'203.0.113.1' in _fail2ban_notify_check.content"
+          become: false
+      always:
+        - name: "Verify | fail2ban notify — clean up test ban"
+          ansible.builtin.command:
+            cmd: fail2ban-client set sshd unbanip 203.0.113.1
+          changed_when: false
+      tags: [verify, fail2ban]
+
     - name: "Verify | Internet reachable from edge"
       ansible.builtin.uri:
         url: https://cloudflare.com
