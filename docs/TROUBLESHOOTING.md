@@ -97,14 +97,14 @@ ansible-playbook playbooks/healthcheck.yml
 
 **Check 1 — Is the node reachable?**
 ```bash
-ping 192.168.1.<x>
+ping <node-ip-or-hostname>
 ```
 
 If no ping response: check the node is powered on, Ethernet is connected, and the router shows a DHCP lease.
 
 **Check 2 — Is SSH running?**
 ```bash
-ssh -v admin@192.168.1.<x>
+ssh -v admin@<node-ip-or-hostname>
 ```
 
 Verbose output will indicate whether the connection is refused (service down) or timing out (network issue).
@@ -118,10 +118,18 @@ sudo fail2ban-client set sshd unbanip <your-ip>
 
 **Check 4 — Are you using the right key?**
 ```bash
-ssh -i .ssh/homelab-edge admin@homelab-edge.local
+ssh -i .ssh/homelab-edge admin@<node-ip-or-hostname>
 ```
 
-**Tip — stop passing `-p`/`-i` every time:** the same `admin` key and `ssh_port` work on every node (`roles/users` authorizes the same key everywhere). Add this to `~/.ssh/config` once and plain `ssh admin@homelab-edge` / `homelab-observe` / `homelab-svc-01` just works:
+**Tip — stop passing `-p`/`-i` every time:** the same `admin` key and `ssh_port` work on every
+node — `roles/users` (`inventories/group_vars/all/main.yml`'s `homelab_users`) authorizes the same
+`vault_admin_ssh_pubkey` value everywhere, whether a node got it from `vault.yml` directly (Phase 1,
+edge, from WSL) or resolved it live from Infisical's `network/SSH_ADMIN_PUBKEY` (Phase 3, every
+other node) — same key value either way. Add this to `~/.ssh/config` once and plain
+`ssh admin@homelab-edge` / `homelab-observe` / `homelab-svc-01` just works — **provided your own
+machine is joined to the tailnet**: there's no `HostName` mapping below, so resolving the bare
+`homelab-*` name relies entirely on Tailscale MagicDNS (see [docs/NETWORK.md](./NETWORK.md)
+§ MagicDNS), not `.local`/mDNS or anything else:
 ```
 Host homelab-*
     Port <ssh_port>
