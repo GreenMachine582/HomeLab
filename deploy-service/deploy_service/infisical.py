@@ -183,6 +183,7 @@ def format_remediation(missing_specs: list[dict]) -> list[str]:
     deploy-service's own stdout/logs.
     """
     ui_url = _resolve_ui_base_url()
+    _, _, project_id = _load_runtime_creds()
 
     groups: dict[tuple[str, str], list[dict]] = {}
     for spec in missing_specs:
@@ -210,5 +211,8 @@ def format_remediation(missing_specs: list[dict]) -> list[str]:
         env, *folder_parts, key = spec["path"].strip("/").split("/")
         folder = "/" + "/".join(folder_parts)
         value = "$(openssl rand -hex 16)" if spec.get("generate") else "<FILL_ME_IN>"
-        lines.append(f'  infisical secrets set {key}="{value}" --path="{folder}" --env={env}')
+        lines.append(
+            f'  infisical secrets set {key}="{value}" --path="{folder}" --env={env} '
+            f'--projectId {project_id}'
+        )
     return lines
