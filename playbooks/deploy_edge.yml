@@ -214,6 +214,14 @@
           delay: 2
           until: "'203.0.113.1' in _fail2ban_notify_check.content"
           become: false
+      rescue:
+        - name: "Verify | fail2ban notify — WARN (non-fatal; homelab-observe/ntfy may not be bootstrapped yet)"
+          ansible.builtin.debug:
+            msg: >-
+              WARNING: could not confirm fail2ban's ntfy notification delivery.
+              This is expected if homelab-observe hasn't been bootstrapped yet
+              (Phase 3) — ntfy won't be reachable until then. If observe is
+              already up, re-run with --tags fail2ban to investigate for real.
       always:
         - name: "Verify | fail2ban notify — clean up test ban"
           ansible.builtin.command:
