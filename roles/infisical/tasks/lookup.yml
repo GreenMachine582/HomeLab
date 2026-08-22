@@ -26,6 +26,7 @@
 
 - name: "Infisical lookup | Resolve application secrets ({{ infisical_lookup_keys | join(', ') }})"
   no_log: true
+  tags: [always]
   block:
     - name: "Infisical lookup | Load runtime identity credentials (node-local, never in git)"
       ansible.builtin.include_vars:
