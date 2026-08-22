@@ -127,8 +127,8 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 | Prometheus   | Scrapes all `node-exporter` and `cAdvisor` instances; 30-day retention    |
 | Loki         | Receives logs from all Grafana Alloy agents; 14-day retention             |
 | Grafana      | Pre-configured dashboards (see README); data sources: Prometheus, Loki    |
-| Alertmanager | Routes: Email, Slack (configurable); rules: node down, high CPU/mem, disk |
-| Uptime Kuma  | HTTP/HTTPS endpoint monitoring; notifications: Slack                      |
+| Alertmanager | Routes: Discord (critical/warning/info webhooks); rules: node down, high CPU/mem, disk |
+| Uptime Kuma  | HTTP/HTTPS endpoint monitoring; notification channels configured manually in the UI (not managed by `setup_monitors.py`) |
 | Portainer    | Docker management UI; agents on edge, homelab-data-01, svc-01, svc-02     |
 
 ### Metrics Scope

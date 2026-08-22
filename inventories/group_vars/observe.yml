@@ -51,28 +51,6 @@ grafana_allow_signup: false
 # ── Alertmanager ──────────────────────────────────────────────────────────────
 alertmanager_port: 9093
 
-alertmanager_receivers:
-  - name: discord-critical
-    discord_webhook_url: "{{ vault_discord_webhook_critical }}"
-  - name: discord-warning
-    discord_webhook_url: "{{ vault_discord_webhook_warning }}"
-  - name: discord-info
-    discord_webhook_url: "{{ vault_discord_webhook_info }}"
-
-alertmanager_routes:
-  - receiver: discord-critical
-    match:
-      severity: critical
-    repeat_interval: 1h
-  - receiver: discord-warning
-    match:
-      severity: warning
-    repeat_interval: 4h
-  - receiver: discord-info
-    match:
-      severity: info
-    repeat_interval: 12h
-
 # ── Uptime Kuma ───────────────────────────────────────────────────────────────
 uptime_kuma_port: 3001
 

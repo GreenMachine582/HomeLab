@@ -39,7 +39,7 @@ Services are split by concern, across a mix of in-repo compose files and separat
 - `authentik-sso` (separate repo, deployed via `deploy-service`; in progress — created, not yet deployed) — Authentik server/worker/Redis + its own bundled Postgres for now (planned on `homelab-svc-01`/pc-01)
 - `jellyfin-media` (new, planned — separate repo, deployed via `deploy-service`) — Jellyfin, QSV hardware transcode (planned on `homelab-svc-01`/pc-01)
 - `greentechhub` (new, planned — separate repo, deployed via `deploy-service`, not Ansible) — Django, Celery worker; Postgres/Redis from `homelab-data-01` via `requires:` (planned on `homelab-svc-02`/laptop-01)
-- discord-gateway — conditional on the B6 keep/remove decision; if kept, extracted to its own repo and deployed via `deploy-service` as an amd64 image (planned on `homelab-svc-01`/pc-01), replacing the current Ansible-deployed `docker-compose.svc01.yml` path (see `roles/discord_gateway`)
+- discord-gateway — conditional on the B6 keep/remove decision; if kept, extracted to its own repo and deployed via `deploy-service` as an amd64 image (planned on `homelab-svc-01`/pc-01), replacing the current Ansible-deployed `docker-compose.svc01.yml` path (see `roles/camunda/templates/discord_gateway/`, `wip/svc` branch)
 - `homelab-observe-services` (separate repo, deployed via `deploy-service`) — Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer (runs on `homelab-observe`)
 
 The in-progress polyrepo migration strategy (how future service repos are split, `deploy-service` design, `services.yml` schema) is documented in [`docs/repo_split_brief.md`](./docs/repo_split_brief.md).
@@ -72,7 +72,7 @@ The in-progress polyrepo migration strategy (how future service repos are split,
 | `unbound` | Unbound recursive resolver as host systemd service (port 5335); Pi-hole upstream | edge |
 | `infisical` | Self-hosted secrets manager — node-generated `.env`, container bring-up, additive seed from `vault.yml`, runtime lookup helper (`tasks/lookup.yml`) used by `deploy_edge.yml` (Tailscale-only) | edge |
 | `semaphore` | Web UI over this repo's playbooks — read-only repo bind mount + writable workspace volume (Tailscale-only) | edge |
-| `discord_gateway` | discord-gateway env file templates | svc-01 |
+| `discord_gateway` | Not its own role — a tag (`env`/`secrets`, `discord_gateway`) within `roles/camunda`'s tasks, rendering `roles/camunda/templates/discord_gateway/*.j2`. On the unmerged `wip/svc` branch. | svc-01 |
 | `greentechhub` | GreenTechHub Django app, Redis, Celery | svc-02 — superseded by the own-repo `greentechhub` + `deploy-service` (Stage 8); role retired once that lands |
 | `jellyfin` | Jellyfin media server | Targeted the retired `svc-03` identity; superseded by the own-repo `jellyfin-media` + `deploy-service` on `svc-01`/pc-01 (Stage 8); role retired once that lands |
 
@@ -157,11 +157,9 @@ Config files are rendered by Ansible roles from Jinja2 templates. Templates live
 
 Key templates and their data sources:
 - `roles/alloy/templates/config.alloy.j2` ← `inventories/group_vars/all.yml` (`alloy_loki_endpoint`, `alloy_scrape_systemd_units`)
-- `roles/discord_gateway/templates/env.j2`, `env.secrets.j2` ← `inventories/host_vars/homelab-svc-01.yml`
+- `roles/camunda/templates/discord_gateway/env.j2`, `env.secrets.j2` ← `inventories/host_vars/homelab-svc-01.yml` (`wip/svc` branch)
 - `roles/infisical/templates/env.j2` ← node-generated secrets (idempotent: read back from `/opt/infisical/.env` if present, else `openssl rand -hex 32`) + `vault_infisical_encryption_key`
 - `roles/semaphore/templates/env.j2` ← node-generated Postgres password + `vault_semaphore_admin_*` + the read-only Infisical "runtime" identity's credentials, loaded via `include_vars` from the same node-local `/home/homelab/.infisical_runtime_auth.yml` file `deploy_edge.yml` reads (never `vault.yml` — see "Secrets")
-
-> Legacy `envsubst` templates (`alertmanager/alertmanager.yml.tmpl`, `fail2ban/fail2ban.conf.tmpl`) are from the old approach — do not edit them; they will be removed once all Ansible roles are complete.
 
 ### Adding a New Node
 
