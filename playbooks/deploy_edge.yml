@@ -38,12 +38,13 @@
       ansible.builtin.include_role:
         name: infisical
         tasks_from: lookup.yml
+        apply:
+          become: false
       vars:
         infisical_lookup_keys:
           - discord/ALERTS_WEBHOOK
           - tailscale/OAUTH_CLIENT_ID
           - tailscale/OAUTH_CLIENT_SECRET
-      become: false
       tags: [always]
 
     - name: "Secrets | Expose as vault_* facts for fail2ban/tailscale roles"
