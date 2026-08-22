@@ -90,7 +90,7 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     print(f"[deploy-service] Checking declared secrets exist in Infisical")
     missing = infisical.check_missing(secret_specs)
     if missing:
-        print(f"[deploy-service] {len(missing)} secret(s) missing — create them, then re-run deploy:")
+        print(f"[deploy-service] {len(missing)} secret(s) missing — add them in Infisical, then re-run deploy:")
         for line in infisical.format_remediation(missing):
             print(f"  {line}")
         sys.exit(1)

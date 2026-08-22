@@ -5,7 +5,7 @@ Uses stdlib urllib only — no third-party HTTP library needed.
 """
 import getpass
 import json
-import secrets as _secrets_mod
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -17,6 +17,7 @@ import yaml
 
 _API_BASE = "http://127.0.0.1:8222/api"
 _RUNTIME_AUTH_PATH = Path.home() / ".infisical_runtime_auth.yml"
+_UI_PORT = 8443
 
 # Fixed, deploy-service-level secret (not declared per-repo) -- needed to
 # authenticate the git clone itself, before any repo's own secrets.yml can
@@ -150,16 +151,67 @@ def check_missing(secret_specs: list[dict]) -> list[dict]:
     return missing
 
 
-def format_remediation(missing_specs: list[dict]) -> list[str]:
-    """Turn missing secret specs into ready-to-paste `infisical secrets set`
-    commands. Entries with generate: true get a fresh random value inline
-    (nothing external to source it from); everything else gets a
-    <FILL_ME_IN> placeholder -- can't guess a Discord webhook or license key.
+def _resolve_ui_base_url(port: int = _UI_PORT) -> str:
+    """Best-effort browser-facing Infisical URL for this node, resolved live via
+    Tailscale rather than hardcoded or plumbed through Ansible -- deploy-service
+    always runs on the node it should link to, and that node always has
+    Tailscale installed. Falls back to the placeholder convention used
+    throughout BOOTSTRAP.md/edge.yml if Tailscale isn't reachable for any
+    reason (not fatal -- this is a UI convenience, not a deploy dependency).
     """
-    lines = []
+    try:
+        result = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True, text=True, timeout=5, check=True,
+        )
+        dns_name = json.loads(result.stdout).get("Self", {}).get("DNSName", "").rstrip(".")
+        if dns_name:
+            return f"https://{dns_name}:{port}"
+    except (subprocess.SubprocessError, OSError, json.JSONDecodeError):
+        pass
+    return f"https://homelab-edge.<tailnet>.ts.net:{port}"
+
+
+def format_remediation(missing_specs: list[dict]) -> list[str]:
+    """Turn missing secret specs into a "where to add this" report: the
+    Infisical UI address, a tree diagram of env/folder/key to navigate to, and
+    a Docker-based CLI fallback (no host install -- wraps the official
+    infisical/cli image). Never prints an actual secret value we generated
+    ourselves -- generate: true entries get their value computed by the CLI
+    command's own shell substitution at paste-time, not embedded here, so
+    nothing generated ever touches deploy-service's own stdout/logs.
+    """
+    ui_url = _resolve_ui_base_url()
+    volume = "-v infisical-cli:/root/.infisical"
+
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for spec in missing_specs:
+        env, *folder_parts, _key = spec["path"].strip("/").split("/")
+        folder = "/" + "/".join(folder_parts)
+        groups.setdefault((env, folder), []).append(spec)
+
+    # ASCII, not box-drawing characters -- this gets printed through SSH
+    # sessions, Windows consoles, and log pipes with all sorts of encodings;
+    # a UnicodeEncodeError here shouldn't be how a deploy fails.
+    lines = [ui_url, ""]
+    for (env, folder), specs in groups.items():
+        lines.append(env)
+        lines.append(f"`- {folder}")
+        for i, spec in enumerate(specs):
+            branch = "`-" if i == len(specs) - 1 else "|-"
+            key = spec["path"].rstrip("/").split("/")[-1]
+            note = "   (generate a random value)" if spec.get("generate") else ""
+            lines.append(f"   {branch} + {key}{note}")
+        lines.append("")
+
+    lines.append("Or via CLI (Docker, no host install -- run on homelab-edge):")
+    lines.append(f"  docker run --rm -it {volume} infisical/cli infisical login --domain={ui_url}")
     for spec in missing_specs:
         env, *folder_parts, key = spec["path"].strip("/").split("/")
         folder = "/" + "/".join(folder_parts)
-        value = _secrets_mod.token_hex(16) if spec.get("generate") else "<FILL_ME_IN>"
-        lines.append(f'infisical secrets set {key}="{value}" --path="{folder}" --env={env}')
+        value = "$(openssl rand -hex 16)" if spec.get("generate") else "<FILL_ME_IN>"
+        lines.append(
+            f'  docker run --rm -it {volume} infisical/cli infisical secrets set '
+            f'{key}="{value}" --path="{folder}" --env={env}'
+        )
     return lines

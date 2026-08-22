@@ -256,11 +256,15 @@ edit in this repo, and put ordering responsibility in the wrong place.)
 Likewise, a repo declares its own required Infisical secrets in a `secrets.yml` at its root (`path`/`env`
 pairs, plus an optional `addresses:` list for cross-repo IP resolution — see `homelab-edge-services`'s
 example above). After cloning, `deploy-service` reads that file, checks every declared path actually
-exists in Infisical using the existing read-only runtime identity, and — if anything's missing — prints
-ready-to-run `infisical secrets set` commands (with a freshly generated value inline for entries marked
-`generate: true`, which flags secrets with no external source to copy from) instead of deploying with a
-missing secret and failing deep inside `docker compose up`. The write itself stays attended (you paste
-the printed command into your own already-authenticated `infisical` CLI session) rather than
+exists in Infisical using the existing read-only runtime identity, and — if anything's missing — reports
+the Infisical UI address (resolved live via `tailscale status --json` on the node, no hardcoded/plumbed
+tailnet name) plus a small tree diagram of which environment/folder/key to add, instead of deploying with
+a missing secret and failing deep inside `docker compose up`. A Docker-based CLI fallback is printed too
+(wrapping the official `infisical/cli` image — no host install needed on `homelab-edge`); for entries
+marked `generate: true` the fallback command computes its value via shell substitution
+(`$(openssl rand -hex 16)`) at paste-time rather than `deploy-service` generating and printing a real
+value itself, so nothing generated ever appears in deploy-service's own stdout/logs. The write itself
+stays attended (you run the printed command, or add the secret via the UI, yourself) rather than
 `deploy-service` holding a persisted write-capable Infisical identity — deliberately: every other
 identity in this design is read-only (see `CLAUDE.md`'s "Important Constraints" for why a persisted
 write-capable identity was eliminated from Phase 1 bootstrap for the same reason), and Infisical's
