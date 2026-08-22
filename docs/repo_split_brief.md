@@ -1,10 +1,13 @@
-# Homelab Repo Split — Planning Brief (v10)
+# Homelab Repo Split — Planning Brief (v11)
 
-> **This is an active design brief, not an operations reference.** It documents the in-progress polyrepo migration strategy (`deploy-service`, `services.yml`, service repo splits). For day-to-day operations, see [README.md](../README.md), [BOOTSTRAP.md](../BOOTSTRAP.md), or [NETWORK.md](./NETWORK.md). For node/device topology and the shared data tier direction, see the companion [topology_data_brief.md](./topology_data_brief.md).
+> **This is an active design brief, not an operations reference.** It documents the in-progress polyrepo migration strategy (`deploy-service`, `services.yml`, service repo splits). For day-to-day operations, see [README.md](../README.md), [BOOTSTRAP.md](../BOOTSTRAP.md), or [NETWORK.md](./NETWORK.md). For node/device topology and the shared data tier direction, see the companion [topology_data_brief.md](./topology_data_brief.md). For current roadmap/status and hardware-expansion planning, see [consolidated_brief.md](./consolidated_brief.md).
 
-**Status:** `homelab-edge-services` live (§8 Phase 4 underway — edge complete). `homelab-observe-services` extracted and registered, deploy-verify pending live node. `camunda-platform` and `n8n-automation` extracted and registered (svc-01 split, Milestone D1/D2) — deploy-verify pending `homelab-svc-01` bootstrap (Milestone B). `authentik-sso` created and compose written (Milestone E0/E1, bundled Postgres) — not yet tagged, registered in `services.yml`, or deployed. Remaining Phase 4: `discord-gateway` (D3), gated on the keep/remove decision. Phase 5 cleanup in progress.
+**Status:** Current roadmap and per-repo status (what's live, extracted, or pending deploy-verify) is now tracked in [`consolidated_brief.md`](./consolidated_brief.md) (Stage 0/Stage 3) — see there for up-to-date state. This doc's own content — schema (§6), CLI design (§6.3), clustering heuristic (§7), branch-plan history (§8), edge compose split (§10) — is unchanged; only status tracking moved.
 **Origin repo:** https://github.com/GreenMachine582/HomeLab
 **Purpose of this doc:** Final design reference ahead of implementation.
+
+**Changelog from v10:**
+- **Roadmap/status tracking moved to [`consolidated_brief.md`](./consolidated_brief.md).** That brief folds two new x86 devices (pc-01, laptop-01) into the plan, retargets Milestone B (svc-01) to pc-01, and merges this doc's §8 Branch plan / §9 open items with `TODO.md` and `topology_data_brief.md`'s Migration Plan into one Stage 0–8 roadmap with a full old-ID reconciliation table (§9 there). §8/§9 below are kept as historical design record; they are no longer the place to check current status.
 
 **Changelog from v9:**
 - **Companion brief added:** [`docs/topology_data_brief.md`](./topology_data_brief.md) (v2) now covers node/device topology (`topology.yml`, `host_roles`) and a shared Postgres/Redis data tier (`homelab-data-services`) — scope this doc never covered. It builds on the decisions here and changes none of them.
@@ -26,7 +29,7 @@
 <summary>Full outline</summary>
 
 <!-- TOC -->
-* [Homelab Repo Split — Planning Brief (v10)](#homelab-repo-split--planning-brief-v10)
+* [Homelab Repo Split — Planning Brief (v11)](#homelab-repo-split--planning-brief-v11)
   * [🎯 1. Goal](#-1-goal)
   * [❓ 2. Why (context from prior discussion)](#-2-why-context-from-prior-discussion)
   * [🗂️ 3. Current repo structure (for reference)](#-3-current-repo-structure-for-reference)

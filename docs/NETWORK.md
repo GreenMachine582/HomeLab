@@ -16,8 +16,9 @@ Reference for IP assignments, firewall rules, DNS configuration, Tailscale ACLs,
   * [🔥 Firewall Rules](#-firewall-rules)
     * [`homelab-edge`](#homelab-edge)
     * [`homelab-observe`](#homelab-observe)
+    * [`homelab-data-01`](#homelab-data-01)
     * [`homelab-svc-01`](#homelab-svc-01)
-    * [`homelab-svc-02` and `homelab-svc-03`](#homelab-svc-02-and-homelab-svc-03)
+    * [`homelab-svc-02`](#homelab-svc-02)
     * [Updating Rules](#updating-rules)
   * [🧭 DNS](#-dns)
     * [🏠 Internal — Pi-hole + Unbound](#-internal--pi-hole--unbound)
@@ -49,9 +50,9 @@ Reference for IP assignments, firewall rules, DNS configuration, Tailscale ACLs,
 |-------------------|---------------|--------------------------------|
 | `homelab-edge`    | `ip_edge`     | Edge, DNS, Ansible control     |
 | `homelab-observe` | `ip_observe`  | Monitoring                     |
-| `homelab-svc-01`  | `ip_svc_01`   | Camunda, databases             |
+| `homelab-data-01` | `ip_data_01`  | Postgres, Redis (shared data tier) |
+| `homelab-svc-01`  | `ip_svc_01`   | Camunda, n8n, Authentik, Jellyfin |
 | `homelab-svc-02`  | `ip_svc_02`   | GreenTechHub                   |
-| `homelab-svc-03`  | `ip_svc_03`   | Jellyfin                       |
 
 IP values and `lan_subnet` are defined in `inventories/group_vars/all/overrides.yml`. `main.yml` holds `EDIT_BEFORE_USE` placeholders; `overrides.yml` overrides them with real values. When IPs change, update `overrides.yml` only. Also configure static DHCP reservations on your router by MAC address.
 
@@ -61,9 +62,9 @@ IP values and `lan_subnet` are defined in `inventories/group_vars/all/overrides.
 |-------------------|---------------|
 | `homelab-edge`    | 100.x.x.1     |
 | `homelab-observe` | 100.x.x.2     |
-| `homelab-svc-01`  | 100.x.x.3     |
-| `homelab-svc-02`  | 100.x.x.4     |
-| `homelab-svc-03`  | 100.x.x.5     |
+| `homelab-data-01` | 100.x.x.3     |
+| `homelab-svc-01`  | 100.x.x.4     |
+| `homelab-svc-02`  | 100.x.x.5     |
 
 Tailscale IPs are assigned by the coordination server and stable per device. Update `group_vars/all/overrides.yml` if they change.
 
@@ -78,8 +79,12 @@ Tailscale IPs are assigned by the coordination server and stable per device. Upd
 | Portainer         | `homelab-observe` | 9000  |
 | ntfy              | `homelab-observe` | 8085  |
 | Camunda           | `homelab-svc-01`  | 8080  |
+| Authentik         | `homelab-svc-01`  | 9000  |
+| n8n               | `homelab-svc-01`  | 5678  |
+| Jellyfin          | `homelab-svc-01`  | 8096  |
 | GreenTechHub      | `homelab-svc-02`  | 8000  |
-| Jellyfin          | `homelab-svc-03`  | 8096  |
+| Postgres          | `homelab-data-01` | 5432  |
+| Redis             | `homelab-data-01` | 6379  |
 | Pi-hole admin     | `homelab-edge`    | 80    |
 | Infisical — Caddy HTTPS (Tailscale only)  | `homelab-edge` | 8443 |
 | Semaphore — Caddy HTTPS (Tailscale only)  | `homelab-edge` | 8444 |
@@ -135,22 +140,30 @@ No ports are forwarded from the router. Cloudflare Tunnel connects outbound — 
 
 No public exposure. Accessible via Tailscale from admin devices.
 
+### `homelab-data-01`
+
+| Port | Protocol | Source                  | Reason                        |
+|------|----------|--------------------------|-------------------------------|
+| `ssh_port` | TCP  | LAN / VPN          | SSH (edge only)               |
+| 5432 | TCP      | Tailnet + LAN node IPs   | Postgres — consumers only, not open broadly |
+| 6379 | TCP      | Tailnet + LAN node IPs   | Redis — consumers only, not open broadly |
+
 ### `homelab-svc-01`
 
 | Port | Protocol | Source    | Reason                        |
 |------|----------|-----------|-------------------------------|
 | `ssh_port` | TCP  | LAN / VPN | SSH (edge only)               |
 | 8080 | TCP      | LAN / VPN | Camunda                       |
-| 5432 | TCP      | LAN / VPN | PostgreSQL (internal only)    |
-| 9200 | TCP      | LAN / VPN | Elasticsearch (internal only) |
+| 9000 | TCP      | LAN / VPN | Authentik                     |
+| 5678 | TCP      | LAN / VPN | n8n                           |
+| 8096 | TCP      | LAN / VPN | Jellyfin                      |
 
-### `homelab-svc-02` and `homelab-svc-03`
+### `homelab-svc-02`
 
 | Port | Protocol | Source    | Reason                        |
 |------|----------|-----------|-------------------------------|
 | `ssh_port` | TCP  | LAN / VPN | SSH (edge only)               |
-| 8000 | TCP      | LAN / VPN | GreenTechHub (svc-02)         |
-| 8096 | TCP      | LAN / VPN | Jellyfin (svc-03)             |
+| 8000 | TCP      | LAN / VPN | GreenTechHub                  |
 
 ### Updating Rules
 
@@ -181,8 +194,10 @@ Internal hostnames are configured as static entries in the `homelab-edge-service
 | `portainer.homelab.local`    | `ip_observe`  | 9000 |
 | `ntfy.homelab.local`         | `ip_observe`  | 8085 |
 | `camunda.homelab.local`      | `ip_svc_01`   | 8080 |
+| `authentik.homelab.local`    | `ip_svc_01`   | 9000 |
+| `n8n.homelab.local`          | `ip_svc_01`   | 5678 |
+| `jellyfin.homelab.local`     | `ip_svc_01`   | 8096 |
 | `greentechhub.homelab.local` | `ip_svc_02`   | 8000 |
-| `jellyfin.homelab.local`     | `ip_svc_03`   | 8096 |
 
 Clients access services at `http://<hostname>:<port>`. Traffic between nodes travels over Tailscale (encrypted), so a 
 separate internal TLS layer is not required.
@@ -251,7 +266,8 @@ Tailscale ACLs are defined in the Tailscale admin console (not in this repo). Re
 | `tag:admin`       | all homelab nodes   | 22               | Admin SSH access                    |
 | `tag:admin`       | `homelab-observe`   | 3000, 3001, 9000 | Grafana, Uptime Kuma, Portainer     |
 | all homelab nodes | `homelab-observe`   | 3100             | Loki log ingestion                  |
-| `homelab-edge`    | `homelab-svc-01/02` | 8080, 8000       | Cloudflare Tunnel routing           |
+| `homelab-edge`    | `homelab-svc-01/02` | 8080, 8096, 8000 | Cloudflare Tunnel routing (Camunda/Jellyfin on svc-01, GreenTechHub on svc-02) |
+| svc nodes         | `homelab-data-01`   | 5432, 6379       | Postgres/Redis (shared data tier)   |
 | deny              | all                 | all              | Default deny                        |
 
 Tag admin devices in the Tailscale console as `tag:admin`. This gives you fine-grained per-node ACL control — tighter 

@@ -39,17 +39,17 @@ A Raspberry Pi homelab managed entirely through Ansible. Manual intervention is 
 
 ## 🏗️ Architecture Overview
 
-The homelab is organised into four node roles. Full hardware and service details are in [NODES.md](./NODES.md).
+The homelab is organised into multiple node roles. Full hardware and service details are in [NODES.md](./NODES.md).
 
-| Node                | Role                                          | Status          |
-|---------------------|-----------------------------------------------|-----------------|
-| `homelab-edge`      | Internet edge, DNS, ingress, Ansible control  | Active          |
-| `homelab-observe`   | Monitoring, logging, alerting                 | Pending Phase 3 |
-| `homelab-svc-01`    | Orchestration, databases (Camunda stack)      | Pending Phase 3 |
-| `homelab-svc-02`    | User-facing application workloads             | Future          |
-| `homelab-svc-03`    | Media server (Jellyfin)                       | Future          |
+| Node                | Role                                                    | Status          |
+|---------------------|----------------------------------------------------------|-----------------|
+| `homelab-edge`      | Internet edge, DNS, ingress, Ansible control              | Active          |
+| `homelab-observe`   | Monitoring, logging, alerting                              | Pending Stage 1 |
+| `homelab-data-01`   | Shared Postgres/Redis data tier (Pi 5, 2TB NVMe)          | Pending Stage 4 |
+| `homelab-svc-01`    | Orchestration, SSO, media (Camunda stack, Jellyfin) — pc-01 desktop | Pending Stage 3 |
+| `homelab-svc-02`    | User-facing application workloads (GreenTechHub) — laptop-01 | Pending Stage 8 |
 
-> See [TODO.md](./TODO.md) for exact bootstrap status — `homelab-observe`'s role is merged but not yet bootstrapped (Milestone A); `homelab-svc-01`'s role is still on an unmerged branch (Milestone B).
+> See [TODO.md](./TODO.md) for exact status — `homelab-observe`'s role is merged but not yet bootstrapped (Stage 1); `homelab-svc-01`'s role now targets a reclaimed pc-01 desktop, pending hardware intake (Stage 2/3).
 
 ### Deployment Phases
 
@@ -86,12 +86,13 @@ homelab/
       edge.yml                  # Edge-specific: Tailscale subnet, firewall rules
       observe.yml                # Observability: retention, alert endpoints
       # svc.yml (service nodes: Docker daemon config, resource limits) lives on
-      # the unmerged `wip/svc` branch — pending Milestone B
+      # the unmerged `wip/svc` branch — pending Stage 3
     host_vars/
       homelab-edge.yml          # Cloudflare tunnel ID, Pi-hole upstream
       homelab-observe.yml       # Prometheus scrape targets, Loki config
-      # homelab-svc-01.yml, -02.yml, -03.yml don't exist yet — svc-01 host_vars
-      # live on the unmerged `wip/svc` branch (Milestone B); svc-02/03 are unstarted
+      # homelab-data-01.yml, homelab-svc-01.yml, homelab-svc-02.yml don't exist yet —
+      # svc-01 host_vars live on the unmerged `wip/svc` branch (Stage 3); data-01/svc-02
+      # are unstarted (Stage 2/4, Stage 8)
 
   playbooks/
     bootstrap_edge.yml        # Phase 1: edge setup, Infisical bring-up + full provision/seed, Semaphore — single pass
@@ -119,7 +120,8 @@ homelab/
 
   # svc-01 roles (camunda, cadvisor, node_exporter, greentechhub, jellyfin) and
   # playbooks/deploy_svc.yml exist on the unmerged `wip/svc` branch — pending
-  # Milestone B (TODO.md), not yet on master.
+  # Stage 3 (TODO.md), not yet on master. greentechhub/jellyfin roles are retired
+  # once their own-repo deploy-service migration lands (Stage 8).
 
   # Docker Compose stacks (at repo root, deployed per-node)
   docker-compose.edge.yml     # Infisical (+ Postgres, Redis), Semaphore (+ Postgres) — bootstrap tier only
@@ -179,9 +181,9 @@ IP assignments, firewall rules, DNS, Tailscale ACLs, and traffic flow diagrams a
 |-------------------|---------------|--------------|
 | `homelab-edge`    | `ip_edge`     | 100.x.x.1    |
 | `homelab-observe` | `ip_observe`  | 100.x.x.2    |
-| `homelab-svc-01`  | `ip_svc_01`   | 100.x.x.3    |
-| `homelab-svc-02`  | `ip_svc_02`   | 100.x.x.4    |
-| `homelab-svc-03`  | `ip_svc_03`   | 100.x.x.5    |
+| `homelab-data-01` | `ip_data_01`  | 100.x.x.3    |
+| `homelab-svc-01`  | `ip_svc_01`   | 100.x.x.4    |
+| `homelab-svc-02`  | `ip_svc_02`   | 100.x.x.5    |
 
 > Real IP values are defined in `inventories/group_vars/all/overrides.yml` (gitignored) — `main.yml` only holds `EDIT_BEFORE_USE` placeholders.
 

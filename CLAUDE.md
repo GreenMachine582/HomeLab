@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repo Is
 
-Infrastructure-as-code for a 4-node Raspberry Pi homelab. Everything is deployed via Ansible from `homelab-edge`, which acts as both the internet edge and the Ansible control node. No manual configuration after Phase 1 bootstrap.
+Infrastructure-as-code for a 5-node homelab (3 Raspberry Pi, 2 x86 — see [`docs/consolidated_brief.md`](./docs/consolidated_brief.md) for the hardware-expansion plan). Everything is deployed via Ansible from `homelab-edge`, which acts as both the internet edge and the Ansible control node. No manual configuration after Phase 1 bootstrap.
 
 ## Architecture
 
@@ -12,13 +12,13 @@ Infrastructure-as-code for a 4-node Raspberry Pi homelab. Everything is deployed
 
 Node IPs are defined in `inventories/group_vars/all/overrides.yml` (gitignored — never committed). `main.yml` holds `EDIT_BEFORE_USE` placeholders; `overrides.yml` overrides them with real values and is automatically copied to the edge node during Phase 1. `inventories/prod.yml` uses YAML inventory format and references IPs via Jinja2 (`ansible_host: "{{ ip_edge }}"`, `ansible_port: "{{ ssh_port }}"`) — update IPs in `overrides.yml` only.
 
-| Node              | IP var        | Role                                                                                    |
-|-------------------|---------------|-----------------------------------------------------------------------------------------|
-| `homelab-edge`    | `ip_edge`     | Internet edge, DNS (Pi-hole), reverse proxy (Caddy, LAN only), Cloudflare Tunnel, Ansible control |
-| `homelab-observe` | `ip_observe`  | Prometheus, Loki, Grafana, Alertmanager, ntfy, discord-gateway, Uptime Kuma, Portainer |
-| `homelab-svc-01`  | `ip_svc_01`   | Camunda 8, Elasticsearch, n8n, Authentik SSO (all via separate repos + `deploy-service`), discord-gateway (Ansible-deployed), 2TB NVMe |
-| `homelab-svc-02`  | `ip_svc_02`   | GreenTechHub (Django), Redis, Celery (planned)                                          |
-| `homelab-svc-03`  | `ip_svc_03`   | Jellyfin media server (future)                                                          |
+| Node                | IP var        | Role                                                                                    |
+|---------------------|---------------|-----------------------------------------------------------------------------------------|
+| `homelab-edge`      | `ip_edge`     | Internet edge, DNS (Pi-hole), reverse proxy (Caddy, LAN only), Cloudflare Tunnel, Ansible control |
+| `homelab-observe`   | `ip_observe`  | Prometheus, Loki, Grafana, Alertmanager, ntfy, discord-gateway, Uptime Kuma, Portainer |
+| `homelab-data-01`   | `ip_data_01`  | Postgres 16 + Redis 7 shared data tier, via `homelab-data-services` + `deploy-service` (planned — Pi 5, 2TB NVMe) |
+| `homelab-svc-01`    | `ip_svc_01`   | Camunda 8, Elasticsearch, n8n, Authentik SSO, Jellyfin (all via separate repos + `deploy-service`, amd64) — planned on a reclaimed pc-01 desktop |
+| `homelab-svc-02`    | `ip_svc_02`   | GreenTechHub (Django), Celery, via `deploy-service` (amd64) — planned on laptop-01, 4GB RAM |
 
 ### Deployment Phases
 
@@ -33,10 +33,13 @@ Services are split by concern, across a mix of in-repo compose files and separat
 
 - `docker-compose.edge.yml` — Infisical (+ Postgres, Redis), Semaphore (+ Postgres) (runs on `homelab-edge`)
 - `homelab-edge-services` (separate repo, deployed via `deploy-service`) — cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent (runs on `homelab-edge`)
-- `camunda-platform` (separate repo, deployed via `deploy-service`) — Camunda 8, Elasticsearch (runs on `homelab-svc-01`)
-- `n8n-automation` (separate repo, deployed via `deploy-service`) — n8n (runs on `homelab-svc-01`)
-- `authentik-sso` (separate repo, deployed via `deploy-service`; in progress — created, not yet deployed) — Authentik server/worker/Redis + its own bundled Postgres (runs on `homelab-svc-01`)
-- `docker-compose.svc01.yml` — discord-gateway, Portainer Agent (runs on `homelab-svc-01`; still Ansible-deployed — see `roles/discord_gateway`)
+- `homelab-data-services` (new, planned — separate repo, deployed via `deploy-service`) — Postgres 16, Redis 7 (runs on `homelab-data-01`)
+- `camunda-platform` (separate repo, deployed via `deploy-service`) — Camunda 8, Elasticsearch (planned on `homelab-svc-01`/pc-01)
+- `n8n-automation` (separate repo, deployed via `deploy-service`) — n8n (planned on `homelab-svc-01`/pc-01)
+- `authentik-sso` (separate repo, deployed via `deploy-service`; in progress — created, not yet deployed) — Authentik server/worker/Redis + its own bundled Postgres for now (planned on `homelab-svc-01`/pc-01)
+- `jellyfin-media` (new, planned — separate repo, deployed via `deploy-service`) — Jellyfin, QSV hardware transcode (planned on `homelab-svc-01`/pc-01)
+- `greentechhub` (new, planned — separate repo, deployed via `deploy-service`, not Ansible) — Django, Celery worker; Postgres/Redis from `homelab-data-01` via `requires:` (planned on `homelab-svc-02`/laptop-01)
+- discord-gateway — conditional on the B6 keep/remove decision; if kept, extracted to its own repo and deployed via `deploy-service` as an amd64 image (planned on `homelab-svc-01`/pc-01), replacing the current Ansible-deployed `docker-compose.svc01.yml` path (see `roles/discord_gateway`)
 - `homelab-observe-services` (separate repo, deployed via `deploy-service`) — Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer (runs on `homelab-observe`)
 
 The in-progress polyrepo migration strategy (how future service repos are split, `deploy-service` design, `services.yml` schema) is documented in [`docs/repo_split_brief.md`](./docs/repo_split_brief.md).
@@ -70,8 +73,8 @@ The in-progress polyrepo migration strategy (how future service repos are split,
 | `infisical` | Self-hosted secrets manager — node-generated `.env`, container bring-up, additive seed from `vault.yml`, runtime lookup helper (`tasks/lookup.yml`) used by `deploy_edge.yml` (Tailscale-only) | edge |
 | `semaphore` | Web UI over this repo's playbooks — read-only repo bind mount + writable workspace volume (Tailscale-only) | edge |
 | `discord_gateway` | discord-gateway env file templates | svc-01 |
-| `greentechhub` | GreenTechHub Django app, Redis, Celery | svc-02 |
-| `jellyfin` | Jellyfin media server | svc-03 |
+| `greentechhub` | GreenTechHub Django app, Redis, Celery | svc-02 — superseded by the own-repo `greentechhub` + `deploy-service` (Stage 8); role retired once that lands |
+| `jellyfin` | Jellyfin media server | Targeted the retired `svc-03` identity; superseded by the own-repo `jellyfin-media` + `deploy-service` on `svc-01`/pc-01 (Stage 8); role retired once that lands |
 
 ### Three System Users
 

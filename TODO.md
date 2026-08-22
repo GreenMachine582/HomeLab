@@ -2,248 +2,79 @@
 
 Open tasks only. Completed tasks are tracked via git history — this file holds only pending work.
 
-Node roles, ports, and playbook commands are in [CLAUDE.md](./CLAUDE.md), [NODES.md](./NODES.md), and [docs/NETWORK.md](./docs/NETWORK.md). Polyrepo migration design is in [docs/repo_split_brief.md](./docs/repo_split_brief.md); node/device topology and the shared data tier direction is in [docs/topology_data_brief.md](./docs/topology_data_brief.md).
+Node roles, ports, and playbook commands are in [CLAUDE.md](./CLAUDE.md), [NODES.md](./NODES.md), and [docs/NETWORK.md](./docs/NETWORK.md). The staged roadmap below follows [docs/consolidated_brief.md](./docs/consolidated_brief.md) §8 — design rationale for the polyrepo migration is in [docs/repo_split_brief.md](./docs/repo_split_brief.md), and for the device/topology model in [docs/topology_data_brief.md](./docs/topology_data_brief.md).
 
----
+## Stage 0 — Done (baseline)
 
-## Phase 3 — Bootstrap Remaining Nodes
+Mechanism built in-place (`deploy-service` + `services.yml` + Infisical injection + hooks executing); `homelab-edge-services` live (edge Phase 4 complete); observe/camunda/n8n repos extracted, registered, retired from monorepo; Authentik repo + compose + docs; bootstrap playbooks aligned; `topology.yml` v1 + resolver + inventory generation + `device:` migration; `ADDR_<REPO>` injection implemented additively.
 
-### Milestone A — `homelab-observe`
+## Stage 1 — Observe live *(ready now, no hardware dependency)*
 
-Branch `wip/observe` contains the role and playbook. No merge conflicts with master expected (entirely new files).
+- [x] Merge `wip/observe` into master
+- [x] Bootstrap `homelab-observe` (`ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe`)
+- [x] Deploy `homelab-observe-services` via deploy-service — this **is** the deploy-verify step; confirm both post_hooks (`setup_monitors`, `setup_portainer`) land within the token window
+- [ ] Verify endpoints: Grafana, Prometheus, Loki, Alertmanager, ntfy, Uptime Kuma, Portainer
 
-- [x] **A1** — Merge `wip/observe` into master
-- [ ] **A2** — Run Phase 3 bootstrap:
-  ```bash
-  ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe --ask-pass --ask-become-pass
-  ```
-- [ ] **A3** — Deploy the observability stack:
-  ```bash
-  /opt/deploy-service-venv/bin/deploy-service deploy homelab-observe-services --config /opt/homelab/services.yml
-  ```
-- [ ] **A4** — Verify services are live (from a LAN client or Tailscale):
-  - Grafana: `http://ip_observe:3000`
-  - Prometheus: `http://ip_observe:9090`
-  - Loki (push endpoint): `http://ip_observe:3100`
-  - Alertmanager: `http://ip_observe:9093`
-  - ntfy: `http://ip_observe:8085`
-  - Uptime Kuma: `http://ip_observe:3001`
-  - Portainer: `http://ip_observe:9000`
+## Stage 2 — Hardware intake & topology v2 *(blocked on PC reclaim)*
 
----
+- [ ] pc-01 prep: enable IGD/primary-display in BIOS, pull the RX 580, Debian 13 netinstall, verify `/dev/dri` + `alx` NIC
+- [ ] laptop-01 prep: Debian 13 netinstall (no DE), `HandleLidSwitch=ignore`, mask sleep/suspend/hibernate targets, cap battery charge, USB-C GbE adapter
+- [ ] `topology.yml` v2: add pc-01/laptop-01, re-role rpi-03 → `homelab-data-01`, add `data`/`media` host_roles; regenerate + swap inventory
+- [ ] Clear the stale `homelab-svc-01` Tailscale machine entry before pc-01 joins the tailnet
+- [ ] Wire `host_roles` into `bootstrap_node.yml` (base + per-tag roles/firewall) — now required for `data`/`media` tags, not just co-residency
+- [ ] Update `services.yml` `device:` values (camunda-platform/n8n-automation/authentik-sso → pc-01)
 
-### Milestone B — `homelab-svc-01`
+## Stage 3 — svc-heavy live on pc-01 *(was Milestone B + D1/D2 verify + E2–E5)*
 
-Branch `wip/svc` contains the roles and playbook. One conflict on merge: `TODO.md` changed in both branches — resolve by keeping the master version.
+- [ ] Merge `wip/svc` into master (keep master's TODO.md — this file — then re-baseline against it)
+- [ ] Bootstrap pc-01
+- [ ] Deploy-verify `camunda-platform`, `n8n-automation`
+- [ ] discord-gateway keep/remove decision
+- [ ] Extract + deploy `discord-gateway` (amd64 image) *if kept*
+- [ ] Bootstrap-lock signaling — Ansible + Camunda BPMN sides land together; endpoint targets pc-01 (`{{ ip_svc_01 }}` reconciled to resolve from `topology.yml`)
+- [ ] Authentik: proxy outpost on `homelab-edge-services`, `group_vars/edge.yml` update, `services.yml` entry, deploy-verify
 
-- [ ] **B1** — Merge `wip/svc` into master (manually resolve `TODO.md` conflict — keep master version)
-- [ ] **B2** — Create `docker-compose.svc02.yml` and `docker-compose.svc03.yml`
-  Mirror `docker-compose.svc01.yml` structure: named network, named volumes, Portainer Agent on port 9001.
-  - `svc02`: GreenTechHub (Django), PostgreSQL, Redis, Celery worker
-  - `svc03`: Jellyfin, optional Sonarr/Radarr/Prowlarr
-- [ ] **B3** — Run Phase 3 bootstrap:
-  ```bash
-  ansible-playbook playbooks/bootstrap_node.yml --limit homelab-svc-01 --ask-pass --ask-become-pass
-  ```
-- [ ] **B4** — Deploy the Camunda + n8n stacks (now via `deploy-service`, not Ansible — see Milestone D):
-  ```bash
-  /opt/deploy-service-venv/bin/deploy-service deploy camunda-platform --config /opt/homelab/services.yml
-  /opt/deploy-service-venv/bin/deploy-service deploy n8n-automation --config /opt/homelab/services.yml
-  ```
-  Then deploy the remaining Ansible-managed leftovers (discord-gateway + portainer-agent):
-  ```bash
-  ansible-playbook playbooks/deploy_svc.yml --limit homelab-svc-01 --tags discord_gateway
-  ```
-- [ ] **B5** — Verify: Camunda (:8088), Elasticsearch (:9200), n8n (:5678)
-- [ ] **B6** — Review discord-gateway (keep or remove):
-  - **Keep**: if Discord slash-command automation (`/deploy`, `/status`) is wanted
-  - **Remove**: drop from `docker-compose.svc01.yml`, delete `roles/discord_gateway/`, remove `vault_discord_public_key` and `vault_n8n_webhook_secret` from `vault.yml.example`
-  - See context in git log for prior discussion
-- [ ] **B7** — Once `camunda-platform` is live (post-D1 deploy-verify), bootstrap-lock signaling is ready to implement — design fully resolved (auth, BPMN mechanism, stale-lock timeout) in [docs/repo_split_brief.md](./docs/repo_split_brief.md) §9. Both halves (`bootstrap_node.yml` pre_tasks/post_tasks, and the Camunda BPMN dual-correlation gate) land together, not separately.
+## Stage 4 — Data tier on rpi-03 *(was G7; needs Stage 2, not Stage 3)*
 
----
+- [ ] Re-bootstrap rpi-03 as `homelab-data-01` (`data` host_role, NVMe layout)
+- [ ] Decide Redis isolation: ACL users vs DB indexes
+- [ ] Create `homelab-data-services` repo (Postgres 16 + Redis 7, Tailscale-bound)
+- [ ] Implement `requires:` provisioning; prove with a throwaway service
+- [ ] Backup job: nightly dumps → pc-01 `/srv/backups` + failure alert to ntfy
 
-## Phase 4 — Polyrepo Migration
+## Stage 5 — Co-residency & host agents *(was G5, G6)*
 
-See [docs/repo_split_brief.md](./docs/repo_split_brief.md) for full design rationale, `services.yml` schema, and `deploy-service` CLI spec.
+- [ ] Drop `container_name:` across service repos; add port-collision pre-flight; role-prefix group_vars
+- [ ] Extract `homelab-host-agents`; deploy once per device (5 devices); drop bootstrap-compose duplicate
+- [ ] Confirm which node-exporter is actually running on edge today (superseded by the host-agents extraction)
 
-**Current status:** `homelab-edge-services` is live (Phase 4 complete for edge). `homelab-observe-services` repo is created, tagged `v0.1.0`, with compose/configs extracted, docs migrated, and registered in `services.yml` (Milestone C1–C4 done). `deploy-service` now actually executes `pre_hook`/`post_hook`. Remaining: C5 (deploy-verify — blocked on Phase 3 Milestone A being live, no real node yet), C6 (retire from HomeLab repo). svc-01 splits: `camunda-platform` and `n8n-automation` extracted and registered in `services.yml` (D1/D2 done, deploy-verify blocked on Milestone B); `discord-gateway` (D3) still open, gated on the B6 keep/remove decision.
+## Stage 6 — Consumers onto data tier *(was G8)*
 
----
+- [ ] n8n: add `requires:` block, redeploy
+- [ ] Authentik: blank `COMPOSE_PROFILES`, point at data tier via `requires:` (zero repo changes)
+- [ ] Optional: n8n queue mode (Redis broker on data tier, workers on pc-01)
 
-## Bootstrap Playbook Review
+## Stage 7 — Addressing & cleanup *(was G9, G10)*
 
-`bootstrap_edge.yml` and `bootstrap_node.yml` share a large common base but have drifted in role order, firewall approach, and observability setup. Resolve before bootstrapping real nodes (Milestones A and B) so any fixes land in both playbooks at the same time.
+- [ ] Verification gates: tailnet ping mesh + in-container MagicDNS resolution (Pi-hole/edge is the suspect device; fallback is pre-decided)
+- [ ] Migrate remaining `IP_*` consumers (edge Caddyfile) to `ADDR_<REPO>`; delete `/prod/network/IP_*`
+- [ ] Drop `target_node:` fallback; add no-embedded-DB lint; collapse NODES.md tables; retire moved host_vars
 
-### ~~Milestone F — Align bootstrap_edge.yml and bootstrap_node.yml~~ ✅
+## Stage 8 — Applications & media *(was B2/svc-02/svc-03 + #35)*
 
-All resolved and committed to master:
+- [ ] `greentechhub` repo (Django/Celery), `requires:` from day one, deploy → laptop-01
+- [ ] `jellyfin-media` repo: QSV (`/dev/dri`), library on 1 TB HDD, deploy → pc-01
+- [ ] Optional: *arr stack alongside Jellyfin
+- [ ] Deploy start/end notifications in the n8n Phase-4 workflow (ntfy + Discord) — prereqs: Stage 1 (ntfy) + webhook wiring
 
-- **F1** ✅ — Role order corrected in `bootstrap_node.yml`: `users → base_hardening → docker → docker_compose → tailscale`
-- **F2** ✅ — `roles/docker_compose` added to both bootstrap playbooks (`roles/docker` installs Engine only; plugin is separate)
-- **F3** ✅ — Node-exporter inline task added to `bootstrap_edge.yml`; edge now observable from Phase 1 completion
-- **F4** ✅ — Replaced inline `community.general.ufw` tasks in `bootstrap_node.yml` with `include_role: firewall`
-- **F5** ✅ — Alloy stays in deploy playbooks (Option A); alloy deferral comment added to both bootstrap playbooks
-- **F6** — Deferred (no functional benefit until a third bootstrap type is added)
+## Open decisions
 
----
+See [docs/consolidated_brief.md](./docs/consolidated_brief.md) §10 for full context.
 
-### Milestone C — `homelab-observe-services`
-
-> **Prep** (can start before Phase 3 completes):
-
-- [x] **C1** — Create GitHub repo `GreenMachine582/homelab-observe-services`
-  - **Description:** `Observability stack for homelab-observe — Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma`
-  - **Topics:** `homelab`, `self-hosted`, `prometheus`, `grafana`, `loki`, `docker-compose`
-  - **Default branch:** `master`
-  - **Visibility:** private (contains service configs with volume paths and hostnames)
-  - **After first commit, tag:** `v0.1.0` ✅ tagged
-
-> **Migration** (after Phase 3 is live and stable):
-
-- [x] **C2** — Extract compose + config files into new repo:
-  - `docker-compose.observe.yml` → `docker-compose.yml`
-  - `roles/observe_services/templates/` → `configs/` (rendered to plain files, no Jinja2)
-  - Add `.env.example` listing any Infisical-sourced secrets
-- [x] **C3** — Move `docs/MONITORING.md` to the new repo; add link from HomeLab `README.md`
-- [x] **C4** — Add `observe` entry to `services.yml` (done — includes `pre_hook: [scripts/predeploy.sh]` and the full Infisical secrets list: network IPs, Grafana admin password, Discord webhooks)
-  > **Hook gap resolved:** `deploy-service` previously declared but never executed `pre_hook`/`post_hook` from `services.yml`. Implemented in `deploy-service/deploy_service/compose.py` (`run_hooks()`, invoked via `bash <script>` so the executable bit doesn't matter) and wired into `cli.py`'s deploy sequence: clone/pull → `pre_hook` → compose deploy → `post_hook`. `clone_or_pull()` now also does `git reset --hard` before every pull, since hooks like `homelab-observe-services`'s `scripts/predeploy.sh` (envsubst) mutate tracked config files in place. This also fixes `homelab-edge-services`'s previously silently-skipped `post_hook` (pihole password).
-- [ ] **C5** — Deploy via `deploy-service` and verify end-to-end:
-  ```bash
-  deploy-service deploy homelab-observe-services --config /opt/homelab/services.yml
-  ```
-  > `deploy-service` was extended with remote (SSH) execution and GitHub PAT auth
-  > for private repos to make this possible, but the run has not yet been verified
-  > against the real `homelab-observe` node — still open. "Verified" means more than
-  > `docker compose up` succeeding: confirm both `post_hook` scripts completed —
-  > `setup_monitors.sh` reconciling Uptime Kuma's monitors (`[setup_monitors]
-  > Updating/Adding monitor: ...` log lines) and `setup_portainer.sh` initializing
-  > the Portainer admin account (`[setup_portainer] Admin account created`) inside
-  > its 5-minute setup-token window.
-- [x] **C6** — Retire from HomeLab repo: remove `roles/observe_services/`, `docker-compose.observe.yml`, `playbooks/deploy_observe.yml`; update `CLAUDE.md` role table and `NODES.md`
-  > Done ahead of C5 verification per explicit instruction (to reduce having two
-  > parallel deploy paths). If C5 verification surfaces a problem with
-  > `deploy-service`, the removed files are recoverable from git history.
-
----
-
-### Milestone D — svc-01 splits
-
-Three repos; tackle in order (each depends on the prior being stable). For each, the pattern is: create repo → extract → register in `services.yml` → verify → retire from HomeLab repo.
-
-#### D1 — `camunda-platform` ✅ (extracted, verification blocked on hardware)
-
-- [x] Create `GreenMachine582/camunda-platform`
-  - **Description:** `Camunda 8 + Elasticsearch workflow engine on homelab-svc-01`
-  - **Topics:** `homelab`, `camunda`, `bpmn`, `elasticsearch`, `docker-compose`, `self-hosted`
-  - **Default branch:** `master`
-- [x] Extract Camunda + Elasticsearch into a standalone, env-driven `docker-compose.yml`; `roles/camunda/` deleted. (Postgres was briefly included as a shared instance, then dropped — it's bundled in `authentik-sso` instead, see Milestone E, keeping this repo simpler.)
-- [x] Add to `services.yml` (type: compose, target_node: homelab-svc-01, `pre_hook: scripts/predeploy.sh`)
-- [ ] Verify via `deploy-service deploy camunda-platform` — blocked on Milestone B (svc-01 not bootstrapped yet)
-- [x] Retire: removed Camunda/ES sections from `docker-compose.svc01.yml` and all of `roles/camunda/`
-
-#### D2 — `n8n-automation` ✅ (extracted, verification blocked on hardware)
-
-- [x] Create `GreenMachine582/n8n-automation`
-  - **Description:** `n8n workflow automation on homelab-svc-01`
-  - **Topics:** `homelab`, `n8n`, `automation`, `workflows`, `docker-compose`, `self-hosted`
-  - **Default branch:** `master`
-- [x] Extract n8n into a standalone, env-driven `docker-compose.yml`
-- [x] Add to `services.yml` (type: compose, target_node: homelab-svc-01)
-- [ ] Verify via `deploy-service deploy n8n-automation` — blocked on Milestone B (svc-01 not bootstrapped yet)
-- [x] Retire: removed n8n section from `docker-compose.svc01.yml`; n8n's env-rendering tasks in `roles/camunda/templates/n8n/` deleted along with the rest of that role
-
-#### D3 — `discord-gateway` *(only if kept after B6)*
-
-- [ ] Create `GreenMachine582/discord-gateway`
-  - **Description:** `Inbound Discord slash-command gateway, routing to n8n on homelab-svc-01`
-  - **Topics:** `homelab`, `discord`, `webhook`, `docker-compose`, `self-hosted`
-  - **Default branch:** `master` | **Initial image tag:** `v0.1.0` (pushed to `ghcr.io/greenmachine582/discord-gateway`)
-  - **CI:** GitHub Actions — build + push image to `ghcr.io` on tag push
-- [ ] Extract `discord-gateway/` directory from HomeLab repo root
-- [ ] Add to `services.yml` as type: image:
-  ```yaml
-  discord-gateway:
-    repo: github.com/GreenMachine582/discord-gateway
-    target_node: homelab-svc-01
-    deployment:
-      type: image
-      image: ghcr.io/greenmachine582/discord-gateway
-    rollback:
-      strategy: image
-      keep: 5
-  ```
-- [ ] Verify via `deploy-service deploy discord-gateway`
-- [ ] Retire: remove `discord-gateway/` from HomeLab repo; remove from `docker-compose.svc01.yml`
-
----
-
-## Identity & Access
-
-### Milestone E — Authentik SSO (own repo: `authentik-sso`) ⏳ (in progress)
-
-Authentik provides SSO and forward-auth for externally-exposed services. See current design in [CLAUDE.md](./CLAUDE.md) (architecture) and [docs/NETWORK.md](./docs/NETWORK.md) (Caddy LAN bypass pattern). Gets its own repo rather than folding into `docker-compose.svc01.yml` — see [docs/repo_split_brief.md](./docs/repo_split_brief.md) §7 for the "default to own repo" rationale.
-
-**Prerequisite:** Phase 3 complete (svc-01 bootstrapped — Authentik bundles its own Postgres for now, so it has no dependency on a shared svc-01 database instance).
-
-- [x] **E0** — Create `GreenMachine582/authentik-sso`
-  - **Description:** `Authentik SSO / forward-auth provider for the homelab, fronting externally-exposed services via Caddy. Config-only repo deployed via deploy-service; secrets from Infisical; runs on homelab-svc-01, with its own bundled Postgres for now.`
-  - **Topics:** `homelab`, `authentik`, `sso`, `forward-auth`, `docker-compose`, `self-hosted`
-  - **Default branch:** `main` — not yet tagged
-- [x] **E1** — Add Authentik server + worker + Redis + its own Postgres container to `authentik-sso/docker-compose.yml`
-  - Bundled Postgres (`postgres:16-alpine`, `pg_isready` healthcheck), not a shared svc-01 instance — self-contained like `camunda-platform`/`n8n-automation`, and owns its own backup script (see §10.7 "each service repo owns its own backup" — `playbooks/backup.yml` deliberately has no Authentik entry). A pragmatic starting point, not a final commitment — may move to a shared instance later if that proves more efficient. `scripts/postdeploy.sh` verifies Authentik's own `AUTHENTIK_BOOTSTRAP_*` env vars actually created the akadmin user + API token (fully automated, no manual setup wizard).
-- [ ] **E2** — Add Authentik proxy outpost to `homelab-edge-services`:
-  - New container in `homelab-edge-services/docker-compose.yml`
-  - Update `configs/caddy/Caddyfile` with LAN bypass + forward_auth blocks:
-    ```caddyfile
-    @lan remote_ip {{ lan_subnet }}
-    handle @lan    { reverse_proxy ... }
-    handle         { forward_auth authentik-outpost:9000 {
-                       uri /outpost.goauthentik.io/auth/caddy
-                       copy_headers X-authentik-username X-authentik-groups X-authentik-email
-                     }
-                     reverse_proxy ... }
-    ```
-- [ ] **E3** — Update `inventories/group_vars/edge.yml`:
-  - Add `authentik_outpost_url`
-  - Update `caddy_routes` structure with `lan_bypass: true/false` per route
-  - Add `auth.homelab.local` to `pihole_custom_dns`
-  - Add `auth.yourdomain.com` to `cloudflared_ingress`
-- [ ] **E4** — Add `authentik-sso` entry to `services.yml` (type: compose, target_node: homelab-svc-01) with Infisical secrets:
-  - `authentik/SECRET_KEY`
-  - `authentik/POSTGRES_PASSWORD`
-  - Plus `AUTHENTIK_BOOTSTRAP_PASSWORD`/`AUTHENTIK_BOOTSTRAP_TOKEN` (akadmin's credentials) — deployer-provided, not Infisical-sourced, per the repo's own README
-- [ ] **E5** — Verify via `deploy-service deploy authentik-sso`
-- [x] **E6** — Update `CLAUDE.md` (add `authentik-sso` to the service repos list, update svc-01 services list), `README.md`, and `NODES.md` — `BOOTSTRAP.md` already has the `deploy-service deploy authentik-sso` call alongside camunda-platform/n8n-automation in Phase 3's "Deploy Service Nodes" step
-
----
-
-## Topology & Shared Data Tier
-
-See [docs/topology_data_brief.md](./docs/topology_data_brief.md) for full design rationale (`topology.yml` schema, `host_roles`, the `homelab-data-services` shared Postgres/Redis tier). Companion to `repo_split_brief.md` — doesn't change any decision there.
-
-### Milestone G — `topology.yml` migration (§6 of the brief)
-
-- [x] **G1** — `topology.yml` created at repo root, encoding the 3 real devices (`rpi-01`/`homelab-edge`, `rpi-02`/`homelab-observe`, `rpi-03`/`homelab-svc-01`) with `host_roles`. `svc-02`/`svc-03` deliberately omitted — no real hardware yet, add when provisioned.
-- [x] **G2** — `deploy-service` resolves a new `device:` field against `topology.yml` (`deploy_service/topology.py` + `cli.py`), falling back to `target_node:` unchanged for any entry not yet migrated — nothing already deployed breaks.
-- [x] **G3** — All 4 current `services.yml` entries migrated from `target_node:` to `device:`.
-- [x] **G4** — `scripts/generate_inventory.py` created; `inventories/prod.yml` regenerated and swapped in. Diff against the hand-written version showed only the expected difference — the commented-out `homelab-svc-02`/`svc-03` placeholder hints, superseded by "add it to `topology.yml`, regenerate" (`CLAUDE.md`'s "Adding a New Node" updated to match) — all 3 real hosts' groups and `ansible_host` bindings, plus the static connection-defaults block, verified structurally identical (`ansible-inventory` doesn't run natively on this Windows dev shell — verified via a direct YAML-parse comparison instead).
-- [ ] **G5** — De-collide co-residency: drop `container_name:` from service repos, add a deploy-service port-collision pre-flight, role-prefix `group_vars` (brief §6 step 2 / §5).
-- [ ] **G6** — Extract `homelab-host-agents` (node-exporter, portainer-agent), deployed once per device (brief §6 step 3 / §5.4).
-- [ ] **G7** — Stand up `homelab-data-services` (shared Postgres/Redis) + `requires:` provisioning (brief §6 step 4).
-- [ ] **G8** — Migrate `n8n-automation` and `authentik-sso` to the shared data tier — `authentik-sso` needs zero repo changes (already gates its bundled Postgres/Redis behind `COMPOSE_PROFILES=local-infra`, see its README); `n8n-automation` needs a `requires:` block added (brief §6 step 5).
-- [ ] **G9** — Replace `IP_*` Infisical secrets with `ADDR_<REPO>` addressing; delete `/prod/network/IP_*` once migrated (brief §6 step 6).
-- [ ] **G10** — Cleanup: drop the `target_node:` fallback, add the no-embedded-DB lint, collapse `NODES.md` tables, retire moved `host_vars` (brief §6 step 7).
-- [ ] **Wire `host_roles` into `bootstrap_node.yml`** — not part of G1-G3; `topology.yml` declares `host_roles` as data today, but the bootstrap playbook doesn't consume them yet to select role-specific Ansible roles/firewall rules (brief §3.3). Needed before G5's co-residency work lands for real.
-
----
-
-## Post-Phase 3
-
-- [ ] **#35** — Add deploy start/end notifications to the n8n Phase 4 workflow
-  Notification logic belongs in n8n (not in playbooks) — n8n already has full deploy context (git SHA, branch, triggering commit). Implement in the workflow that handles the GitHub Actions webhook:
-  - **Start node:** POST to ntfy (primary) and Discord webhook (fallback) before SSHing to edge
-  - **Success branch:** notify with commit SHA and elapsed time
-  - **Failure branch:** notify with exit code / last task; higher priority
-  - ntfy topic and Discord webhook available via `vault_ntfy_token` / `vault_discord_alerts_webhook`
-  - **Prerequisite:** Phase 3 (ntfy on homelab-observe) and Phase 4 webhook wiring must be live
+- Redis isolation (ACL vs DB indexes) — needed before Stage 4
+- discord-gateway keep/remove — Stage 3 gate
+- BottleBot: still get built? If so, device = laptop-01 headroom
+- PSU trust on pc-01 (Litepower Gen 2) — replace preemptively or on first symptom
+- Media library growth — 1 TB HDD is a starting point, H110M has 4× SATA + spare bays
+- Port pre-flight scope, DNS-level service names — deferred, unchanged
+- NODES.md / CLAUDE.md refresh — at Stage 2, alongside `topology.yml` v2
