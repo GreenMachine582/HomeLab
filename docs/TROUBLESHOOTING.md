@@ -95,6 +95,13 @@ ansible-playbook playbooks/healthcheck.yml
 
 ### Cannot SSH to a node
 
+> **Run this from your PC/WSL control host**, not from a session already on a node. `.ssh/homelab-edge`
+> is generated there during Phase 1 setup (`BOOTSTRAP.md` §1.6, `ssh-keygen -f .ssh/homelab-edge`) and
+> is never copied onto any node — including `homelab-edge` itself — the same way `vault.yml` never
+> leaves the control host either. Already logged into a node and want to reach another one from there?
+> See [SSH from homelab-edge to another node](#ssh-from-homelab-edge-to-another-node) instead — different
+> user, different key.
+
 **Check 1 — Is the node reachable?**
 ```bash
 ping <node-ip-or-hostname>
@@ -125,10 +132,11 @@ ssh -i .ssh/homelab-edge admin@<node-ip-or-hostname>
 node — `roles/users` (`inventories/group_vars/all/main.yml`'s `homelab_users`) authorizes the same
 `vault_admin_ssh_pubkey` value everywhere, whether a node got it from `vault.yml` directly (Phase 1,
 edge, from WSL) or resolved it live from Infisical's `network/SSH_ADMIN_PUBKEY` (Phase 3, every
-other node) — same key value either way. Add this to `~/.ssh/config` once and plain
-`ssh admin@homelab-edge` / `homelab-observe` / `homelab-svc-01` just works — **provided your own
-machine is joined to the tailnet**: there's no `HostName` mapping below, so resolving the bare
-`homelab-*` name relies entirely on Tailscale MagicDNS (see [docs/NETWORK.md](./NETWORK.md)
+other node) — same key value either way. Add this to `~/.ssh/config` **on your PC/WSL control
+host** once (where `.ssh/homelab-edge` actually lives — see the note at the top of this section)
+and plain `ssh admin@homelab-edge` / `homelab-observe` / `homelab-svc-01` just works — **provided
+your control host is joined to the tailnet**: there's no `HostName` mapping below, so resolving the
+bare `homelab-*` name relies entirely on Tailscale MagicDNS (see [docs/NETWORK.md](./NETWORK.md)
 § MagicDNS), not `.local`/mDNS or anything else:
 ```
 Host homelab-*
