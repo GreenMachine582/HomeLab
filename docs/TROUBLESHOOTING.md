@@ -29,6 +29,7 @@ Common issues, diagnostic commands, and recovery procedures. Organised by area.
     * [A `.homelab.local` hostname is missing](#a-homelablocal-hostname-is-missing)
   * [🔒 Tailscale](#-tailscale)
     * [Node not appearing in Tailscale admin console](#node-not-appearing-in-tailscale-admin-console)
+    * [Play fails with "A Tailscale device named '<host>' already exists in the tailnet"](#play-fails-with-a-tailscale-device-named-host-already-exists-in-the-tailnet)
     * [Cannot reach a node over Tailscale](#cannot-reach-a-node-over-tailscale)
   * [🔐 Infisical & Semaphore](#-infisical--semaphore)
     * [Bootstrap playbook reports Infisical already initialised — nothing provisioned or seeded](#bootstrap-playbook-reports-infisical-already-initialised--nothing-provisioned-or-seeded)
@@ -501,11 +502,15 @@ Ansible needs directly (read before Infisical can exist), and a `[seed →
 Infisical once.
 
 **One playbook has been converted as a reference implementation:**
-`deploy_edge.yml` (Phase 2) resolves `cloudflare/TUNNEL_TOKEN` and
-`pihole/WEB_PASSWORD` from Infisical at runtime via `roles/infisical/tasks/lookup.yml`,
-using the read-only `runtime` machine identity provisioned during Phase 1
+`deploy_edge.yml` (Phase 2) resolves `discord/ALERTS_WEBHOOK` and
+`tailscale/OAUTH_CLIENT_ID`/`OAUTH_CLIENT_SECRET` from Infisical at runtime via
+`roles/infisical/tasks/lookup.yml` (needed by the `fail2ban` and `tailscale`
+roles it runs — neither has `vault.yml` available on `homelab-edge`), using the
+read-only `runtime` machine identity provisioned during Phase 1
 (`/home/homelab/.infisical_runtime_auth.yml`). See [CLAUDE.md §"Secrets"](../CLAUDE.md#secrets)
-for the full design rationale.
+for the full design rationale. `cloudflare/TUNNEL_TOKEN` and `pihole/WEB_PASSWORD`
+are a separate matter — those are injected into containers by `deploy-service`'s
+own independent Infisical client for docker-compose env, not by this task.
 
 **Everything else remains unconverted** — Stage 1 (`bootstrap_edge.yml`, run
 from WSL where `vault.yml` lives) and every Stage 3+ playbook
