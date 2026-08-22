@@ -262,9 +262,10 @@ example above). After cloning, `deploy-service` reads that file, checks every de
 exists in Infisical using the existing read-only runtime identity, and — if anything's missing — reports
 the Infisical UI address (resolved live via `tailscale status --json` on the node, no hardcoded/plumbed
 tailnet name) plus a small tree diagram of which environment/folder/key to add, instead of deploying with
-a missing secret and failing deep inside `docker compose up`. A Docker-based CLI fallback is printed too
-(wrapping the official `infisical/cli` image — no host install needed on `homelab-edge`); for entries
-marked `generate: true` the fallback command computes its value via shell substitution
+a missing secret and failing deep inside `docker compose up`. A CLI fallback is printed too (the
+`infisical` CLI is installed on `homelab-edge` during Phase 1 bootstrap — see
+`playbooks/bootstrap_edge.yml` — so this is just a plain `infisical` command, no Docker wrapper);
+for entries marked `generate: true` the fallback command computes its value via shell substitution
 (`$(openssl rand -hex 16)`) at paste-time rather than `deploy-service` generating and printing a real
 value itself, so nothing generated ever appears in deploy-service's own stdout/logs. The write itself
 stays attended (you run the printed command, or add the secret via the UI, yourself) rather than

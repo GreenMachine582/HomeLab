@@ -1,0 +1,37 @@
+---
+# roles/infisical/tasks/install_cli.yml
+# Installs the `infisical` CLI as a host package on this node -- lets
+# deploy-service's missing-secret remediation (see
+# deploy-service/deploy_service/infisical.py::format_remediation) print plain
+# `infisical login`/`infisical secrets set` commands instead of a Docker-
+# wrapped workaround. This flow recurs every time a service repo's declared
+# secret doesn't exist yet, so the CLI being ready beforehand is worth the one
+# host package. Idempotent: the apt-repo registration step only runs once,
+# guarded on the binary not already being present.
+#
+# Call via `include_role: { name: infisical, tasks_from: install_cli.yml }`
+# (not include_tasks) -- same rule as bootstrap_instance.yml/lookup.yml, so
+# the role's defaults load alongside it. Independent of the running instance
+# -- no server/API dependency, no ordering constraint relative to this role's
+# other tasks. Only ever included from bootstrap_edge.yml in this repo, which
+# is what scopes the install to homelab-edge -- no per-node package list needed.
+
+- name: "Infisical CLI | Check whether it's already installed"
+  ansible.builtin.command:
+    cmd: which infisical
+  register: _infisical_cli_check
+  changed_when: false
+  failed_when: false
+
+- name: "Infisical CLI | Register Infisical's apt repository"
+  ansible.builtin.shell:
+    cmd: curl -1sLf 'https://artifacts-cli.infisical.com/setup.deb.sh' | bash
+  when: _infisical_cli_check.rc != 0
+  changed_when: true
+
+- name: "Infisical CLI | Install package"
+  ansible.builtin.apt:
+    name: infisical
+    state: present
+    update_cache: true
+  when: _infisical_cli_check.rc != 0

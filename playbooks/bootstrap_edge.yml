@@ -419,6 +419,12 @@
     # now happen inline, with no persisted write-capable identity and no
     # checkpoint of any kind" rationale. Nothing waits for a second pass; nothing
     # gets printed for you to copy anywhere.
+    - name: "Infisical | Install CLI (for deploy-service's missing-secret remediation)"
+      ansible.builtin.include_role:
+        name: infisical
+        tasks_from: install_cli.yml
+      tags: [infisical, cli]
+
     - name: "Infisical | Render operational .env (node-generated secrets)"
       ansible.builtin.include_role:
         name: infisical
