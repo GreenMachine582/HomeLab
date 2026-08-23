@@ -45,6 +45,8 @@
           - discord/ALERTS_WEBHOOK
           - tailscale/OAUTH_CLIENT_ID
           - tailscale/OAUTH_CLIENT_SECRET
+          - ntfy/ADMIN_USER
+          - ntfy/ADMIN_PASSWORD
       tags: [always]
 
     - name: "Secrets | Expose as vault_* facts for fail2ban/tailscale roles"
@@ -208,12 +210,16 @@
         - name: "Verify | fail2ban notify — poll ntfy for the resulting message"
           ansible.builtin.uri:
             url: "{{ notify_ntfy_url }}/json?poll=1&since=30s"
+            url_username: "{{ infisical_secrets['ntfy/ADMIN_USER'] }}"
+            url_password: "{{ infisical_secrets['ntfy/ADMIN_PASSWORD'] }}"
+            force_basic_auth: true
             return_content: true
           register: _fail2ban_notify_check
           retries: 5
           delay: 2
           until: "'203.0.113.1' in _fail2ban_notify_check.content"
           become: false
+          no_log: true
       rescue:
         - name: "Verify | fail2ban notify — WARN (non-fatal; homelab-observe/ntfy may not be bootstrapped yet)"
           ansible.builtin.debug:

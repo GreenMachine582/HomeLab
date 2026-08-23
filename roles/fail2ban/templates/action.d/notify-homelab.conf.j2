@@ -8,5 +8,5 @@
 actionstart =
 actionstop =
 actioncheck =
-actionban = curl -sf -H "Title: fail2ban: <name>" -H "Priority: high" -H "Tags: no_entry_sign" -d "Banned <ip> in jail <name> after <failures> failures" "{{ notify_ntfy_url }}" > /dev/null || curl -sf -H "Content-Type: application/json" --data-raw "{\"content\": \"🚫 [fail2ban] Banned <ip> in jail <name> after <failures> failures\"}" "{{ notify_discord_webhook }}" > /dev/null || true
+actionban = curl -sf -H "Title: fail2ban: <name> on {{ inventory_hostname }}" -H "Priority: high" -H "Tags: no_entry_sign" -d "Banned <ip> in jail <name> on {{ inventory_hostname }} after <failures> failures" "{{ notify_ntfy_url }}" > /dev/null || curl -sf -H "Content-Type: application/json" --data-raw "{\"content\": \"🚫 [fail2ban] {{ inventory_hostname }}: Banned <ip> in jail <name> after <failures> failures\"}" "{{ notify_discord_webhook }}" > /dev/null || true
 actionunban =
