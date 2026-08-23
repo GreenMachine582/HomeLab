@@ -251,3 +251,33 @@
           - "cloudflared: {{ cloudflared_status.stdout }}"
           - "containers: {{ container_statuses.stdout_lines }}"
           - "tailscale: {{ 'connected' if tailscale_check.rc == 0 else 'disconnected' }}"
+
+    - name: "Meta | Notify deploy complete"
+      block:
+        - name: "Notify | ntfy — deploy_edge.yml complete"
+          ansible.builtin.uri:
+            url: "{{ notify_ntfy_url }}"
+            method: POST
+            headers:
+              Title: "deploy_edge complete: {{ inventory_hostname }}"
+              Priority: default
+              Tags: white_check_mark
+            body: >-
+              {{ inventory_hostname }} deploy_edge.yml finished.
+              unbound={{ unbound_svc.status.ActiveState }}
+              cloudflared={{ cloudflared_status.stdout }}
+              tailscale={{ 'connected' if tailscale_check.rc == 0 else 'disconnected' }}
+            status_code: 200
+          become: false
+      rescue:
+        - name: "Notify | Discord fallback — deploy_edge.yml complete"
+          ansible.builtin.uri:
+            url: "{{ notify_discord_webhook }}"
+            method: POST
+            body_format: json
+            body:
+              content: "✅ [Deploy] {{ inventory_hostname }} deploy_edge.yml finished."
+            status_code: 204
+          become: false
+          ignore_errors: true
+      tags: [always]

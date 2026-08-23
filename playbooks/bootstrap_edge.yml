@@ -583,3 +583,29 @@
             ansible-playbook playbooks/deploy_edge.yml --limit homelab-edge
           from the edge as 'homelab', or directly from your PC/WSL — see
           BOOTSTRAP.md "Phase 2: Edge -> Self-Deploy".
+
+    - name: "Meta | Notify bootstrap complete"
+      block:
+        - name: "Notify | ntfy — bootstrap_edge.yml complete"
+          ansible.builtin.uri:
+            url: "{{ notify_ntfy_url }}"
+            method: POST
+            headers:
+              Title: "bootstrap_edge complete: {{ inventory_hostname }}"
+              Priority: default
+              Tags: white_check_mark
+            body: "{{ inventory_hostname }} bootstrap_edge.yml finished (Phase 1)."
+            status_code: 200
+          become: false
+      rescue:
+        - name: "Notify | Discord fallback — bootstrap_edge.yml complete"
+          ansible.builtin.uri:
+            url: "{{ notify_discord_webhook }}"
+            method: POST
+            body_format: json
+            body:
+              content: "✅ [Bootstrap] {{ inventory_hostname }} bootstrap_edge.yml finished (Phase 1)."
+            status_code: 204
+          become: false
+          ignore_errors: true
+      tags: [always]

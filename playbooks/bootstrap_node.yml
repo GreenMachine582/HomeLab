@@ -412,3 +412,29 @@
           {{ inventory_hostname }} bootstrap complete.
           Run the example deploy command next:
             /opt/deploy-service-venv/bin/deploy-service deploy homelab-observe-services --config {{ homelab_repo_path }}/services.yml
+
+    - name: "Meta | Notify bootstrap complete"
+      block:
+        - name: "Notify | ntfy — bootstrap_node.yml complete"
+          ansible.builtin.uri:
+            url: "{{ notify_ntfy_url }}"
+            method: POST
+            headers:
+              Title: "bootstrap_node complete: {{ inventory_hostname }}"
+              Priority: default
+              Tags: white_check_mark
+            body: "{{ inventory_hostname }} bootstrap_node.yml finished (Phase 3)."
+            status_code: 200
+          become: false
+      rescue:
+        - name: "Notify | Discord fallback — bootstrap_node.yml complete"
+          ansible.builtin.uri:
+            url: "{{ notify_discord_webhook }}"
+            method: POST
+            body_format: json
+            body:
+              content: "✅ [Bootstrap] {{ inventory_hostname }} bootstrap_node.yml finished (Phase 3)."
+            status_code: 204
+          become: false
+          ignore_errors: true
+      tags: [always]

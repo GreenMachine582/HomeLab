@@ -4,13 +4,62 @@ Usage:
   deploy-service deploy <repo> [--config PATH] [--inventory PATH] [--topology PATH] [--dry-run]
 """
 import argparse
+import json
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from . import config, compose, infisical, topology
 from . import target as target_mod
 
 _DEFAULT_CONFIG = "/opt/homelab/services.yml"
+
+# Same value as the Ansible side's notify_ntfy_url (inventories/group_vars/all/main.yml).
+_NTFY_URL = "http://homelab-observe:8085/homelab"
+_DISCORD_WEBHOOK_PATH = "/prod/discord/ALERTS_WEBHOOK"
+
+
+def _notify(repo: str, success: bool, detail: str | None = None) -> None:
+    """Best-effort ntfy (Discord fallback) ping on deploy completion.
+
+    Never raises -- a notification failure must never mask or replace the
+    real deploy outcome the caller is already handling (re-raising right
+    after calling this).
+    """
+    try:
+        status = "SUCCESS" if success else "FAILED"
+        emoji = "✅" if success else "🚨"
+        msg = f"deploy-service deploy {repo}: {status}"
+        if detail and not success:
+            msg += f" ({detail})"
+
+        req = urllib.request.Request(
+            _NTFY_URL,
+            data=msg.encode(),
+            headers={
+                "Title": f"Deploy {status}: {repo}",
+                "Priority": "default" if success else "high",
+                "Tags": "white_check_mark" if success else "rotating_light",
+            },
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req, timeout=10)
+            return
+        except (urllib.error.URLError, urllib.error.HTTPError):
+            pass  # ntfy unreachable -- fall through to Discord
+
+        webhook = infisical.fetch_optional(_DISCORD_WEBHOOK_PATH)
+        if not webhook:
+            return
+        body = json.dumps({"content": f"{emoji} [Deploy] {msg}"}).encode()
+        req = urllib.request.Request(
+            webhook, data=body, headers={"Content-Type": "application/json"}, method="POST",
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except BaseException:
+        pass
 
 
 def _cmd_deploy(args: argparse.Namespace) -> None:
@@ -170,7 +219,19 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "deploy":
-        _cmd_deploy(args)
+        try:
+            _cmd_deploy(args)
+        except SystemExit as e:
+            if not args.dry_run:
+                _notify(args.repo, success=(e.code in (None, 0)), detail=str(e.code))
+            raise
+        except Exception as e:
+            if not args.dry_run:
+                _notify(args.repo, success=False, detail=str(e))
+            raise
+        else:
+            if not args.dry_run:
+                _notify(args.repo, success=True)
     else:
         parser.print_help()
         sys.exit(1)
