@@ -630,19 +630,28 @@ Look for connection errors to `homelab-observe:3100`.
 
 ### Alertmanager not sending notifications
 
+Alertmanager routes to Discord (not Slack), configured entirely within the
+`homelab-observe-services` repo — not via this repo's `vault.yml`. See that repo's
+`docs/MONITORING.md` § Alertmanager for the full routing/config reference and how to add or change
+a webhook.
+
 ```bash
 # Check Alertmanager is receiving alerts from Prometheus
-# http://alertmanager.homelab.local:9093/#/alerts
+# http://<ip_observe>:9093/#/alerts
 
 # Check Alertmanager logs
 ssh admin@homelab-observe
 docker logs alertmanager --tail 50
+
+# Confirm the webhook URLs actually resolved to real values (not the example
+# placeholder text) when the container started:
+docker exec alertmanager cat /config/alertmanager.yml | grep webhook_url
 ```
 
-Common cause: incorrect Slack webhook URL or API key in `inventories/group_vars/all/vault.yml`. Update the vault and redeploy:
+Common cause: `discord/WEBHOOK_CRITICAL`/`WARNING`/`INFO` unset or still a placeholder in Infisical
+(folder `discord`, env `prod`) — set the real webhook URL there, then redeploy:
 
 ```bash
-ansible-vault edit inventories/group_vars/all/vault.yml
 deploy-service deploy homelab-observe-services
 ```
 

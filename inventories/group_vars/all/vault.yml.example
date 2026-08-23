@@ -28,9 +28,6 @@
 #   vault_cloudflare_api_token        → /production/cloudflare/API_TOKEN
 #   vault_pihole_web_password         → /production/pihole/WEB_PASSWORD
 #   vault_grafana_admin_password      → /production/grafana/ADMIN_PASSWORD
-#   vault_discord_webhook_critical    → /production/discord/WEBHOOK_CRITICAL
-#   vault_discord_webhook_warning     → /production/discord/WEBHOOK_WARNING
-#   vault_discord_webhook_info        → /production/discord/WEBHOOK_INFO
 #   vault_discord_alerts_webhook      → /production/discord/ALERTS_WEBHOOK
 #   vault_discord_public_key          → /production/discord/PUBLIC_KEY
 #   vault_ntfy_token                  → /production/ntfy/TOKEN
@@ -131,13 +128,6 @@ vault_uptime_kuma_admin_password: "changeme"
 vault_portainer_admin_user: "admin"
 vault_portainer_admin_password: "changeme"
 vault_portainer_setup_token: "changeme"
-
-# ── Discord webhook URLs ──────────────────────────────────────────────────────
-# Create webhooks in Discord → Server Settings → Integrations → Webhooks
-# Used by Alertmanager for metric/alert notifications (severity-routed).
-vault_discord_webhook_critical: "https://discord.com/api/webhooks/..."
-vault_discord_webhook_warning: "https://discord.com/api/webhooks/..."
-vault_discord_webhook_info: "https://discord.com/api/webhooks/..."
 
 # ── ntfy ─────────────────────────────────────────────────────────────────────
 # Auth token for the ntfy server on homelab-observe (port 8085).
