@@ -411,8 +411,7 @@ Does](#what-the-bootstrap-playbook-does) for the full breakdown.
 Make sure the SSH key is loaded in `ssh-agent` (step 1.7) before running.
 
 ```bash
-ansible-playbook -i inventories/bootstrap.ini \
-  playbooks/bootstrap_edge.yml
+ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
 ```
 
 No password prompts — the SSH key passphrase is handled by `ssh-agent` and the `admin` sudo password is read from the vault (`vault_admin_become_password`).
@@ -569,7 +568,7 @@ sudo /opt/homelab/scripts/deploy.sh
 
 | Service | URL | Notes |
 |---|---|---|
-| Pi-hole admin | `http://<ip_edge>:8080/admin` | Password = `vault_pihole_web_password` |
+| Pi-hole admin | `http://<ip_edge>:8080/admin` | Password: auto-generated at deploy time, see Infisical `pihole/WEB_PASSWORD` |
 | Infisical | `https://homelab-edge.<tailnet>.ts.net:8443` | Tailscale HTTPS (browser-trusted); or `http://<edge-tailscale-ip>:8222` (non-browser) |
 | Semaphore | `https://homelab-edge.<tailnet>.ts.net:8444` | Tailscale HTTPS (browser-trusted); or `http://<edge-tailscale-ip>:3010` (non-browser) |
 | Portainer Agent | `http://<ip_edge>:9001` | Portainer Server connects here in Phase 3 |

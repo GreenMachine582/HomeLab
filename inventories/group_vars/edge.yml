@@ -54,9 +54,6 @@ unbound_access_control: "127.0.0.1/32 allow"
 unbound_dnssec: true
 
 # ── Cloudflare Tunnel ─────────────────────────────────────────────────────────
-cloudflared_tunnel_id: "{{ vault_cloudflare_tunnel_id }}"
-cloudflared_tunnel_token: "{{ vault_cloudflare_tunnel_token }}"
-
 # Public hostname → internal service mappings
 # Add new public hostnames here; Pi-hole custom.list handles internal resolution.
 cloudflared_ingress:

@@ -23,14 +23,8 @@
 #   e.g. vault_camunda_db_password  →  /production/camunda/DB_PASSWORD
 #
 # Full map (seed task, Infisical lookups, and the UI must all agree on this):
-#   vault_cloudflare_tunnel_id        → /production/cloudflare/TUNNEL_ID
-#   vault_cloudflare_tunnel_token     → /production/cloudflare/TUNNEL_TOKEN
-#   vault_cloudflare_api_token        → /production/cloudflare/API_TOKEN
-#   vault_pihole_web_password         → /production/pihole/WEB_PASSWORD
-#   vault_grafana_admin_password      → /production/grafana/ADMIN_PASSWORD
 #   vault_discord_alerts_webhook      → /production/discord/ALERTS_WEBHOOK
 #   vault_discord_public_key          → /production/discord/PUBLIC_KEY
-#   vault_ntfy_token                  → /production/ntfy/TOKEN
 #   vault_camunda_db_user             → /production/camunda/DB_USER
 #   vault_camunda_db_password         → /production/camunda/DB_PASSWORD
 #   vault_camunda_admin_user          → /production/camunda/ADMIN_USER
@@ -49,11 +43,6 @@
 #   vault_github_pat                  → /production/deploy/GITHUB_PAT
 #   vault_semaphore_admin_user        → /production/semaphore/ADMIN_USER
 #   vault_semaphore_admin_password    → /production/semaphore/ADMIN_PASSWORD
-#   vault_uptime_kuma_admin_user      → /production/uptime_kuma/UPTIME_KUMA_ADMIN_USER
-#   vault_uptime_kuma_admin_password  → /production/uptime_kuma/UPTIME_KUMA_ADMIN_PASSWORD
-#   vault_portainer_admin_user        → /production/portainer/ADMIN_USER
-#   vault_portainer_admin_password    → /production/portainer/ADMIN_PASSWORD
-#   vault_portainer_setup_token       → /production/portainer/SETUP_TOKEN
 #   vault_network_ip_edge             → /production/network/IP_EDGE
 #   vault_network_ip_observe          → /production/network/IP_OBSERVE
 #   vault_network_ip_svc_01           → /production/network/IP_SVC_01
@@ -103,40 +92,6 @@ vault_semaphore_admin_password: "changeme"
 # [seed → /production/<folder>/<KEY>] — application secrets, pushed into Infisical
 # by the Phase 1 seed task (additive, create-if-absent).
 # ══════════════════════════════════════════════════════════════════════════════
-
-# ── Cloudflare ────────────────────────────────────────────────────────────────
-# Tunnel token: Cloudflare Zero Trust → Tunnels → your tunnel → Overview
-vault_cloudflare_tunnel_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-vault_cloudflare_tunnel_token: "eyJ..."
-# API token: Cloudflare dashboard → My Profile → API Tokens
-# Not currently used by any Ansible role — reserved for future DNS/cert automation.
-vault_cloudflare_api_token: "changeme"
-
-# ── Pi-hole ───────────────────────────────────────────────────────────────────
-vault_pihole_web_password: "changeme"
-
-# ── Grafana ───────────────────────────────────────────────────────────────────
-vault_grafana_admin_password: "changeme"
-
-# ── Uptime Kuma ───────────────────────────────────────────────────────────────
-vault_uptime_kuma_admin_user: "admin"
-vault_uptime_kuma_admin_password: "changeme"
-
-# ── Portainer ─────────────────────────────────────────────────────────────────
-# vault_portainer_setup_token gates the admin-init API on a fresh instance
-# (Portainer's own security requirement) — generate one with: openssl rand -hex 16
-vault_portainer_admin_user: "admin"
-vault_portainer_admin_password: "changeme"
-vault_portainer_setup_token: "changeme"
-
-# ── ntfy ─────────────────────────────────────────────────────────────────────
-# Auth token for the ntfy server on homelab-observe (port 8085).
-# Primary notification target for on-boot/shutdown/SSH scripts.
-# ⚠️  Phase 3 prerequisite — ntfy runs on homelab-observe, which isn't deployed until
-# Phase 3. Use a placeholder here during Phase 1; update the vault on the edge node
-# (ansible-vault edit ...) before running `deploy-service deploy homelab-observe-services`.
-# Once ntfy is up: ntfy user add <username> && ntfy token add <username>
-vault_ntfy_token: "tk_..."
 
 # ── Discord — system notifications (boot/shutdown/SSH) ───────────────────────
 # Plain Discord webhook URL used as fallback when ntfy (homelab-observe) is unreachable.

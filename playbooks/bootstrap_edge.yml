@@ -37,7 +37,7 @@
 #   4. LAN IP + fallback_ssh_port       — fresh OS install; omitted when ssh_port == fallback_ssh_port
 # Tailscale candidates are skipped when tailscale_ip_edge is EDIT_BEFORE_USE.
 #
-# Note: vars_files loads main.yml which contains vault refs (e.g. {{ vault_ntfy_token }}).
+# Note: vars_files loads main.yml which contains vault refs (e.g. {{ vault_discord_alerts_webhook }}).
 # Those are stored as unevaluated strings and never resolved here — the probe play
 # only touches ip_edge, ssh_port, fallback_ssh_port, tailscale_ip_edge, so no vault password is needed.
 - name: "Probe | Discover reachable SSH endpoint for homelab-edge"

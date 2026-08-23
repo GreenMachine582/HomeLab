@@ -111,7 +111,6 @@
           - network/SSH_HOMELAB_PUBKEY
           - network/SSH_DEPLOY_PUBKEY
           - "network/IP_{{ _suffix | upper }}"
-          - ntfy/TOKEN
           - discord/ALERTS_WEBHOOK
           - tailscale/OAUTH_CLIENT_ID
           - tailscale/OAUTH_CLIENT_SECRET
@@ -197,7 +196,6 @@
         vault_admin_ssh_pubkey: "{{ infisical_secrets['network/SSH_ADMIN_PUBKEY'] }}"
         vault_homelab_ssh_pubkey: "{{ infisical_secrets['network/SSH_HOMELAB_PUBKEY'] }}"
         vault_deploy_ssh_pubkey: "{{ infisical_secrets['network/SSH_DEPLOY_PUBKEY'] }}"
-        vault_ntfy_token: "{{ infisical_secrets['ntfy/TOKEN'] }}"
         vault_discord_alerts_webhook: "{{ infisical_secrets['discord/ALERTS_WEBHOOK'] }}"
         vault_tailscale_oauth_client_id: "{{ infisical_secrets['tailscale/OAUTH_CLIENT_ID'] }}"
         vault_tailscale_oauth_client_secret: "{{ infisical_secrets['tailscale/OAUTH_CLIENT_SECRET'] }}"
@@ -224,7 +222,6 @@
         vault_admin_ssh_pubkey: "{{ infisical_secrets['network/SSH_ADMIN_PUBKEY'] }}"
         vault_homelab_ssh_pubkey: "{{ infisical_secrets['network/SSH_HOMELAB_PUBKEY'] }}"
         vault_deploy_ssh_pubkey: "{{ infisical_secrets['network/SSH_DEPLOY_PUBKEY'] }}"
-        vault_ntfy_token: "{{ infisical_secrets['ntfy/TOKEN'] }}"
         vault_discord_alerts_webhook: "{{ infisical_secrets['discord/ALERTS_WEBHOOK'] }}"
         vault_tailscale_oauth_client_id: "{{ infisical_secrets['tailscale/OAUTH_CLIENT_ID'] }}"
         vault_tailscale_oauth_client_secret: "{{ infisical_secrets['tailscale/OAUTH_CLIENT_SECRET'] }}"

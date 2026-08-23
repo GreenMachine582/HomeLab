@@ -371,14 +371,8 @@
     - name: "Infisical bootstrap | Build the vault_<service>_<field> -> /production/<folder>/<KEY> map"
       ansible.builtin.set_fact:
         _infisical_seed_map:
-          cloudflare/TUNNEL_ID: "{{ vault_cloudflare_tunnel_id }}"
-          cloudflare/TUNNEL_TOKEN: "{{ vault_cloudflare_tunnel_token }}"
-          cloudflare/API_TOKEN: "{{ vault_cloudflare_api_token }}"
-          pihole/WEB_PASSWORD: "{{ vault_pihole_web_password }}"
-          grafana/ADMIN_PASSWORD: "{{ vault_grafana_admin_password }}"
           discord/ALERTS_WEBHOOK: "{{ vault_discord_alerts_webhook }}"
           discord/PUBLIC_KEY: "{{ vault_discord_public_key }}"
-          ntfy/TOKEN: "{{ vault_ntfy_token }}"
           camunda/DB_USER: "{{ vault_camunda_db_user }}"
           camunda/DB_PASSWORD: "{{ vault_camunda_db_password }}"
           camunda/ADMIN_USER: "{{ vault_camunda_admin_user }}"
@@ -412,11 +406,6 @@
           tailscale/OAUTH_CLIENT_SECRET: "{{ vault_tailscale_oauth_client_secret }}"
           semaphore/ADMIN_USER:     "{{ vault_semaphore_admin_user }}"
           semaphore/ADMIN_PASSWORD: "{{ vault_semaphore_admin_password }}"
-          uptime_kuma/ADMIN_USER:     "{{ vault_uptime_kuma_admin_user }}"
-          uptime_kuma/ADMIN_PASSWORD: "{{ vault_uptime_kuma_admin_password }}"
-          portainer/ADMIN_USER:     "{{ vault_portainer_admin_user }}"
-          portainer/ADMIN_PASSWORD: "{{ vault_portainer_admin_password }}"
-          portainer/SETUP_TOKEN:    "{{ vault_portainer_setup_token }}"
 
     - name: "Infisical bootstrap | Check which application-secret keys already exist"
       ansible.builtin.uri:
