@@ -15,49 +15,48 @@
 # project: homelab
 # environment: production
 # folders:
-#   /camunda  /n8n  /discord  /cloudflare  /pihole  /grafana
-#   /ntfy     /greentechhub   /deploy      /network  /semaphore
-#   /tailscale  /observe  /uptime_kuma  /portainer
+#   /camunda  /n8n  /discord  /greentechhub  /deploy  /network  /semaphore
+#   /tailscale
 #
-# Mapping rule:  vault_<service>_<field>  →  /production/<service-folder>/<FIELD>
-#   e.g. vault_camunda_db_password  →  /production/camunda/DB_PASSWORD
+# Mapping rule:  vault_<service>_<field>  →  /prod/<service-folder>/<FIELD>
+#   e.g. vault_camunda_db_password  →  /prod/camunda/DB_PASSWORD
 #
 # Full map (seed task, Infisical lookups, and the UI must all agree on this):
-#   vault_discord_alerts_webhook      → /production/discord/ALERTS_WEBHOOK
-#   vault_discord_public_key          → /production/discord/PUBLIC_KEY
-#   vault_camunda_db_user             → /production/camunda/DB_USER
-#   vault_camunda_db_password         → /production/camunda/DB_PASSWORD
-#   vault_camunda_admin_user          → /production/camunda/ADMIN_USER
-#   vault_camunda_admin_password      → /production/camunda/ADMIN_PASSWORD
-#   vault_camunda_license_key         → /production/camunda/LICENSE_KEY
-#   vault_n8n_user                    → /production/n8n/USER
-#   vault_n8n_password                → /production/n8n/PASSWORD
-#   vault_n8n_owner_email             → /production/n8n/OWNER_EMAIL
-#   vault_n8n_owner_password          → /production/n8n/OWNER_PASSWORD
-#   vault_n8n_encryption_key          → /production/n8n/ENCRYPTION_KEY
-#   vault_n8n_webhook_secret          → /production/n8n/WEBHOOK_SECRET
-#   vault_greentechhub_db_user        → /production/greentechhub/DB_USER
-#   vault_greentechhub_db_password    → /production/greentechhub/DB_PASSWORD
-#   vault_django_secret_key           → /production/greentechhub/DJANGO_SECRET_KEY
-#   vault_deploy_webhook_secret       → /production/deploy/WEBHOOK_SECRET
-#   vault_github_pat                  → /production/deploy/GITHUB_PAT
-#   vault_semaphore_admin_user        → /production/semaphore/ADMIN_USER
-#   vault_semaphore_admin_password    → /production/semaphore/ADMIN_PASSWORD
-#   vault_network_ip_edge             → /production/network/IP_EDGE
-#   vault_network_ip_observe          → /production/network/IP_OBSERVE
-#   vault_network_ip_svc_01           → /production/network/IP_SVC_01
-#   vault_network_ip_svc_02           → /production/network/IP_SVC_02
-#   vault_network_ip_svc_03           → /production/network/IP_SVC_03
+#   vault_discord_alerts_webhook      → /prod/discord/ALERTS_WEBHOOK
+#   vault_discord_public_key          → /prod/discord/PUBLIC_KEY
+#   vault_camunda_db_user             → /prod/camunda/DB_USER
+#   vault_camunda_db_password         → /prod/camunda/DB_PASSWORD
+#   vault_camunda_admin_user          → /prod/camunda/ADMIN_USER
+#   vault_camunda_admin_password      → /prod/camunda/ADMIN_PASSWORD
+#   vault_camunda_license_key         → /prod/camunda/LICENSE_KEY
+#   vault_n8n_user                    → /prod/n8n/USER
+#   vault_n8n_password                → /prod/n8n/PASSWORD
+#   vault_n8n_owner_email             → /prod/n8n/OWNER_EMAIL
+#   vault_n8n_owner_password          → /prod/n8n/OWNER_PASSWORD
+#   vault_n8n_encryption_key          → /prod/n8n/ENCRYPTION_KEY
+#   vault_n8n_webhook_secret          → /prod/n8n/WEBHOOK_SECRET
+#   vault_greentechhub_db_user        → /prod/greentechhub/DB_USER
+#   vault_greentechhub_db_password    → /prod/greentechhub/DB_PASSWORD
+#   vault_django_secret_key           → /prod/greentechhub/DJANGO_SECRET_KEY
+#   vault_deploy_webhook_secret       → /prod/deploy/WEBHOOK_SECRET
+#   vault_github_pat                  → /prod/deploy/GITHUB_PAT
+#   vault_semaphore_admin_user        → /prod/semaphore/ADMIN_USER
+#   vault_semaphore_admin_password    → /prod/semaphore/ADMIN_PASSWORD
+#   vault_network_ip_edge             → /prod/network/IP_EDGE
+#   vault_network_ip_observe          → /prod/network/IP_OBSERVE
+#   vault_network_ip_svc_01           → /prod/network/IP_SVC_01
+#   vault_network_ip_svc_02           → /prod/network/IP_SVC_02
+#   vault_network_ip_svc_03           → /prod/network/IP_SVC_03
 #   (sourced from overrides.yml, not vault — no vault_ prefix)
-#   tailscale_ip_observe              → /production/network/TAILSCALE_IP_OBSERVE
-#   tailscale_ip_svc_01               → /production/network/TAILSCALE_IP_SVC_01
-#   tailscale_ip_svc_02               → /production/network/TAILSCALE_IP_SVC_02
-#   tailscale_ip_svc_03               → /production/network/TAILSCALE_IP_SVC_03
-#   vault_admin_ssh_pubkey            → /production/network/SSH_ADMIN_PUBKEY
-#   vault_homelab_ssh_pubkey          → /production/network/SSH_HOMELAB_PUBKEY
-#   vault_deploy_ssh_pubkey           → /production/network/SSH_DEPLOY_PUBKEY
-#   vault_tailscale_oauth_client_id     → /production/tailscale/OAUTH_CLIENT_ID
-#   vault_tailscale_oauth_client_secret → /production/tailscale/OAUTH_CLIENT_SECRET
+#   tailscale_ip_observe              → /prod/network/TAILSCALE_IP_OBSERVE
+#   tailscale_ip_svc_01               → /prod/network/TAILSCALE_IP_SVC_01
+#   tailscale_ip_svc_02               → /prod/network/TAILSCALE_IP_SVC_02
+#   tailscale_ip_svc_03               → /prod/network/TAILSCALE_IP_SVC_03
+#   vault_admin_ssh_pubkey            → /prod/network/SSH_ADMIN_PUBKEY
+#   vault_homelab_ssh_pubkey          → /prod/network/SSH_HOMELAB_PUBKEY
+#   vault_deploy_ssh_pubkey           → /prod/network/SSH_DEPLOY_PUBKEY
+#   vault_tailscale_oauth_client_id     → /prod/tailscale/OAUTH_CLIENT_ID
+#   vault_tailscale_oauth_client_secret → /prod/tailscale/OAUTH_CLIENT_SECRET
 
 # ══════════════════════════════════════════════════════════════════════════════
 # [bootstrap] — read directly by Ansible during Phase 1 (before Infisical exists)
@@ -89,7 +88,7 @@ vault_semaphore_admin_user: "admin"
 vault_semaphore_admin_password: "changeme"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# [seed → /production/<folder>/<KEY>] — application secrets, pushed into Infisical
+# [seed → /prod/<folder>/<KEY>] — application secrets, pushed into Infisical
 # by the Phase 1 seed task (additive, create-if-absent).
 # ══════════════════════════════════════════════════════════════════════════════
 

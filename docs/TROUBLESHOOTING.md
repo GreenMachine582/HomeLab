@@ -401,7 +401,7 @@ of failing loudly — that's what the `BackendState`/`Self.Online` check now cat
 
 Fix: delete the stale device shown in the error message at
 `login.tailscale.com/admin/machines`, then re-run the playbook. If the node also has a stale
-Tailscale IP recorded elsewhere (Infisical's `/production/network/TAILSCALE_IP_*`, seeded once
+Tailscale IP recorded elsewhere (Infisical's `/prod/network/TAILSCALE_IP_*`, seeded once
 from `vault.yml`'s `tailscale_ip_*` and never auto-reconciled), update that too once the node
 re-registers under its real hostname.
 
@@ -448,7 +448,7 @@ uninitialised instance returns `200` with an instance-admin token, and in that
 single pass the play provisions the org, admin account, project, environment,
 folders, and read-only `runtime` identity; seeds every `[seed → ...]`
 application secret from `vault.yml` into its mapped
-`/production/<folder>/<KEY>` path; and writes the `runtime` identity's
+`/prod/<folder>/<KEY>` path; and writes the `runtime` identity's
 freshly-minted credentials straight to `/home/homelab/.infisical_runtime_auth.yml`.
 Once that's happened, the same call returns a non-`200` status
 ("already initialised") and the **entire** block is skipped — there's nothing
@@ -481,7 +481,7 @@ ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
 ```
 
 Likely causes:
-- **Project/environment/folder slug mismatch** — `infisical_seed_project_slug` / `infisical_seed_environment` / `infisical_seed_folders` (`roles/infisical/defaults/main.yml`, default `homelab` / `production` / the nine folders in the "Secret naming convention" block in `vault.yml.example`) drive *both* what `bootstrap_instance.yml` provisions and what the lookup tasks expect — they should always agree by construction now. A mismatch here would mean one of those defaults was edited without the other, or Infisical's instance was provisioned by some other means.
+- **Project/environment/folder slug mismatch** — `infisical_seed_project_slug` / `infisical_seed_environment` / `infisical_seed_folders` (`roles/infisical/defaults/main.yml`, default `homelab` / `prod` / the 14 folders in the "Secret naming convention" block in `vault.yml.example`) drive *both* what `bootstrap_instance.yml` provisions and what the lookup tasks expect — they should always agree by construction now. A mismatch here would mean one of those defaults was edited without the other, or Infisical's instance was provisioned by some other means.
 - **API shape drift** — `bootstrap_instance.yml`'s endpoint paths, payload shapes, and response field paths (the one-shot bootstrap call, project/environment/folder/identity creation, Universal Auth attach + client-secret generation, and the `/v3/secrets/raw/...` seed routes) are all version-pinned assumptions, flagged with a `⚠️` comment at the top of that file. Check them against the deployed Infisical version's API reference if errors mention unexpected fields or 404s on routes that should exist.
 - **Mid-run failure leaves a half-provisioned instance** — because the whole block runs at most once (gated on the one-shot bootstrap call returning `200`), a failure partway through (e.g. folders created but identity creation fails) can't simply be retried with a second `ansible-playbook` run — the next attempt sees an already-initialised instance and skips everything, then fails at Semaphore with a confusing error. The bootstrap playbook will now `fail:` immediately at the Infisical step with the exact recovery command. Recovery: re-run Phase 1 with `--extra-vars infisical_reset=true`:
   ```bash
@@ -498,7 +498,7 @@ successful run it never overwrites or deletes an existing key, so retrying
 
 `vault.yml` currently serves two roles: a `[bootstrap]` source for secrets
 Ansible needs directly (read before Infisical can exist), and a `[seed →
-/production/<folder>/<KEY>]` source that the Phase 1 seed task pushes into
+/prod/<folder>/<KEY>]` source that the Phase 1 seed task pushes into
 Infisical once.
 
 **One playbook has been converted as a reference implementation:**

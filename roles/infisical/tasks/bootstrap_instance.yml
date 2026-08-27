@@ -368,7 +368,7 @@
     # idempotency guarantee (existing keys are never overwritten/rotated/
     # deleted) — just authenticated with this one-shot token instead of a
     # separately-provisioned, separately-authenticated machine identity.
-    - name: "Infisical bootstrap | Build the vault_<service>_<field> -> /production/<folder>/<KEY> map"
+    - name: "Infisical bootstrap | Build the vault_<service>_<field> -> /prod/<folder>/<KEY> map"
       ansible.builtin.set_fact:
         _infisical_seed_map:
           discord/ALERTS_WEBHOOK: "{{ vault_discord_alerts_webhook }}"
@@ -416,7 +416,7 @@
         status_code: [200, 404]
       loop: "{{ _infisical_seed_map | dict2items(key_name='key', value_name='value') }}"
       loop_control:
-        label: "/production/{{ item.key }}"
+        label: "/prod/{{ item.key }}"
       register: _infisical_seed_existing
 
     - name: "Infisical bootstrap | Create only the application-secret keys that don't exist yet (additive)"
@@ -434,7 +434,7 @@
         status_code: [200, 201]
       loop: "{{ _infisical_seed_existing.results }}"
       loop_control:
-        label: "/production/{{ item.item.key }}"
+        label: "/prod/{{ item.item.key }}"
       when: item.status == 404
       register: _infisical_seed_create_DEBUG  # TEMP — diagnostic, remove with the debug task below once root-caused
       failed_when: false
