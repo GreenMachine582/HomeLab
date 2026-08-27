@@ -8,12 +8,15 @@ Node roles, ports, and playbook commands are in [CLAUDE.md](./CLAUDE.md), [NODES
 
 Mechanism built in-place (`deploy-service` + `services.yml` + Infisical injection + hooks executing); `homelab-edge-services` live (edge Phase 4 complete); observe/camunda/n8n repos extracted, registered, retired from monorepo; Authentik repo + compose + docs; bootstrap playbooks aligned; `topology.yml` v1 + resolver + inventory generation + `device:` migration; `ADDR_<REPO>` injection implemented additively.
 
-## Stage 1 — Observe live *(ready now, no hardware dependency)*
+## Stage 1 — Done (observe live)
 
-- [x] Merge `wip/observe` into master
-- [x] Bootstrap `homelab-observe` (`ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe`)
-- [x] Deploy `homelab-observe-services` via deploy-service — this **is** the deploy-verify step; confirm both post_hooks (`setup_monitors`, `setup_portainer`) land within the token window
-- [ ] Verify endpoints: Grafana, Prometheus, Loki, Alertmanager, ntfy, Uptime Kuma, Portainer
+`homelab-observe` bootstrapped and `homelab-observe-services` deployed; all endpoints
+(Grafana, Prometheus, Loki, Alertmanager, ntfy, Uptime Kuma, Portainer) verified live.
+Along the way: root-caused and fixed a stuck-transport bug blocking Alertmanager→Discord
+delivery (`/-/reload` can't clear it, only a full restart), removed the permanently-false
+`ContainerDown` alert (no cAdvisor deployed anywhere to supply the metric it depended on),
+and added Alertmanager self-monitoring (`AlertmanagerNotificationsFailing` → ntfy fallback,
+since a Discord-outage alert can't rely on Discord).
 
 ## Stage 2 — Hardware intake & topology v2 *(blocked on PC reclaim)*
 

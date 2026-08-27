@@ -276,14 +276,14 @@ retired from monorepo (C1–C4, C6, D1/D2 extract); Authentik repo + compose + d
 bootstrap playbooks aligned (F1–F5, F6 deferred); `topology.yml` v1 + resolver + inventory generation
 + `device:` migration (G1–G4); `ADDR_<REPO>` injection implemented additively (G9 partial).
 
-### Stage 1 — Observe live *(ready now, no hardware dependency)*
+### Stage 1 — Observe live *(done)*
 
 | Task | From | Status |
 |---|---|---|
 | Merge `wip/observe` → master | A1 | ✅ done |
 | Bootstrap rpi-02 (`bootstrap_node.yml --limit homelab-observe`) | A2 | ✅ done |
 | Deploy `homelab-observe-services` via deploy-service | A3 + C5 | ✅ done — C5's deploy-verify **is** this deploy; verify both post_hooks (`setup_monitors`, `setup_portainer` within token window) |
-| Verify endpoints (Grafana/Prom/Loki/AM/ntfy/Kuma/Portainer) | A4 | ☐ open |
+| Verify endpoints (Grafana/Prom/Loki/AM/ntfy/Kuma/Portainer) | A4 | ✅ done — along the way, root-caused/fixed a stuck-transport bug blocking Alertmanager→Discord delivery, removed the permanently-false `ContainerDown` alert, added Alertmanager self-monitoring (`AlertmanagerNotificationsFailing` → ntfy) |
 
 ### Stage 2 — Hardware intake & topology v2 *(blocked on PC reclaim)*
 
@@ -363,7 +363,7 @@ bootstrapped pc-01 and may be pulled earlier if wanted.
 | Old ID | Was | Disposition |
 |---|---|---|
 | A1 | Merge wip/observe | ✅ Done (Stage 0) |
-| A2–A4 | Observe bootstrap/deploy/verify | → Stage 1, open |
+| A2–A4 | Observe bootstrap/deploy/verify | → Stage 1, ✅ done |
 | B1 | Merge wip/svc | → Stage 3, open |
 | B2 | Create svc02/svc03 compose files in HomeLab | **Superseded** — own repos `greentechhub`, `jellyfin-media` (Stage 8) |
 | B3–B5 | Bootstrap + deploy svc-01 (rpi-03) | **Retargeted** to pc-01 → Stage 3 |
