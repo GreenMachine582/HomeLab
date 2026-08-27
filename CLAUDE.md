@@ -121,6 +121,10 @@ ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 /opt/deploy-service-venv/bin/deploy-service deploy n8n-automation --config /opt/homelab/services.yml
 ansible-playbook playbooks/deploy_svc.yml --tags discord_gateway
 
+# Validate a repo's declared secrets exist in Infisical without deploying
+# (no clone, no secret values fetched)
+/opt/deploy-service-venv/bin/deploy-service check homelab-edge-services --config /opt/homelab/services.yml
+
 # Update firewall rules (after adding services or once ip_observe is set)
 ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge
 
@@ -147,6 +151,17 @@ docker compose -f docker-compose.edge.yml up -d
 
 # Pull and recreate without killing the tunnel
 docker compose pull && docker compose up -d --remove-orphans
+```
+
+### deploy-service (development)
+
+Run from `deploy-service/` — see [`deploy-service/README.md`](./deploy-service/README.md) for the full command reference.
+
+```bash
+pip install -e ".[dev]"
+pytest              # 116 tests, no live infra required
+ruff check .
+mypy .
 ```
 
 ## Configuration Patterns

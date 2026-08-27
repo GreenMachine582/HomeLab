@@ -294,6 +294,14 @@ deploy-service deploy <repo> [--ref <tag>] [--dry-run]
     type=image), runs scripts/postdeploy.sh if present, then polls
     healthchecks. --dry-run prints the planned actions without executing them.
 
+deploy-service check <repo> [--config PATH] [--inventory PATH] [--topology PATH]
+    Implemented. Validates a repo's declared secrets exist in Infisical --
+    reads the repo's own secrets.yml (or the legacy services.yml fallback)
+    and reports missing keys via the same ready-to-run `infisical secrets
+    set` remediation `deploy` prints, without cloning the repo, fetching any
+    secret value, or deploying. Safe to run anytime, including from a
+    repo's own CI. See deploy-service/README.md.
+
 deploy-service rollback <repo> [--to <tag>] [--dry-run]
     Mechanism depends on the repo's rollback.strategy:
       - strategy: git    → checks out the previous (or --to) git tag of

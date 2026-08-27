@@ -144,6 +144,10 @@ homelab/
     backup_databases.sh       # Thin wrapper around playbooks/backup.yml
     test_connectivity.sh      # LAN ping, Tailscale, SSH, HTTP endpoints, DNS checks
 
+  deploy-service/             # Python CLI: deploy/check for services.yml-registered repos
+    deploy_service/            # cli.py, config.py, compose.py, target.py, topology.py, infisical.py
+    tests/                      # pytest suite (116 tests) -- see deploy-service/README.md
+
   docs/
     NETWORK.md                # IP assignments, firewall rules, Tailscale ACLs
     TROUBLESHOOTING.md        # Common issues and recovery procedures
