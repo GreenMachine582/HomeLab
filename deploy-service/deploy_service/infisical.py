@@ -83,7 +83,7 @@ def _login(client_id: str, client_secret: str) -> str:
 
 
 def _fetch_secret(token: str, secret_path: str, project_id: str, required: bool = True) -> str | None:
-    """secret_path is e.g. '/production/cloudflare/TUNNEL_TOKEN'."""
+    """secret_path is e.g. '/prod/cloudflare/TUNNEL_TOKEN'."""
     parts = secret_path.strip("/").split("/")
     if len(parts) < 3:
         sys.exit(f"[deploy-service] Invalid secret path '{secret_path}' — expected /env/folder/KEY")
@@ -117,7 +117,9 @@ def fetch(secret_specs: list[dict]) -> dict[str, str]:
         path = spec["path"]
         env_name = spec["env"]
         print(f"  fetching {path} → {env_name}")
-        env_vars[env_name] = _fetch_secret(token, path, project_id)
+        value = _fetch_secret(token, path, project_id)
+        assert value is not None  # required=True (default) guarantees this, or _fetch_secret already exited
+        env_vars[env_name] = value
     return env_vars
 
 

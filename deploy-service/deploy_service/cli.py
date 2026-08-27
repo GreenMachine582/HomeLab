@@ -2,6 +2,7 @@
 
 Usage:
   deploy-service deploy <repo> [--config PATH] [--inventory PATH] [--topology PATH] [--dry-run]
+  deploy-service check <repo> [--config PATH] [--inventory PATH] [--topology PATH]
 """
 import argparse
 import json
@@ -62,6 +63,73 @@ def _notify(repo: str, success: bool, detail: str | None = None) -> None:
         pass
 
 
+def _resolve_target(args: argparse.Namespace, entry: dict) -> target_mod.Target:
+    """Resolve a repo's services.yml entry (device: or target_node:) to
+    connection info -- shared by deploy and check, neither of which should
+    duplicate this device/topology/inventory resolution logic."""
+    topology_path = (
+        Path(args.topology) if args.topology
+        else Path(args.config).resolve().parent / "topology.yml"
+    )
+
+    target_node: str
+    device = entry.get("device")
+    if device:
+        target_node = topology.resolve_hostname(device, topology.load(str(topology_path)))
+        print(f"[deploy-service] device '{device}' -> '{target_node}'")
+    else:
+        maybe_target_node = entry.get("target_node")
+        if not maybe_target_node:
+            sys.exit(
+                f"[deploy-service] '{args.repo}' has no device or target_node set in {args.config}"
+            )
+        target_node = maybe_target_node
+
+    inventory_path = (
+        Path(args.inventory) if args.inventory
+        else Path(args.config).resolve().parent / "inventories" / "prod.yml"
+    )
+    tgt = target_mod.resolve(target_node, inventory_path)
+    print(f"[deploy-service] target_node '{target_node}' -> {tgt.label()}")
+    return tgt
+
+
+def _load_repo_secrets(
+    entry: dict, path: str, tgt: target_mod.Target, dry_run: bool = False,
+) -> tuple[list[dict], list[str]]:
+    """Read a repo's own secrets.yml from its checkout (local or remote --
+    see compose.read_file), falling back to services.yml's own (legacy)
+    secrets.infisical/addresses fields for repos not yet migrated to the
+    per-repo convention. Shared by deploy and check."""
+    secrets_cfg = entry.get("secrets", {})
+    secrets_file = compose.read_file(f"{path}/secrets.yml", target=tgt, dry_run=dry_run)
+    secret_specs, address_specs = config.parse_repo_secrets(secrets_file)
+    if not secret_specs and not address_specs:
+        secret_specs = secrets_cfg.get("infisical", [])
+        address_specs = secrets_cfg.get("addresses", [])
+    return secret_specs, address_specs
+
+
+def _cmd_check(args: argparse.Namespace) -> None:
+    """Validate a repo's declared secrets exist in Infisical -- no clone, no
+    secret values fetched, no deploy. Read-only pre-flight, standalone."""
+    entry = config.load(args.config, args.repo)
+    path = entry["path"]
+
+    tgt = _resolve_target(args, entry)
+    secret_specs, _address_specs = _load_repo_secrets(entry, path, tgt)
+
+    print("[deploy-service] Checking declared secrets exist in Infisical")
+    missing = infisical.check_missing(secret_specs)
+    if missing:
+        print(f"[deploy-service] {len(missing)} secret(s) missing:")
+        for line in infisical.format_remediation(missing):
+            print(f"  {line}")
+        sys.exit(1)
+
+    print(f"[deploy-service] '{args.repo}': all {len(secret_specs)} declared secret(s) present in Infisical")
+
+
 def _cmd_deploy(args: argparse.Namespace) -> None:
     print(f"[deploy-service] Deploying '{args.repo}' (config: {args.config})")
 
@@ -71,7 +139,6 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     path = entry["path"]
     deployment = entry.get("deployment", {})
     deploy_cfg = entry.get("deploy", {})
-    secrets_cfg = entry.get("secrets", {})
 
     dtype = deployment.get("type")
     if dtype not in ("compose", "image"):
@@ -94,28 +161,7 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     ref = args.ref if (args.ref and dtype == "compose") else entry.get("ref", "main")
     image_tag = args.ref if (args.ref and dtype == "image") else "latest"
 
-    topology_path = (
-        Path(args.topology) if args.topology
-        else Path(args.config).resolve().parent / "topology.yml"
-    )
-
-    device = entry.get("device")
-    if device:
-        target_node = topology.resolve_hostname(device, topology.load(str(topology_path)))
-        print(f"[deploy-service] device '{device}' -> '{target_node}'")
-    else:
-        target_node = entry.get("target_node")
-        if not target_node:
-            sys.exit(
-                f"[deploy-service] '{args.repo}' has no device or target_node set in {args.config}"
-            )
-
-    inventory_path = (
-        Path(args.inventory) if args.inventory
-        else Path(args.config).resolve().parent / "inventories" / "prod.yml"
-    )
-    tgt = target_mod.resolve(target_node, inventory_path)
-    print(f"[deploy-service] target_node '{target_node}' -> {tgt.label()}")
+    tgt = _resolve_target(args, entry)
 
     compose_files = deploy_cfg.get("compose_files", ["docker-compose.yml"])
     strategy = deploy_cfg.get("strategy", "rolling")
@@ -130,13 +176,9 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     # (discovered by convention, same as predeploy.sh/postdeploy.sh) —
     # falls back to services.yml's secrets.infisical/addresses fields for
     # repos not yet migrated to that convention.
-    secrets_file = compose.read_file(f"{path}/secrets.yml", target=tgt, dry_run=args.dry_run)
-    secret_specs, address_specs = config.parse_repo_secrets(secrets_file)
-    if not secret_specs and not address_specs:
-        secret_specs = secrets_cfg.get("infisical", [])
-        address_specs = secrets_cfg.get("addresses", [])
+    secret_specs, address_specs = _load_repo_secrets(entry, path, tgt, dry_run=args.dry_run)
 
-    print(f"[deploy-service] Checking declared secrets exist in Infisical")
+    print("[deploy-service] Checking declared secrets exist in Infisical")
     missing = infisical.check_missing(secret_specs)
     if missing:
         print(f"[deploy-service] {len(missing)} secret(s) missing — add them in Infisical, then re-run deploy:")
@@ -144,12 +186,16 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
             print(f"  {line}")
         sys.exit(1)
 
-    print(f"[deploy-service] Fetching secrets from Infisical")
+    print("[deploy-service] Fetching secrets from Infisical")
     injected_env = infisical.fetch(secret_specs)
 
     if address_specs:
         print(f"[deploy-service] Resolving addresses for: {', '.join(address_specs)}")
         all_repos = config.load_all(args.config)
+        topology_path = (
+            Path(args.topology) if args.topology
+            else Path(args.config).resolve().parent / "topology.yml"
+        )
         topo = topology.load(str(topology_path))
         for other_repo in address_specs:
             env_name = topology.addr_env_name(other_repo)
@@ -158,6 +204,7 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
 
     compose.run_conventional_hook(path, "predeploy.sh", injected_env, "pre-deploy", target=tgt, dry_run=args.dry_run)
     if dtype == "image":
+        assert image is not None  # validated above when dtype == "image" was first checked
         compose.deploy_image(
             path, compose_files, injected_env, image=image, tag=image_tag,
             strategy=strategy, target=tgt, dry_run=args.dry_run,
@@ -167,7 +214,7 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     compose.run_conventional_hook(path, "postdeploy.sh", injected_env, "post-deploy", target=tgt, dry_run=args.dry_run)
 
     if args.dry_run:
-        print(f"[deploy-service] Dry run complete — no changes made")
+        print("[deploy-service] Dry run complete — no changes made")
     else:
         print(f"[deploy-service] '{args.repo}' deployed successfully")
 
@@ -216,6 +263,32 @@ def main() -> None:
         help="Print planned actions without executing them",
     )
 
+    check_p = sub.add_parser(
+        "check", help="Validate a repo's declared secrets exist in Infisical, without deploying"
+    )
+    check_p.add_argument("repo", help="Repo name as listed in services.yml")
+    check_p.add_argument(
+        "--config",
+        default=_DEFAULT_CONFIG,
+        metavar="PATH",
+        help=f"Path to services.yml (default: {_DEFAULT_CONFIG})",
+    )
+    check_p.add_argument(
+        "--inventory",
+        default=None,
+        metavar="PATH",
+        help="Path to the Ansible inventory used to resolve remote target_nodes "
+        "(default: <services.yml's dir>/inventories/prod.yml)",
+    )
+    check_p.add_argument(
+        "--topology",
+        default=None,
+        metavar="PATH",
+        help="Path to topology.yml, used to resolve a repo's device: field to a "
+        "hostname (default: <services.yml's dir>/topology.yml). Ignored for "
+        "repos still using target_node: directly.",
+    )
+
     args = parser.parse_args()
 
     if args.command == "deploy":
@@ -232,6 +305,8 @@ def main() -> None:
         else:
             if not args.dry_run:
                 _notify(args.repo, success=True)
+    elif args.command == "check":
+        _cmd_check(args)
     else:
         parser.print_help()
         sys.exit(1)
