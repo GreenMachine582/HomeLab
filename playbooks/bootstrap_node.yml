@@ -58,7 +58,7 @@
 
   vars:
     _target_node: "{{ inventory_hostname }}"
-    _valid_nodes: "{{ (groups['observe'] | default([])) + (groups['svc'] | default([])) }}"
+    _valid_nodes: "{{ (groups['observe'] | default([])) + (groups['data'] | default([])) + (groups['svc'] | default([])) }}"
     _suffix: "{{ _target_node | regex_replace('^homelab-', '') | replace('-', '_') }}"
     _ip: "{{ infisical_secrets['network/IP_' ~ (_suffix | upper)] }}"
     _tailscale_ip: "{{ lookup('vars', 'tailscale_ip_' ~ _suffix, default='EDIT_BEFORE_USE') }}"
@@ -97,8 +97,8 @@
       ansible.builtin.assert:
         that: _target_node in _valid_nodes
         fail_msg: >-
-          {{ _target_node }} is not in the observe or svc inventory groups
-          (known: {{ _valid_nodes | join(', ') }}). See BOOTSTRAP.md § Phase 3.
+          {{ _target_node }} is not in the observe, data or svc inventory
+          groups (known: {{ _valid_nodes | join(', ') }}). See BOOTSTRAP.md § Phase 3.
       tags: [always]
 
     - name: "Probe | Resolve vault_* secrets from Infisical"
