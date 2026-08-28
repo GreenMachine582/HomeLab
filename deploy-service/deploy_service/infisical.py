@@ -183,6 +183,17 @@ def format_remediation(missing_specs: list[dict]) -> list[str]:
     their value computed by the CLI command's own shell substitution at
     paste-time, not embedded here, so nothing generated ever touches
     deploy-service's own stdout/logs.
+
+    Two exceptions, both from deploy_service.provision (`requires:`
+    provisioning -- see that module's docstring for why): a spec carrying a
+    "value" key (a password provision.py already set on a live database and
+    must now hand to the human verbatim, since the DB and Infisical have to
+    agree on the same value) prints that value literally instead of a
+    shell-generated placeholder. A spec carrying "provisioned": True with no
+    "value" yet (the `check` subcommand's view of a requires:-implied
+    secret, which never provisions -- see cli.py) prints a distinct note
+    instead of the ordinary <FILL_ME_IN> placeholder, since a human filling
+    it in by hand would be the wrong fix.
     """
     ui_url = _resolve_ui_base_url()
     _, _, project_id = _load_runtime_creds()
@@ -203,7 +214,14 @@ def format_remediation(missing_specs: list[dict]) -> list[str]:
         for i, spec in enumerate(specs):
             branch = "`-" if i == len(specs) - 1 else "|-"
             key = spec["path"].rstrip("/").split("/")[-1]
-            note = "   (generate a random value)" if spec.get("generate") else ""
+            if "value" in spec:
+                note = "   (created by requires: provisioning -- value below)"
+            elif spec.get("generate"):
+                note = "   (generate a random value)"
+            elif spec.get("provisioned"):
+                note = "   (created automatically on next deploy -- do not fill in by hand)"
+            else:
+                note = ""
             lines.append(f"   {branch} + {key}{note}")
         lines.append("")
 
@@ -212,7 +230,14 @@ def format_remediation(missing_specs: list[dict]) -> list[str]:
     for spec in missing_specs:
         env, *folder_parts, key = spec["path"].strip("/").split("/")
         folder = "/" + "/".join(folder_parts)
-        value = "$(openssl rand -hex 16)" if spec.get("generate") else "<FILL_ME_IN>"
+        if "value" in spec:
+            value = spec["value"]
+        elif spec.get("generate"):
+            value = "$(openssl rand -hex 16)"
+        elif spec.get("provisioned"):
+            value = "<CREATED BY `deploy-service deploy` -- RUN THAT FIRST, NOT THIS>"
+        else:
+            value = "<FILL_ME_IN>"
         lines.append(
             f'  infisical secrets set {key}="{value}" --path="{folder}" --env={env} '
             f'--projectId {project_id}'

@@ -277,3 +277,33 @@ class TestFormatRemediation:
 
         lines = infisical.format_remediation([{"path": "/prod/pihole/WEB_PASSWORD", "env": "PIHOLE_WEB_PASSWORD", "generate": True}])
         assert not any("secretValue" in line for line in lines)
+
+    def test_provisioned_spec_with_value_prints_it_literally(self, monkeypatch):
+        # deploy_service.provision already created this on a live database --
+        # the DB and Infisical must agree on the same value, so (unlike
+        # generate: true) the real value is printed for the human to paste.
+        monkeypatch.setattr(infisical, "_resolve_ui_base_url", lambda: "https://homelab-edge.tailnet.ts.net:8443")
+        monkeypatch.setattr(infisical, "_load_runtime_creds", lambda: ("id", "secret", "proj-1"))
+
+        missing = [{
+            "path": "/prod/data/n8n-automation/DB_PASSWORD", "env": "PG_PASSWORD",
+            "provisioned": True, "value": "s3cr3t-generated-value",
+        }]
+        lines = infisical.format_remediation(missing)
+        text = "\n".join(lines)
+        assert 's3cr3t-generated-value' in text
+        assert 'infisical secrets set DB_PASSWORD="s3cr3t-generated-value"' in text
+        assert "created by requires: provisioning" in text
+
+    def test_provisioned_spec_without_value_gets_do_not_fill_in_note(self, monkeypatch):
+        # The `check` subcommand's view of a requires:-implied secret --
+        # never provisioned there, so no real value exists yet.
+        monkeypatch.setattr(infisical, "_resolve_ui_base_url", lambda: "https://homelab-edge.tailnet.ts.net:8443")
+        monkeypatch.setattr(infisical, "_load_runtime_creds", lambda: ("id", "secret", "proj-1"))
+
+        missing = [{"path": "/prod/data/n8n-automation/DB_PASSWORD", "env": "PG_PASSWORD", "provisioned": True}]
+        lines = infisical.format_remediation(missing)
+        text = "\n".join(lines)
+        assert "do not fill in by hand" in text
+        assert "s3cr3t" not in text
+        assert "<FILL_ME_IN>" not in text

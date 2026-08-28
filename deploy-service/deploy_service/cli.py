@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import config, compose, infisical, topology
+from . import config, compose, infisical, provision, topology
 from . import target as target_mod
 
 _DEFAULT_CONFIG = "/opt/homelab/services.yml"
@@ -112,12 +112,25 @@ def _load_repo_secrets(
 
 def _cmd_check(args: argparse.Namespace) -> None:
     """Validate a repo's declared secrets exist in Infisical -- no clone, no
-    secret values fetched, no deploy. Read-only pre-flight, standalone."""
+    secret values fetched, no deploy. Read-only pre-flight, standalone.
+
+    A `requires:` block's implied secrets (deploy_service.provision) are
+    included in the check, but never provisioned here -- provisioning opens
+    a live connection to the data tier and creates a role/database/ACL
+    user, which is exactly the kind of side effect `check` promises not to
+    have. A requires:-implied secret that's missing just gets reported like
+    any other, with a note that it's created automatically on deploy rather
+    than filled in by hand (see infisical.format_remediation).
+    """
     entry = config.load(args.config, args.repo)
     path = entry["path"]
 
     tgt = _resolve_target(args, entry)
     secret_specs, _address_specs = _load_repo_secrets(entry, path, tgt)
+
+    requires_cfg = entry.get("requires", {})
+    if requires_cfg:
+        secret_specs = secret_specs + provision.requires_secret_specs(args.repo, requires_cfg)
 
     print("[deploy-service] Checking declared secrets exist in Infisical")
     missing = infisical.check_missing(secret_specs)
@@ -178,9 +191,31 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
     # repos not yet migrated to that convention.
     secret_specs, address_specs = _load_repo_secrets(entry, path, tgt, dry_run=args.dry_run)
 
+    # requires: (deploy_service.provision) -- a repo asking for a shared
+    # Postgres database and/or Redis ACL user on homelab-data-services.
+    # Its implied secrets (just the generated passwords -- role/database/
+    # username are deterministic from the repo name) are checked alongside
+    # the repo's own declared secrets below, using the same pipeline.
+    requires_cfg = entry.get("requires", {})
+    if requires_cfg:
+        secret_specs = secret_specs + provision.requires_secret_specs(args.repo, requires_cfg)
+
     print("[deploy-service] Checking declared secrets exist in Infisical")
     missing = infisical.check_missing(secret_specs)
     if missing:
+        if requires_cfg and not args.dry_run:
+            # First provision (or recovering from a lost secret): create the
+            # role/database/ACL user live on the data tier now, then print
+            # the real generated value(s) below for a human to persist --
+            # deploy-service's own Infisical identity stays read-only (see
+            # provision.py's docstring), so it can't do that last step itself.
+            data_entry = config.load(args.config, provision.DATA_REPO_NAME)
+            data_tgt = _resolve_target(args, data_entry)
+            print(f"[deploy-service] Provisioning requires: secrets for '{args.repo}' on {data_tgt.label()}")
+            provisioned = provision.provision_missing(missing, args.repo, requires_cfg, data_tgt.host)
+            for spec in missing:
+                if spec["path"] in provisioned:
+                    spec["value"] = provisioned[spec["path"]]
         print(f"[deploy-service] {len(missing)} secret(s) missing — add them in Infisical, then re-run deploy:")
         for line in infisical.format_remediation(missing):
             print(f"  {line}")
@@ -188,6 +223,25 @@ def _cmd_deploy(args: argparse.Namespace) -> None:
 
     print("[deploy-service] Fetching secrets from Infisical")
     injected_env = infisical.fetch(secret_specs)
+
+    if requires_cfg:
+        # All requires:-implied secrets are confirmed present (the missing
+        # branch above would have exited otherwise) -- inject the
+        # non-secret, deterministic connection details alongside the
+        # passwords infisical.fetch() just injected above.
+        data_entry = config.load(args.config, provision.DATA_REPO_NAME)
+        data_tgt = _resolve_target(args, data_entry)
+        role = provision.sanitize_name(args.repo)
+        if "postgres" in requires_cfg:
+            database = (requires_cfg.get("postgres") or {}).get("database") or role
+            injected_env["PG_HOST"] = data_tgt.host or ""
+            injected_env["PG_PORT"] = str(provision.POSTGRES_PORT)
+            injected_env["PG_DATABASE"] = database
+            injected_env["PG_USER"] = role
+        if "redis" in requires_cfg:
+            injected_env["REDIS_HOST"] = data_tgt.host or ""
+            injected_env["REDIS_PORT"] = str(provision.REDIS_PORT)
+            injected_env["REDIS_USER"] = role
 
     if address_specs:
         print(f"[deploy-service] Resolving addresses for: {', '.join(address_specs)}")

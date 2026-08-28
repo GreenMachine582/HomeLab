@@ -195,6 +195,125 @@ class TestCmdDeploy:
         cli._cmd_deploy(_args(repo="homelab-edge-services"))  # must not raise NameError
 
 
+class TestRequiresProvisioning:
+    """requires: (deploy_service.provision) integration in _cmd_check/_cmd_deploy."""
+
+    def _entry(self, **overrides):
+        entry = {
+            "repo": "github.com/GreenMachine582/n8n-automation",
+            "path": "/srv/services/n8n-automation",
+            "target_node": "homelab-edge",
+            "deployment": {"type": "compose"},
+            "deploy": {"compose_files": ["docker-compose.yml"]},
+            "requires": {"postgres": {"database": "n8n"}},
+        }
+        entry.update(overrides)
+        return entry
+
+    def _data_entry(self):
+        return {"path": "/srv/services/homelab-data-services", "target_node": "homelab-data-01"}
+
+    def test_check_reports_requires_secret_as_missing_without_provisioning(self, monkeypatch, capsys):
+        _patch_infra(monkeypatch, missing=[
+            {"path": "/prod/data/n8n-automation/DB_PASSWORD", "env": "PG_PASSWORD", "provisioned": True},
+        ])
+        monkeypatch.setattr(cli.config, "load", lambda path, repo: self._entry())
+
+        def _fail(*a, **k):
+            raise AssertionError("check must never provision -- it's read-only")
+        monkeypatch.setattr(cli.provision, "provision_missing", _fail)
+
+        with pytest.raises(SystemExit) as exc:
+            cli._cmd_check(_args(repo="n8n-automation"))
+        assert exc.value.code == 1
+        assert "PG_PASSWORD" in capsys.readouterr().out
+
+    def test_check_passes_when_requires_secret_already_present(self, monkeypatch, capsys):
+        _patch_infra(monkeypatch, missing=[])
+        monkeypatch.setattr(cli.config, "load", lambda path, repo: self._entry())
+
+        cli._cmd_check(_args(repo="n8n-automation"))  # must not raise
+        assert "present in Infisical" in capsys.readouterr().out
+
+    def test_deploy_provisions_on_first_missing_and_prints_real_value(self, monkeypatch, capsys):
+        missing_spec = {"path": "/prod/data/n8n-automation/DB_PASSWORD", "env": "PG_PASSWORD", "provisioned": True}
+        _patch_infra(monkeypatch, missing=[missing_spec])
+
+        def _fake_load(path, repo):
+            return self._data_entry() if repo == cli.provision.DATA_REPO_NAME else self._entry()
+        monkeypatch.setattr(cli.config, "load", _fake_load)
+
+        captured_remediation = {}
+        def _fake_format_remediation(missing):
+            captured_remediation["specs"] = missing
+            return [f"  {m.get('value', 'NO-VALUE')}" for m in missing]
+        monkeypatch.setattr(cli.infisical, "format_remediation", _fake_format_remediation)
+
+        monkeypatch.setattr(
+            cli.provision, "provision_missing",
+            lambda missing, repo, requires_cfg, host: {"/prod/data/n8n-automation/DB_PASSWORD": "the-real-password"},
+        )
+
+        with pytest.raises(SystemExit) as exc:
+            cli._cmd_deploy(_args(repo="n8n-automation"))
+        assert exc.value.code == 1
+        assert captured_remediation["specs"][0]["value"] == "the-real-password"
+        assert "the-real-password" in capsys.readouterr().out
+
+    def test_deploy_dry_run_never_provisions(self, monkeypatch):
+        missing_spec = {"path": "/prod/data/n8n-automation/DB_PASSWORD", "env": "PG_PASSWORD", "provisioned": True}
+        _patch_infra(monkeypatch, missing=[missing_spec])
+        monkeypatch.setattr(cli.config, "load", lambda path, repo: self._entry())
+
+        def _fail(*a, **k):
+            raise AssertionError("dry-run must never provision a live database")
+        monkeypatch.setattr(cli.provision, "provision_missing", _fail)
+
+        with pytest.raises(SystemExit):
+            cli._cmd_deploy(_args(repo="n8n-automation", dry_run=True))
+
+    def test_deploy_injects_pg_env_vars_when_requires_satisfied(self, monkeypatch):
+        _patch_infra(monkeypatch, missing=[], secret_values={"PG_PASSWORD": "the-pw"})
+
+        def _fake_load(path, repo):
+            return self._data_entry() if repo == cli.provision.DATA_REPO_NAME else self._entry()
+        monkeypatch.setattr(cli.config, "load", _fake_load)
+        monkeypatch.setattr(cli.target_mod, "resolve", lambda node, inv: Target(is_local=False, host="10.0.0.9"))
+
+        captured = {}
+        monkeypatch.setattr(cli.compose, "deploy", lambda path, files, env, **k: captured.setdefault("env", env))
+
+        cli._cmd_deploy(_args(repo="n8n-automation"))
+
+        env = captured["env"]
+        assert env["PG_PASSWORD"] == "the-pw"
+        assert env["PG_HOST"] == "10.0.0.9"
+        assert env["PG_PORT"] == str(cli.provision.POSTGRES_PORT)
+        assert env["PG_DATABASE"] == "n8n"
+        assert env["PG_USER"] == "n8n_automation"
+        assert "REDIS_HOST" not in env
+
+    def test_deploy_without_requires_never_touches_provision_module(self, monkeypatch):
+        # Plain repos (no requires: block) must take the exact same path as
+        # before this feature existed -- provision.* is never even imported
+        # into the decision.
+        _patch_infra(monkeypatch, missing=[])
+        monkeypatch.setattr(cli.config, "load", lambda path, repo: {
+            "repo": "github.com/GreenMachine582/homelab-edge-services",
+            "path": "/srv/services/homelab-edge-services",
+            "target_node": "homelab-edge",
+            "deployment": {"type": "compose"},
+            "deploy": {"compose_files": ["docker-compose.yml"]},
+        })
+
+        def _fail(*a, **k):
+            raise AssertionError("must not call provision.* for a repo with no requires: block")
+        monkeypatch.setattr(cli.provision, "provision_missing", _fail)
+        monkeypatch.setattr(cli.provision, "sanitize_name", _fail)
+
+        cli._cmd_deploy(_args(repo="homelab-edge-services"))  # must not raise
+
+
 class TestMain:
     def test_no_command_is_a_required_subparsers_usage_error(self, monkeypatch):
         # subparsers are declared required=True, so argparse itself rejects
