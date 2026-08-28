@@ -22,7 +22,7 @@ devices:
     host_roles: [observe]
 
   rpi-03:
-    hostname: homelab-svc-01
+    hostname: homelab-data-01
     arch: arm64
-    host_roles: [svc]
-    notes: "Pi 5 8GB + NVMe"
+    host_roles: [data]
+    notes: "Pi 5 8GB + 2TB NVMe — shared Postgres/Redis tier"

@@ -28,7 +28,7 @@ all:
             homelab-observe:
               ansible_host: "{{ ip_observe }}"
 
-        svc:
+        data:
           hosts:
-            homelab-svc-01:
-              ansible_host: "{{ ip_svc_01 }}"
+            homelab-data-01:
+              ansible_host: "{{ ip_data_01 }}"

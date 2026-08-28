@@ -1,0 +1,18 @@
+---
+# group_vars/data.yml
+# Applied to the [data] group (homelab-data-01 only).
+
+# ── Firewall ──────────────────────────────────────────────────────────────────
+# Postgres/Redis are Tailscale-only for now — no LAN consumer nodes exist yet
+# (pc-01/laptop-01 are Stage 2, pending). Add lan_subnet-scoped rules for
+# specific consumer node IPs once those devices are provisioned
+# (docs/consolidated_brief.md §3.2/§6.1).
+ufw_rules:
+  - { port: "{{ ssh_port }}", proto: tcp, src: "{{ lan_subnet }}", comment: "SSH (LAN)" }
+  - { port: 5432, proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Postgres (tailnet)" }
+  - { port: 6379, proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Redis (tailnet)" }
+  - { port: 9100, proto: tcp, src: "{{ lan_subnet }}", comment: "node-exporter" }
+
+# ── Tailscale ─────────────────────────────────────────────────────────────────
+tailscale_accept_routes: false
+tailscale_exit_node: false
