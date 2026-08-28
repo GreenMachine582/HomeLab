@@ -18,6 +18,7 @@
 # homelab-edge. Safe to re-run.
 #
 # Requires: roles/users, roles/base_hardening, roles/docker, roles/docker_compose, roles/tailscale
+#           (roles/nvme_storage additionally, for data-tier nodes only)
 # See: BOOTSTRAP.md § Phase 3
 
 # ── Probe play ─────────────────────────────────────────────────────────────────
@@ -314,6 +315,15 @@
         ansible_ssh_common_args: "-o PreferredAuthentications=publickey"
       when: ssh_post_harden_user is defined
       tags: [base, hardening]
+
+    # Must run before Docker so docker_data_dir (host_vars/homelab-data-01.yml
+    # points it at /mnt/nvme/docker) is mounted before dockerd's data-root
+    # directory gets created on it.
+    - name: "Roles | NVMe storage"
+      ansible.builtin.include_role:
+        name: nvme_storage
+      when: "'data' in group_names"
+      tags: [nvme, storage]
 
     - name: "Roles | Docker"
       ansible.builtin.include_role:

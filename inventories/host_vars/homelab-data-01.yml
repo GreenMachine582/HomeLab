@@ -1,0 +1,19 @@
+---
+# host_vars/homelab-data-01.yml
+# Node-specific overrides for homelab-data-01 (was rpi-03).
+# Group-level config is in group_vars/data.yml and group_vars/all.yml.
+
+# ── Network ───────────────────────────────────────────────────────────────────
+node_lan_ip: "{{ ip_data_01 }}"
+node_interface: eth0
+node_hostname: homelab-data-01
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+# Pi 5 8GB + 2TB NVMe (see NODES.md). roles/nvme_storage mounts nvme_device at
+# nvme_mount_point before Docker installs, so docker_data_dir lands on NVMe
+# from the first bootstrap, not SD card.
+# EDIT_BEFORE_USE if the real device path differs once the Pi is imaged --
+# confirm with `lsblk` on the node.
+nvme_device: /dev/nvme0n1
+nvme_mount_point: /mnt/nvme
+docker_data_dir: /mnt/nvme/docker

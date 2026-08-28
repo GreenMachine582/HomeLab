@@ -1,0 +1,30 @@
+---
+# roles/nvme_storage/tasks/main.yml
+#
+# Mounts the NVMe drive on data-tier nodes (currently homelab-data-01) at
+# nvme_mount_point, formatting it only if it has no filesystem yet -- never
+# reformats a device that already has one, so this is safe to re-run against
+# a node that already holds real Postgres/Redis data.
+
+- name: "NVMe | Create filesystem if the device is unformatted"
+  community.general.filesystem:
+    dev: "{{ nvme_device }}"
+    fstype: "{{ nvme_fs_type }}"
+  tags: [nvme, storage]
+
+- name: "NVMe | Mount and persist in fstab"
+  ansible.posix.mount:
+    path: "{{ nvme_mount_point }}"
+    src: "{{ nvme_device }}"
+    fstype: "{{ nvme_fs_type }}"
+    state: mounted
+  tags: [nvme, storage]
+
+- name: "NVMe | Set ownership"
+  ansible.builtin.file:
+    path: "{{ nvme_mount_point }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [nvme, storage]

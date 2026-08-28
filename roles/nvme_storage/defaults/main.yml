@@ -1,0 +1,7 @@
+---
+# roles/nvme_storage/defaults/main.yml
+# Overridable per-host, e.g. inventories/host_vars/homelab-data-01.yml.
+
+nvme_device: /dev/nvme0n1
+nvme_mount_point: /mnt/nvme
+nvme_fs_type: ext4
