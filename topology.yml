@@ -13,8 +13,6 @@ devices:
     hostname: homelab-edge
     arch: arm64
     host_roles: [edge]
-    # lan_ip: set from inventories/group_vars/all/overrides.yml (ip_edge) —
-    # gitignored, not duplicated here. Only needed for LAN-only paths (Pi-hole :53).
 
   rpi-02:
     hostname: homelab-observe
