@@ -63,6 +63,20 @@ repos:
       strategy: git
     services: [prometheus, loki, grafana, alertmanager, ntfy, uptime-kuma, portainer]
 
+  homelab-data-services:
+    repo: github.com/GreenMachine582/homelab-data-services
+    ref: main
+    path: /srv/services/homelab-data-services
+    device: rpi-03
+    deployment:
+      type: compose
+    deploy:
+      compose_files: [docker-compose.yml]
+      strategy: rolling
+    rollback:
+      strategy: git
+    services: [postgres, redis]
+
   camunda-platform:
     repo: github.com/GreenMachine582/camunda-platform
     ref: master
