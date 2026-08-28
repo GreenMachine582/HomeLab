@@ -67,7 +67,7 @@ repos:
     repo: github.com/GreenMachine582/camunda-platform
     ref: master
     path: /srv/services/camunda-platform
-    device: rpi-03
+    device: pc-01
     deployment:
       type: compose
     deploy:
@@ -91,7 +91,7 @@ repos:
     repo: github.com/GreenMachine582/n8n-automation
     ref: master
     path: /srv/services/n8n-automation
-    device: rpi-03
+    device: pc-01
     deployment:
       type: compose
     deploy:
