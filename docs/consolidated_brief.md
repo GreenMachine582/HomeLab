@@ -315,11 +315,11 @@ bootstrap playbooks aligned (F1–F5, F6 deferred); `topology.yml` v1 + resolver
 
 | Task | From | Status |
 |---|---|---|
-| Re-bootstrap rpi-03 as `homelab-data-01` (data host_role, NVMe layout) | new | ☐ open |
-| Decide Redis isolation: ACL users vs DB indexes | open item | ☐ decision gate (pre-G7) — `homelab-data-services`'s README assumes ACL as a working default, not a final decision |
+| Re-bootstrap rpi-03 as `homelab-data-01` (data host_role, NVMe layout) | new | ☐ open — `roles/nvme_storage` + `host_vars/homelab-data-01.yml` ready; blocked on hardware reachability |
+| Decide Redis isolation: ACL users vs DB indexes | open item | ✅ resolved — ACL, implemented in `provision.py::provision_redis()` |
 | Create `homelab-data-services` repo (Postgres 16 + Redis 7, Tailscale-bound) | G7 | ✅ done — scaffolded, registered in `services.yml`; not deployable yet (`secrets.yml` pending, node not bootstrapped) |
-| Implement `requires:` provisioning; prove with throwaway service | G7 | ☐ open |
-| Backup job: nightly dumps → pc-01 `/srv/backups` + failure alert | §6.4 | ☐ open |
+| Implement `requires:` provisioning; prove with throwaway service | G7 | ✅ implemented + unit-tested (`provision.py`, `test_provision.py`) — ☐ still needs proving against a live deploy, blocked on node bootstrap |
+| Backup job: nightly dumps → pc-01 `/srv/backups` + failure alert | §6.4 | ✅ local half done (`homelab-data-services/scripts/backup.sh`: dump + NVMe staging + ntfy) — ☐ remote push to pc-01 wired via `BACKUP_REMOTE_HOST`, inactive until pc-01 exists |
 
 ### Stage 5 — Co-residency & host agents *(was G5, G6)*
 
@@ -395,7 +395,11 @@ bootstrapped pc-01 and may be pulled earlier if wanted.
 
 ## 10. Open Items
 
-1. **Redis isolation** (ACL users vs DB indexes) — must be decided before Stage 4 (carried over).
+1. ~~**Redis isolation** (ACL users vs DB indexes)~~ — **Resolved: ACL users.**
+   `deploy_service/provision.py::provision_redis()` already implements per-service ACL users with
+   key-prefix restriction, and `homelab-data-services`'s README documents it as the working
+   default. This was carried as an open decision gate longer than it should have been — the
+   implementation had already settled it.
 2. **discord-gateway keep/remove** (B6) — Stage 3 gate (carried over).
 3. **BottleBot** — Phases 2–3 of the repo-split plan named it the proof-of-concept extraction; the
    mechanism got proven on real services instead. Decide whether BottleBot still gets built, and if

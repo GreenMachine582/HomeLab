@@ -42,11 +42,13 @@ since a Discord-outage alert can't rely on Discord).
 
 ## Stage 4 — Data tier on rpi-03 *(was G7; needs Stage 2, not Stage 3)*
 
-- [ ] Re-bootstrap rpi-03 as `homelab-data-01` (`data` host_role, NVMe layout)
-- [ ] Decide Redis isolation: ACL users vs DB indexes — `homelab-data-services`'s README currently assumes ACL as a working default, not a final decision
+- [ ] Re-bootstrap rpi-03 as `homelab-data-01` (`data` host_role, NVMe layout) — `roles/nvme_storage` + `host_vars/homelab-data-01.yml` are ready; blocked on the node being physically reachable
+- [x] Decide Redis isolation: **ACL users** — `deploy_service/provision.py::provision_redis()` already implements per-service ACL users with key-prefix restriction; `homelab-data-services`'s README documents it as the working default. Not actually undecided; the old "decision gate" framing was stale.
 - [x] Create `homelab-data-services` repo (Postgres 16 + Redis 7, Tailscale-bound) — scaffolded and registered in `services.yml` (`device: rpi-03`); not deployable yet — `secrets.yml` still needs to be added by hand, and `homelab-data-01` isn't bootstrapped
-- [ ] Implement `requires:` provisioning; prove with a throwaway service
-- [ ] Backup job: nightly dumps → pc-01 `/srv/backups` + failure alert to ntfy
+- [x] Implement `requires:` provisioning — `deploy_service/provision.py` (Postgres role/DB + Redis ACL user, idempotent) is implemented and unit-tested (`tests/test_provision.py`), wired into `cli.py`
+- [ ] Prove `requires:` provisioning against a live throwaway service (needs `homelab-data-01` bootstrapped first)
+- [x] Backup job (local half): `homelab-data-services/scripts/backup.sh` — nightly `pg_dump` + Redis RDB snapshot → NVMe staging + ntfy alert on failure
+- [ ] Backup job (remote half): push to pc-01 `/srv/backups` — wired via `BACKUP_REMOTE_HOST` (no-ops until set), activates once pc-01 exists (Stage 3)
 
 ## Stage 5 — Co-residency & host agents *(was G5, G6)*
 
@@ -77,7 +79,6 @@ since a Discord-outage alert can't rely on Discord).
 
 See [docs/consolidated_brief.md](./docs/consolidated_brief.md) §10 for full context.
 
-- Redis isolation (ACL vs DB indexes) — needed before Stage 4
 - discord-gateway keep/remove — Stage 3 gate
 - BottleBot: still get built? If so, device = laptop-01 headroom
 - PSU trust on pc-01 (Litepower Gen 2) — replace preemptively or on first symptom
