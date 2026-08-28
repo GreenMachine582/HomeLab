@@ -285,16 +285,19 @@ bootstrap playbooks aligned (F1–F5, F6 deferred); `topology.yml` v1 + resolver
 | Deploy `homelab-observe-services` via deploy-service | A3 + C5 | ✅ done — C5's deploy-verify **is** this deploy; verify both post_hooks (`setup_monitors`, `setup_portainer` within token window) |
 | Verify endpoints (Grafana/Prom/Loki/AM/ntfy/Kuma/Portainer) | A4 | ✅ done — along the way, root-caused/fixed a stuck-transport bug blocking Alertmanager→Discord delivery, removed the permanently-false `ContainerDown` alert, added Alertmanager self-monitoring (`AlertmanagerNotificationsFailing` → ntfy) |
 
-### Stage 2 — Hardware intake & topology v2 *(blocked on PC reclaim)*
+### Stage 2 — Hardware intake & topology v2 *(pc-01/laptop-01 prep blocked on hardware; data-tier topology slice done)*
 
 | Task | From | Status |
 |---|---|---|
 | pc-01 prep: BIOS iGPU, pull RX 580, Debian netinstall, verify `/dev/dri` + `alx` NIC | new | ☐ open |
 | laptop-01 prep: Debian netinstall, lid/suspend config, GbE adapter, charge cap | new | ☐ open |
-| `topology.yml` v2: add pc-01/laptop-01, re-role rpi-03 → `homelab-data-01`, add `data`/`media` host_roles; regenerate + swap inventory | G1 rev | ☐ open |
+| `topology.yml`: re-role rpi-03 → `homelab-data-01`, add `data` host_role; regenerate + swap inventory | G1 rev | ✅ done |
+| `topology.yml`: add pc-01/laptop-01, add `media` host_role | G1 rev | ☐ open — blocked on hardware |
 | Clear stale `homelab-svc-01` Tailscale entry before pc-01 joins | new | ☐ open |
-| Wire `host_roles` into `bootstrap_node.yml` (base + per-tag roles/firewall) | TODO (pre-G5) | ☐ open — now required for `data`/`media` tags, not just co-residency |
-| Update `services.yml` `device:` values (camunda/n8n/authentik → pc-01) | new | ☐ open |
+| Wire `data` host_role into `bootstrap_node.yml` (valid-nodes check; firewall via `inventories/group_vars/data.yml`) | TODO (pre-G5) | ✅ done |
+| Wire `media` host_role into `bootstrap_node.yml` | TODO (pre-G5) | ☐ open — blocked on pc-01 |
+| Update `services.yml` `device:` values for camunda/n8n → pc-01 | new | ✅ done — fails loudly rather than misdeploying, since pc-01 isn't in `topology.yml` yet |
+| Add `authentik-sso` entry to `services.yml`, targeting pc-01 | new | ☐ open — repo isn't registered in `services.yml` yet |
 
 ### Stage 3 — svc-heavy live on pc-01 *(was Milestone B + D1/D2 verify + E2–E5)*
 

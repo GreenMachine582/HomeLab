@@ -18,14 +18,17 @@ delivery (`/-/reload` can't clear it, only a full restart), removed the permanen
 and added Alertmanager self-monitoring (`AlertmanagerNotificationsFailing` → ntfy fallback,
 since a Discord-outage alert can't rely on Discord).
 
-## Stage 2 — Hardware intake & topology v2 *(blocked on PC reclaim)*
+## Stage 2 — Hardware intake & topology v2 *(pc-01/laptop-01 prep blocked on hardware; data-tier topology slice done)*
 
 - [ ] pc-01 prep: enable IGD/primary-display in BIOS, pull the RX 580, Debian 13 netinstall, verify `/dev/dri` + `alx` NIC
 - [ ] laptop-01 prep: Debian 13 netinstall (no DE), `HandleLidSwitch=ignore`, mask sleep/suspend/hibernate targets, cap battery charge, USB-C GbE adapter
-- [ ] `topology.yml` v2: add pc-01/laptop-01, re-role rpi-03 → `homelab-data-01`, add `data`/`media` host_roles; regenerate + swap inventory
+- [x] `topology.yml`: re-role rpi-03 → `homelab-data-01`, add `data` host_role; regenerate + swap inventory
+- [ ] `topology.yml`: add pc-01/laptop-01, add `media` host_role *(blocked on hardware)*
 - [ ] Clear the stale `homelab-svc-01` Tailscale machine entry before pc-01 joins the tailnet
-- [ ] Wire `host_roles` into `bootstrap_node.yml` (base + per-tag roles/firewall) — now required for `data`/`media` tags, not just co-residency
-- [ ] Update `services.yml` `device:` values (camunda-platform/n8n-automation/authentik-sso → pc-01)
+- [x] Wire `data` host_role into `bootstrap_node.yml` (valid-nodes check; firewall rules via `inventories/group_vars/data.yml`)
+- [ ] Wire `media` host_role into `bootstrap_node.yml` *(blocked on pc-01)*
+- [x] Update `services.yml` `device:` values for `camunda-platform`/`n8n-automation` → `pc-01` (pending Stage 3 — fails loudly rather than misdeploying, since pc-01 isn't in `topology.yml` yet)
+- [ ] Add an `authentik-sso` entry to `services.yml` targeting pc-01 (repo isn't registered there yet)
 
 ## Stage 3 — svc-heavy live on pc-01 *(was Milestone B + D1/D2 verify + E2–E5)*
 
