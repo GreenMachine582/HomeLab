@@ -316,8 +316,8 @@ bootstrap playbooks aligned (F1–F5, F6 deferred); `topology.yml` v1 + resolver
 | Task | From | Status |
 |---|---|---|
 | Re-bootstrap rpi-03 as `homelab-data-01` (data host_role, NVMe layout) | new | ☐ open |
-| Decide Redis isolation: ACL users vs DB indexes | open item | ☐ decision gate (pre-G7) |
-| Create `homelab-data-services` repo (Postgres 16 + Redis 7, Tailscale-bound) | G7 | ☐ open |
+| Decide Redis isolation: ACL users vs DB indexes | open item | ☐ decision gate (pre-G7) — `homelab-data-services`'s README assumes ACL as a working default, not a final decision |
+| Create `homelab-data-services` repo (Postgres 16 + Redis 7, Tailscale-bound) | G7 | ✅ done — scaffolded, registered in `services.yml`; not deployable yet (`secrets.yml` pending, node not bootstrapped) |
 | Implement `requires:` provisioning; prove with throwaway service | G7 | ☐ open |
 | Backup job: nightly dumps → pc-01 `/srv/backups` + failure alert | §6.4 | ☐ open |
 

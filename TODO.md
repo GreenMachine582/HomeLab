@@ -43,8 +43,8 @@ since a Discord-outage alert can't rely on Discord).
 ## Stage 4 — Data tier on rpi-03 *(was G7; needs Stage 2, not Stage 3)*
 
 - [ ] Re-bootstrap rpi-03 as `homelab-data-01` (`data` host_role, NVMe layout)
-- [ ] Decide Redis isolation: ACL users vs DB indexes
-- [ ] Create `homelab-data-services` repo (Postgres 16 + Redis 7, Tailscale-bound)
+- [ ] Decide Redis isolation: ACL users vs DB indexes — `homelab-data-services`'s README currently assumes ACL as a working default, not a final decision
+- [x] Create `homelab-data-services` repo (Postgres 16 + Redis 7, Tailscale-bound) — scaffolded and registered in `services.yml` (`device: rpi-03`); not deployable yet — `secrets.yml` still needs to be added by hand, and `homelab-data-01` isn't bootstrapped
 - [ ] Implement `requires:` provisioning; prove with a throwaway service
 - [ ] Backup job: nightly dumps → pc-01 `/srv/backups` + failure alert to ntfy
 
