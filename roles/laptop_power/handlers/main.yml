@@ -1,0 +1,8 @@
+---
+# roles/laptop_power/handlers/main.yml
+
+# Restarting logind can end graphical sessions; on a headless server it's safe.
+- name: Restart systemd-logind
+  ansible.builtin.systemd:
+    name: systemd-logind
+    state: restarted

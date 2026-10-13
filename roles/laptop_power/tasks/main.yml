@@ -1,0 +1,74 @@
+---
+# roles/laptop_power/tasks/main.yml
+# Makes a laptop behave like a server: lid closed doesn't suspend it, and the
+# battery (its built-in UPS) isn't held at 100% forever.
+
+- name: "Laptop | Ensure logind drop-in directory exists"
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [laptop, power]
+
+- name: "Laptop | Ignore lid switch"
+  ansible.builtin.copy:
+    dest: /etc/systemd/logind.conf.d/10-homelab-lid.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/laptop_power)
+      [Login]
+      HandleLidSwitch={{ laptop_lid_switch_action }}
+      HandleLidSwitchExternalPower={{ laptop_lid_switch_action }}
+      HandleLidSwitchDocked={{ laptop_lid_switch_action }}
+  notify: Restart systemd-logind
+  tags: [laptop, power]
+
+- name: "Laptop | Find battery charge threshold controls"
+  ansible.builtin.find:
+    paths: /sys/class/power_supply
+    patterns: "BAT*"
+    file_type: link
+  register: _laptop_batteries
+  tags: [laptop, power, battery]
+
+- name: "Laptop | Check which batteries support a charge limit"
+  ansible.builtin.stat:
+    path: "{{ item.path }}/charge_control_end_threshold"
+  loop: "{{ _laptop_batteries.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: _laptop_thresholds
+  tags: [laptop, power, battery]
+
+- name: "Laptop | Report when the firmware has no charge limit"
+  ansible.builtin.debug:
+    msg: >-
+      No charge_control_end_threshold exposed for any battery; skipping the
+      charge limit. Set one in the BIOS if it offers it.
+  when: _laptop_thresholds.results | selectattr('stat.exists') | list | length == 0
+  tags: [laptop, power, battery]
+
+# tmpfiles 'w' writes the value at every boot; applied now as well.
+- name: "Laptop | Persist battery charge limit"
+  ansible.builtin.copy:
+    dest: /etc/tmpfiles.d/homelab-battery.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/laptop_power)
+      {% for r in _laptop_thresholds.results | selectattr('stat.exists') %}
+      w {{ r.stat.path }} - - - - {{ laptop_battery_charge_limit }}
+      {% endfor %}
+  register: _laptop_tmpfiles
+  when: _laptop_thresholds.results | selectattr('stat.exists') | list | length > 0
+  tags: [laptop, power, battery]
+
+- name: "Laptop | Apply battery charge limit now"
+  ansible.builtin.command: systemd-tmpfiles --create /etc/tmpfiles.d/homelab-battery.conf
+  when: _laptop_tmpfiles is changed
+  tags: [laptop, power, battery]

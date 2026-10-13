@@ -6,6 +6,29 @@
 # reformats a device that already has one, so this is safe to re-run against
 # a node that already holds real Postgres/Redis data.
 
+# community.general.filesystem only checks for a filesystem signature on the
+# whole device. A partitioned disk (e.g. a Pi 5 booting from NVMe) has a
+# partition table but no signature there, so it would be formatted -- OS and
+# all. Refuse anything partitioned or mounted anywhere except our own mount.
+- name: "NVMe | Inspect device layout"
+  ansible.builtin.command: "lsblk -nr -o NAME,MOUNTPOINT {{ nvme_device }}"
+  register: _nvme_lsblk
+  changed_when: false
+  check_mode: false
+  tags: [nvme, storage]
+
+- name: "NVMe | Refuse partitioned or in-use devices"
+  ansible.builtin.assert:
+    that:
+      - _nvme_lsblk.stdout_lines | length == 1
+      - _nvme_mounts | difference([nvme_mount_point]) | length == 0
+    fail_msg: >-
+      {{ nvme_device }} is partitioned or mounted elsewhere, so it may hold the
+      OS. Not touching it. lsblk: {{ _nvme_lsblk.stdout_lines }}
+  vars:
+    _nvme_mounts: "{{ _nvme_lsblk.stdout_lines | map('regex_replace', '^\\S+\\s*', '') | select | list }}"
+  tags: [nvme, storage]
+
 - name: "NVMe | Create filesystem if the device is unformatted"
   community.general.filesystem:
     dev: "{{ nvme_device }}"

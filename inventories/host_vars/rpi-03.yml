@@ -1,0 +1,14 @@
+---
+# host_vars/rpi-03.yml
+# Data node: Pi 5 8GB + 2TB NVMe (arm64, Raspberry Pi OS trixie). Was
+# homelab-data-01; the bootstrap renames it.
+
+# Uncomment if the user created at imaging isn't "admin".
+# bootstrap_user: <imager-user>
+
+# ── Storage (roles/nvme_storage) ──────────────────────────────────────────────
+# Off until `lsblk` on the Pi confirms the NVMe is NOT the boot disk. If the Pi
+# boots from NVMe, local PVs go in a directory on the root filesystem instead.
+nvme_enabled: false
+nvme_device: /dev/nvme0n1
+nvme_mount_point: /mnt/nvme

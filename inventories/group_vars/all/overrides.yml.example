@@ -31,3 +31,10 @@ tailscale_ip_svc_03:  "EDIT_BEFORE_USE"   # homelab-svc-03 Tailscale IP
                                             # (run: tailscale status). Leave as EDIT_BEFORE_USE until then.
 
 tailscale_tailnet: "EDIT_BEFORE_USE"   # e.g. mango-beaver — find it under DNS in the Tailscale admin console
+
+# ── Kubernetes nodes (inventories/k8s.yml) ────────────────────────────────────
+# Pin each with a router DHCP reservation.
+ip_laptop_01: "EDIT_BEFORE_USE"   # control plane
+ip_rpi_03:    "EDIT_BEFORE_USE"   # data node (Pi 5 + NVMe)
+# ip_rpi_01:  "EDIT_BEFORE_USE"
+# ip_rpi_02:  "EDIT_BEFORE_USE"

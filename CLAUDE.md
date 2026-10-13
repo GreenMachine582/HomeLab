@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Migrating to Kubernetes (since Oct 2026).** New work targets `inventories/k8s.yml` and `playbooks/bootstrap.yml`,
+> run from WSL on the main PC (see `docs/K8S_BOOTSTRAP.md`); in-cluster config lives in the `homelab-cluster` repo.
+> The edge/Infisical/Semaphore/deploy-service/Docker sections below describe the legacy stack, kept until the M8
+> cutover. Don't extend them.
+
 ## What This Repo Is
 
 Infrastructure-as-code for a 5-node homelab (3 Raspberry Pi, 2 x86 — see [`docs/consolidated_brief.md`](./docs/consolidated_brief.md) for the hardware-expansion plan). Everything is deployed via Ansible from `homelab-edge`, which acts as both the internet edge and the Ansible control node. No manual configuration after Phase 1 bootstrap.

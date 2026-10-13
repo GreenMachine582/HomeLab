@@ -1,0 +1,35 @@
+---
+# inventories/group_vars/k8s.yml
+# Applied to every Kubernetes node (inventories/k8s.yml). Overrides the
+# legacy defaults in group_vars/all/main.yml where the k8s design differs.
+
+# ── Bootstrap ─────────────────────────────────────────────────────────────────
+# User created at OS install, used only for the first (password) login.
+# Override per host in host_vars/<node>.yml if it differs.
+bootstrap_user: admin
+
+# ── Users ─────────────────────────────────────────────────────────────────────
+# No deploy user (the webhook deploy gate is retired) and no docker group.
+homelab_users:
+  - name: admin
+    groups: sudo
+    shell: /bin/bash
+    ssh_key: "{{ vault_admin_ssh_pubkey }}"
+    sudo_passwordless: false
+
+  - name: homelab
+    groups: ""
+    shell: /bin/bash
+    ssh_key: "{{ vault_homelab_ssh_pubkey }}"
+    sudo_passwordless: true
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+# ntfy lived on homelab-observe, which is gone. Discord only for now.
+notify_ntfy_url: ""
+
+# ── Firewall ──────────────────────────────────────────────────────────────────
+# SSH only for now (the firewall role always allows ssh_port as well).
+# Kubernetes ports are added with the kubeadm role in M2.
+ufw_rules:
+  - { port: "{{ ssh_port }}", proto: tcp, src: "{{ lan_subnet }}", comment: "SSH (LAN)" }
+  - { port: "{{ ssh_port }}", proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "SSH (tailnet)" }

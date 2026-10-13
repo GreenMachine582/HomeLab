@@ -14,13 +14,14 @@ done
 TIME=$(date "+%Y-%m-%d %H:%M:%S")
 MSG="$HOST booted at $TIME"
 
+{% if notify_ntfy_url %}
 curl -sf \
   -H "Title: {{ inventory_hostname }} booted" \
   -H "Priority: default" \
   -H "Tags: white_check_mark" \
   -d "$MSG" \
   "{{ notify_ntfy_url }}" > /dev/null \
-|| curl -sf \
+|| {% endif %}curl -sf \
   -H "Content-Type: application/json" \
   --data-raw "{\"content\": \"✅ [Boot] $MSG\"}" \
   "{{ notify_discord_webhook }}" > /dev/null || true

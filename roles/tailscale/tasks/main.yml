@@ -1,10 +1,12 @@
 ---
 # roles/tailscale/tasks/main.yml
 
+# Debian repo for every node: Raspberry Pi OS reports ansible_distribution
+# "Debian", and the debian repo ships both amd64 (laptop-01) and arm64 (Pis).
 - name: "Tailscale | Add apt signing key"
   ansible.builtin.shell:
     cmd: |
-      curl -fsSL https://pkgs.tailscale.com/stable/raspbian/bookworm.noarmor.gpg \
+      curl -fsSL https://pkgs.tailscale.com/stable/debian/{{ ansible_distribution_release }}.noarmor.gpg \
         | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null
     creates: /usr/share/keyrings/tailscale-archive-keyring.gpg
   tags: [tailscale, install]
@@ -13,7 +15,7 @@
   ansible.builtin.apt_repository:
     repo: >
       deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
-      https://pkgs.tailscale.com/stable/raspbian bookworm main
+      https://pkgs.tailscale.com/stable/debian {{ ansible_distribution_release }} main
     filename: tailscale
     state: present
   tags: [tailscale, install]

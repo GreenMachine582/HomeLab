@@ -10,13 +10,14 @@ notify() {
     local user="$1" ip="$2" time="$3"
     local msg="$user logged in to $HOST from $ip at $time"
 
+{% if notify_ntfy_url %}
     curl -sf \
       -H "Title: SSH login on {{ inventory_hostname }}" \
       -H "Priority: high" \
       -H "Tags: key" \
       -d "$msg" \
       "{{ notify_ntfy_url }}" > /dev/null \
-    || curl -sf \
+    || {% endif %}curl -sf \
       -H "Content-Type: application/json" \
       --data-raw "{\"content\": \"🔑 [SSH Login] $msg\"}" \
       "{{ notify_discord_webhook }}" > /dev/null || true

@@ -1,0 +1,10 @@
+---
+# host_vars/laptop-01.yml
+# Control plane (amd64, Debian 13). Wired Ethernet, lid closed.
+
+# Uncomment if the user created at install isn't "admin".
+# bootstrap_user: <install-user>
+
+# ── Power (roles/laptop_power) ───────────────────────────────────────────────
+laptop_power_enabled: true
+laptop_battery_charge_limit: 80

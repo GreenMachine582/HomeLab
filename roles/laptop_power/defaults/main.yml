@@ -1,0 +1,10 @@
+---
+# roles/laptop_power/defaults/main.yml
+# Lowest-precedence defaults — override via host_vars/<laptop>.yml.
+
+# Keep running with the lid closed, on battery, AC or a dock.
+laptop_lid_switch_action: ignore
+
+# Stop charging at this percentage to spare a battery that sits on AC 24/7.
+# Only applied if the firmware exposes charge_control_end_threshold.
+laptop_battery_charge_limit: 80

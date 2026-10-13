@@ -7,13 +7,14 @@ HOST="{{ inventory_hostname }}"
 TIME=$(date "+%Y-%m-%d %H:%M:%S")
 MSG="$HOST is shutting down at $TIME"
 
+{% if notify_ntfy_url %}
 curl -sf \
   -H "Title: {{ inventory_hostname }} shutting down" \
   -H "Priority: high" \
   -H "Tags: warning" \
   -d "$MSG" \
   "{{ notify_ntfy_url }}" > /dev/null \
-|| curl -sf \
+|| {% endif %}curl -sf \
   -H "Content-Type: application/json" \
   --data-raw "{\"content\": \"⚠️ [Shutdown] $MSG\"}" \
   "{{ notify_discord_webhook }}" > /dev/null || true

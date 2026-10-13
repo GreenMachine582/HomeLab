@@ -10,6 +10,11 @@
 A Raspberry Pi homelab managed entirely through Ansible. Manual intervention is limited to the one-time bootstrap 
 (Phase 1); all subsequent deployments and updates are automated.
 
+**🚧 Migrating to Kubernetes.** The cluster is being rebuilt as kubeadm + Cilium + Flux; in-cluster config lives in
+[homelab-cluster](https://github.com/GreenMachine582/homelab-cluster). This repo now only builds the nodes: start with
+[docs/K8S_BOOTSTRAP.md](./docs/K8S_BOOTSTRAP.md) and `inventories/k8s.yml`. Everything about homelab-edge, Infisical,
+Semaphore, deploy-service and Docker Compose below is legacy and is removed at the M8 cutover.
+
 **⚠️ This repo is mid-migration to a polyrepo layout** — see [Polyrepo Migration](#-polyrepo-migration) below and [docs/repo_split_brief.md](./docs/repo_split_brief.md) for the full design and status.
 
 **See [BOOTSTRAP.md](./BOOTSTRAP.md) to get started.**
