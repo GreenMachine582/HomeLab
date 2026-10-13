@@ -10,7 +10,7 @@ Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the 
 | Inventory name | Role                    | OS                              | Install user | Status               |
 |----------------|-------------------------|---------------------------------|--------------|----------------------|
 | `laptop-01`    | Control plane (amd64)   | Debian 13                       | `root`       | Bootstrapped 13 Oct  |
-| `rpi-03`       | Data node, Pi 5 + NVMe  | Raspberry Pi OS Lite (trixie)   | `admin`      | Next                 |
+| `rpi-03`       | Data node, Pi 5 + NVMe  | Raspberry Pi OS Lite (trixie)   | `admin`      | Bootstrapped 13 Oct  |
 
 Groups in [`inventories/k8s.yml`](../inventories/k8s.yml): `k8s` → `k8s_control_plane`, `k8s_workers`, plus
 `k8s_data` for the database node. They're deliberately not called `data`/`svc`, so the legacy group vars never apply.
@@ -111,4 +111,5 @@ ansible-playbook playbooks/bootstrap.yml --limit laptop-01        # re-run: prob
   `fallback_ssh_port`. If it still fails, check `ssh_port`/`fallback_ssh_port` in `overrides.yml`.
 - **`nvme_storage` stops with "partitioned or mounted elsewhere"**: by design, so it can't format a disk that may hold
   data or the OS. Check `lsblk -f`; wipe the disk deliberately (`wipefs -a`) only if its contents aren't needed, or set
-  `nvme_enabled: false`.
+  `nvme_enabled: false`. rpi-03 hit this on its first run: its NVMe still held an old Raspberry Pi OS image
+  (`bootfs` + `rootfs` partitions), which was checked, wiped and then formatted by the role.
