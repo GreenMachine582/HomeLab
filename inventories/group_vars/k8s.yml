@@ -52,6 +52,13 @@ ufw_rules:
   - { port: "{{ ssh_port }}", proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "SSH (tailnet)" }
   - { port: "{{ k8s_api_port }}", proto: tcp, src: "{{ lan_subnet }}", comment: "Kubernetes API (LAN)" }
   - { port: "{{ k8s_api_port }}", proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Kubernetes API (tailnet)" }
+  # Cilium node-to-node ports, from the whole LAN: a node may send from a
+  # second LAN address (e.g. laptop Wi-Fi) that isn't its node_ip.
+  # https://docs.cilium.io/en/stable/operations/system_requirements/#firewall-rules
+  - { port: 8472, proto: udp, src: "{{ lan_subnet }}", comment: "Cilium VXLAN" }
+  - { port: 4240, proto: tcp, src: "{{ lan_subnet }}", comment: "Cilium health" }
+  - { port: 4244, proto: tcp, src: "{{ lan_subnet }}", comment: "Hubble server" }
+  - { port: 10250, proto: tcp, src: "{{ lan_subnet }}", comment: "kubelet API" }
 
 # All traffic from the other cluster nodes and from pods (kubelet, etcd,
 # Cilium VXLAN/health, NodePorts). Cilium enforces finer policy later.

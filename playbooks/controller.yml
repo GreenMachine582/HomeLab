@@ -1,0 +1,55 @@
+---
+# playbooks/controller.yml
+#
+# Sets up the Ansible controller: WSL on the main PC, the only machine that
+# runs these playbooks and kubectl. Run once per controller, and again after
+# bumping k8s_version or cilium_cli_version. Needs your WSL sudo password:
+#
+#   ansible-playbook playbooks/controller.yml -K
+#
+# Installs: sshpass (first password-based bootstrap), the Ansible
+# collections, kubectl and cilium-cli at the cluster's versions, the k8s-api
+# hosts entry, and KUBECONFIG=~/.kube/homelab.conf in ~/.bashrc.
+# See docs/K8S_CLUSTER.md.
+
+- name: "Controller | Tooling for running the homelab"
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  # localhost isn't in the k8s group, so take the cluster settings from the
+  # control plane's view of group_vars/k8s.yml.
+  vars:
+    _cp: "{{ hostvars[groups['k8s_control_plane'][0]] }}"
+    k8s_version: "{{ _cp.k8s_version }}"
+    k8s_minor: "{{ _cp.k8s_minor }}"
+    k8s_api_name: "{{ _cp.k8s_api_name }}"
+    k8s_control_plane_ip: "{{ _cp.k8s_control_plane_ip }}"
+    cilium_cli_version: "{{ _cp.cilium_cli_version }}"
+
+  tasks:
+    - name: "Controller | Base packages"
+      ansible.builtin.apt:
+        name:
+          - sshpass
+          - gpg
+          - curl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      tags: [controller, packages]
+
+    - name: "Controller | Ansible collections"
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install -r requirements.yml
+        chdir: "{{ playbook_dir }}/.."
+      register: _galaxy
+      changed_when: "'was installed successfully' in _galaxy.stdout"
+      become: false
+      tags: [controller, collections]
+
+    - name: "Controller | kubectl, cilium-cli, k8s-api, KUBECONFIG"
+      ansible.builtin.include_role:
+        name: k8s_client
+      tags: [controller, client]

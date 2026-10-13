@@ -38,13 +38,8 @@
     - net.bridge.bridge-nf-call-ip6tables
   tags: [k8s, prereqs]
 
-# Decision 23/29: the API is addressed by name, so a control-plane IP change
-# is an Ansible re-run, not a cluster rebuild.
-- name: "K8s prereqs | Resolve {{ k8s_api_name }} to the control plane"
-  ansible.builtin.lineinfile:
-    path: /etc/hosts
-    regexp: '\s{{ k8s_api_name }}$'
-    line: "{{ k8s_control_plane_ip }} {{ k8s_api_name }}"
+- name: "K8s prereqs | API endpoint name"
+  ansible.builtin.include_tasks: hosts.yml
   tags: [k8s, prereqs]
 
 # Raspberry Pi kernels ship with the memory cgroup controller off; kubelet

@@ -28,12 +28,14 @@ general pods nowhere to run. Turn it on once rpi-01/02 join.
 ## Before the first run
 
 1. Both nodes are bootstrapped (`bootstrap.yml`). `cluster.yml` refuses nodes where the `homelab` key doesn't work yet.
-2. **Resolve `k8s-api` on the PC**: the fetched kubeconfig points at `https://k8s-api:6443`.
+2. **Controller tooling**: run once, and again after bumping `k8s_version` or `cilium_cli_version`:
    ```bash
-   echo "<laptop-01 IP> k8s-api" | sudo tee -a /etc/hosts      # WSL
+   ansible-playbook playbooks/controller.yml -K      # -K: your WSL sudo password
    ```
-   On Windows too, if you use kubectl there: add the same line to `C:\Windows\System32\drivers\etc\hosts`.
-3. Optional in WSL: `kubectl` (same minor, 1.36) and the `cilium` CLI. The playbook installs both on laptop-01 anyway.
+   It installs `sshpass`, the Ansible collections, and kubectl and cilium-cli at the cluster's versions. It adds
+   `k8s-api` to `/etc/hosts`: the fetched kubeconfig points at `https://k8s-api:6443`, and on WSL it also sets
+   `generateHosts = false` in `/etc/wsl.conf` so the entry survives restarts. It also exports
+   `KUBECONFIG=~/.kube/homelab.conf` in `~/.bashrc`. kubectl and cilium are on laptop-01 as well (`homelab` user).
 
 ## Run
 
@@ -60,12 +62,17 @@ Swap stays on (Debian swap partition, Pi OS zram): kubelet runs with `failSwapOn
 ## Verify (M2)
 
 ```bash
-export KUBECONFIG=~/.kube/homelab.conf
+ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true
 kubectl get nodes -o wide                  # both Ready, v1.36.5, INTERNAL-IP = LAN IPs
-kubectl -n kube-system get pods            # cilium, coredns, control plane Running; no kube-proxy
-ssh -p <ssh_port> -i .ssh/homelab homelab@<laptop-01 IP> 'cilium status && cilium connectivity test'
 ansible-playbook playbooks/cluster.yml     # re-run: no changes
 ```
+
+`cluster_status.yml` is read-only and safe any time. It reports:
+- per node: LAN addresses (and warns if a node has more than one), routes to the other nodes, and UFW;
+- from the control plane: nodes, Cilium nodes, all pods, and `cilium status`.
+
+With `connectivity_test=true` it also runs `cilium connectivity test` and removes the test namespaces afterwards.
+With the control plane tainted and one worker, the test runs in single-node mode.
 
 Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next PR).
 
@@ -73,6 +80,9 @@ Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next P
 
 - **`cluster.yml` says a node isn't bootstrapped**: run `bootstrap.yml --limit <node>` first.
 - **`kubectl` can't resolve `k8s-api`**: add the hosts entry on the PC (above).
+- **`cilium-health-ep … no route to host` / pods can't reach the other node**: cross-node (VXLAN) traffic is being
+  dropped. Run `cluster_status.yml`. If it warns about a second LAN address (e.g. laptop Wi-Fi), that's the likely
+  source. `ufw_rules` allow Cilium's ports (8472/udp, 4240, 4244, 10250) from the whole LAN for this reason.
 - **A node stays NotReady**: check `cilium status`. Check that UFW lists the other nodes and `10.244.0.0/16` as
   trusted (`sudo ufw status numbered`), and that `ufw status verbose` shows `allow (routed)`.
 - **A node's IP changed** (DHCP reservations are still deferred): update `overrides.yml` and re-run `cluster.yml` for

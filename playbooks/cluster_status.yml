@@ -1,0 +1,124 @@
+---
+# playbooks/cluster_status.yml
+#
+# Read-only health report for the cluster and its nodes. Safe any time.
+#
+#   ansible-playbook playbooks/cluster_status.yml
+#   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true
+#
+# Per node: addresses, routes to the other nodes, UFW status; warns when a
+# node has more than one address on the LAN (it may send cluster traffic
+# from one the others don't trust). From the control plane: nodes, Cilium
+# nodes, pods, cilium status. connectivity_test=true also runs
+# `cilium connectivity test` (it deploys test pods, then removes them).
+# See docs/K8S_CLUSTER.md.
+
+- name: "Probe | Discover each node's SSH endpoint"
+  hosts: k8s
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks: tasks/probe_ssh.yml
+      vars:
+        probe_allow_fresh: false
+
+- name: "Status | Node networking"
+  hosts: k8s
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: "Status | Addresses on the LAN"
+      ansible.builtin.shell: "ip -4 -o addr show to {{ lan_subnet }} | awk '{print $2\" \"$4}'"
+      register: _lan
+      changed_when: false
+
+    - name: "Status | Collect LAN addresses"
+      ansible.builtin.set_fact:
+        _lan_addresses: "{{ _lan.stdout_lines }}"
+
+    - name: "Status | Routes to the other nodes"
+      ansible.builtin.command: "ip route get {{ hostvars[item].node_ip }}"
+      loop: "{{ groups['k8s'] | difference([inventory_hostname]) }}"
+      register: _routes
+      changed_when: false
+
+    - name: "Status | UFW"
+      ansible.builtin.command: ufw status verbose
+      register: _ufw
+      changed_when: false
+
+    - name: "Status | Report"
+      ansible.builtin.debug:
+        msg:
+          node_ip: "{{ node_ip }}"
+          interfaces: "{{ ansible_interfaces | sort }}"
+          lan_addresses: "{{ _lan_addresses }}"
+          routes: "{{ _routes.results | map(attribute='stdout') | list }}"
+          ufw: "{{ _ufw.stdout_lines }}"
+
+    - name: "Status | Warn about extra LAN addresses"
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: {{ inventory_hostname }} has {{ _lan_addresses | length }}
+          addresses on {{ lan_subnet }} ({{ _lan_addresses | join(', ') }}).
+          Traffic to other nodes may leave from one that isn't node_ip
+          ({{ node_ip }}); check the routes above.
+      when: _lan_addresses | length > 1
+
+- name: "Status | Cluster"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+  tasks:
+    - name: "Status | kubectl and cilium"
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - kubectl get nodes -o wide
+        - kubectl get ciliumnodes -o wide
+        - kubectl get pods -A -o wide
+        - cilium status
+      register: _cluster
+      changed_when: false
+      failed_when: false
+
+    - name: "Status | Report"
+      ansible.builtin.debug:
+        msg: "{{ _cluster.results | map(attribute='stdout_lines') | list }}"
+
+    - name: "Status | Connectivity test"
+      when: connectivity_test | default(false) | bool
+      block:
+        - name: "Status | Remove leftovers from earlier tests"
+          ansible.builtin.shell: >-
+            kubectl get ns -o name | grep '^namespace/cilium-test' |
+            xargs -r kubectl delete --wait=true
+          changed_when: false
+
+        - name: "Status | cilium connectivity test"
+          ansible.builtin.command: cilium connectivity test
+          register: _conn
+          changed_when: false
+          failed_when: false
+
+        - name: "Status | Connectivity test result"
+          ansible.builtin.debug:
+            msg: "{{ _conn.stdout_lines[-25:] }}"
+
+        - name: "Status | Fail if the connectivity test failed"
+          ansible.builtin.fail:
+            msg: "cilium connectivity test failed (rc={{ _conn.rc }}); see the output above."
+          when: _conn.rc != 0
+      always:
+        - name: "Status | Remove the test namespaces"
+          ansible.builtin.shell: >-
+            kubectl get ns -o name | grep '^namespace/cilium-test' |
+            xargs -r kubectl delete --wait=false
+          changed_when: false

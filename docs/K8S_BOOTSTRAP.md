@@ -18,11 +18,11 @@ Groups in [`inventories/k8s.yml`](../inventories/k8s.yml): `k8s` → `k8s_contro
 
 ## Before the first run
 
-1. **Branch and collections**
+1. **Controller tooling**: `sshpass` (for the first, password-based login), the Ansible collections, kubectl and
+   cilium-cli:
    ```bash
-   cd ~/homelab && git fetch && git switch k8s/bootstrap-nodes
-   ansible-galaxy collection install -r requirements.yml
-   sudo apt install sshpass          # needed for the first, password-based login
+   cd ~/homelab && git pull
+   ansible-playbook playbooks/controller.yml -K
    ```
 2. **Node IPs**: add these to `inventories/group_vars/all/overrides.yml` (gitignored), and pin them with router DHCP
    reservations:

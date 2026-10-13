@@ -3,31 +3,8 @@
 # kubelet, kubeadm and kubectl from pkgs.k8s.io, pinned to k8s_version and
 # held so unattended upgrades never move the cluster (decision 27).
 
-- name: "kubeadm | Ensure apt keyrings directory exists"
-  ansible.builtin.file:
-    path: /etc/apt/keyrings
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-  tags: [k8s, kubeadm]
-
-- name: "kubeadm | Add Kubernetes v{{ k8s_minor }} apt signing key"
-  ansible.builtin.get_url:
-    url: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/Release.key"
-    dest: "/etc/apt/keyrings/kubernetes-v{{ k8s_minor }}.asc"
-    owner: root
-    group: root
-    mode: "0644"
-  tags: [k8s, kubeadm]
-
-- name: "kubeadm | Add Kubernetes v{{ k8s_minor }} apt repository"
-  ansible.builtin.apt_repository:
-    repo: >-
-      deb [signed-by=/etc/apt/keyrings/kubernetes-v{{ k8s_minor }}.asc]
-      https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/ /
-    filename: kubernetes
-    state: present
+- name: "kubeadm | Kubernetes apt repository"
+  ansible.builtin.include_tasks: repo.yml
   tags: [k8s, kubeadm]
 
 - name: "kubeadm | Install kubelet, kubeadm, kubectl {{ k8s_version }}"
