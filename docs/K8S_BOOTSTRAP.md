@@ -68,13 +68,22 @@ It prompts once, hidden, for the install user's password, if any targeted node i
 
 ## What it does
 
-1. **Probe** (runs locally): tries `ssh -i ~/homelab/.ssh/homelab homelab@<ip>`.
-   - If that works, the node is hardened and Ansible connects as `homelab`.
-   - Otherwise it connects as `bootstrap_user` with the password.
+1. **Probe** (runs locally), per node:
+   - **Where:** TCP-probes these endpoints in order and uses the first that answers. This is the same order
+     `bootstrap_edge.yml` uses. The tailnet entries only appear once `tailscale_tailnet` is set in `overrides.yml`, and
+     the `fallback_ssh_port` entries only when it differs from `ssh_port`.
+     1. `<node>.<tailnet>.ts.net:<ssh_port>`
+     2. `<LAN IP>:<ssh_port>`
+     3. `<node>.<tailnet>.ts.net:<fallback_ssh_port>`
+     4. `<LAN IP>:<fallback_ssh_port>`
+
+     A fresh node answers on `fallback_ssh_port` (22); a hardened one on `ssh_port`.
+   - **Who:** tries `ssh -i ~/homelab/.ssh/homelab homelab@<endpoint>`. If that works, the node is hardened and Ansible
+     connects as `homelab`. Otherwise it records the host key and connects as `bootstrap_user` with the password.
 2. **Hostname**: set to the inventory name, and `/etc/hosts` updated to match.
 3. **`users`**: creates `admin` (your key, sudo with password) and `homelab` (Ansible key, passwordless sudo).
 4. **`base_hardening`**: package upgrades, chrony, unattended upgrades, sysctls, auditd, Discord notifications. It also
-   switches SSH to **key-only with no root login** and asserts the effective `sshd -T` matches. The play then
+   moves sshd to `ssh_port` and switches it to **key-only with no root login** and asserts the effective `sshd -T` matches. The play then
    reconnects as `homelab` with the key.
 5. **`nvme_storage`**: `k8s_data` nodes, only when `nvme_enabled: true`.
 6. **`laptop_power`**: laptop-01 only. The lid switch is ignored, and the battery charge is capped at 80% if the
@@ -86,8 +95,8 @@ It prompts once, hidden, for the install user's password, if any targeted node i
 ## Verify
 
 ```bash
-ssh -i .ssh/homelab homelab@<laptop-01 IP> hostname                 # → laptop-01, no password
-ssh -o PubkeyAuthentication=no admin@<laptop-01 IP>                 # → Permission denied (publickey)
-ssh -i .ssh/homelab homelab@<laptop-01 IP> ping -c2 <rpi-03 IP>   # nodes reach each other (M1 exit)
+ssh -p <ssh_port> -i .ssh/homelab homelab@<laptop-01 IP> hostname    # → laptop-01, no password
+ssh -p <ssh_port> -o PubkeyAuthentication=no admin@<laptop-01 IP>    # → Permission denied (publickey)
+ssh -p <ssh_port> -i .ssh/homelab homelab@<laptop-01 IP> ping -c2 <rpi-03 IP>   # nodes reach each other (M1 exit)
 ansible-playbook playbooks/bootstrap.yml --limit laptop-01        # re-run: probe says "hardened", no prompt
 ```
