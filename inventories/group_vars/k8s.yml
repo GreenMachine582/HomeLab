@@ -27,9 +27,36 @@ homelab_users:
 # ntfy lived on homelab-observe, which is gone. Discord only for now.
 notify_ntfy_url: ""
 
+# ── Kubernetes (playbooks/cluster.yml) ─────────────────────────────────────────
+# 1.36 is the newest minor in Cilium 1.20's tested matrix (decision 27).
+# Packages are held; upgrading is a deliberate PR that bumps these.
+k8s_version: "1.36.5"
+k8s_minor: "{{ k8s_version.split('.')[:2] | join('.') }}"
+k8s_api_name: k8s-api
+k8s_api_port: 6443
+k8s_pod_cidr: 10.244.0.0/16
+k8s_service_cidr: 10.96.0.0/12
+k8s_control_plane_ip: "{{ hostvars[groups['k8s_control_plane'][0]].node_ip }}"
+
+cilium_version: "1.20.2"
+cilium_cli_version: "v0.20.1"
+
+# Database taint on k8s_data nodes. Off until rpi-01/02 join as general
+# workers; with it on now, general pods would have nowhere to run.
+k8s_data_taint_enabled: false
+
 # ── Firewall ──────────────────────────────────────────────────────────────────
-# SSH only for now (the firewall role always allows ssh_port as well).
-# Kubernetes ports are added with the kubeadm role in M2.
+# The firewall role always allows ssh_port as well.
 ufw_rules:
   - { port: "{{ ssh_port }}", proto: tcp, src: "{{ lan_subnet }}", comment: "SSH (LAN)" }
   - { port: "{{ ssh_port }}", proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "SSH (tailnet)" }
+  - { port: "{{ k8s_api_port }}", proto: tcp, src: "{{ lan_subnet }}", comment: "Kubernetes API (LAN)" }
+  - { port: "{{ k8s_api_port }}", proto: tcp, src: "{{ tailscale_cgnat_range }}", comment: "Kubernetes API (tailnet)" }
+
+# All traffic from the other cluster nodes and from pods (kubelet, etcd,
+# Cilium VXLAN/health, NodePorts). Cilium enforces finer policy later.
+firewall_trusted_sources: >-
+  {{ groups['k8s'] | map('extract', hostvars, 'node_ip') | list + [k8s_pod_cidr] }}
+
+# Pod traffic is routed through the host.
+firewall_routed_policy: allow

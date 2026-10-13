@@ -1,0 +1,86 @@
+---
+# roles/cilium_install/tasks/main.yml (control plane)
+# Initial Cilium install with cilium-cli, as the Helm release "cilium" in
+# kube-system so Flux can adopt it later (M3/M4). Kube-proxy replacement is
+# on, so Cilium reaches the API server directly by IP: its agent containers
+# don't see the node's /etc/hosts entry for k8s-api.
+
+- name: "Cilium | Work out the CLI architecture"
+  ansible.builtin.set_fact:
+    _cilium_cli_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+  tags: [k8s, cilium]
+
+- name: "Cilium | Create CLI directory for {{ cilium_cli_version }}"
+  ansible.builtin.file:
+    path: "/opt/cilium-cli/{{ cilium_cli_version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [k8s, cilium]
+
+- name: "Cilium | Download cilium-cli {{ cilium_cli_version }}"
+  ansible.builtin.get_url:
+    url: "https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version }}/cilium-linux-{{ _cilium_cli_arch }}.tar.gz"
+    checksum: "sha256:https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version }}/cilium-linux-{{ _cilium_cli_arch }}.tar.gz.sha256sum"
+    dest: "/opt/cilium-cli/{{ cilium_cli_version }}/cilium-linux-{{ _cilium_cli_arch }}.tar.gz"
+    mode: "0644"
+  tags: [k8s, cilium]
+
+- name: "Cilium | Unpack cilium-cli"
+  ansible.builtin.unarchive:
+    src: "/opt/cilium-cli/{{ cilium_cli_version }}/cilium-linux-{{ _cilium_cli_arch }}.tar.gz"
+    dest: "/opt/cilium-cli/{{ cilium_cli_version }}"
+    remote_src: true
+    creates: "/opt/cilium-cli/{{ cilium_cli_version }}/cilium"
+  tags: [k8s, cilium]
+
+- name: "Cilium | Put cilium on the PATH"
+  ansible.builtin.file:
+    src: "/opt/cilium-cli/{{ cilium_cli_version }}/cilium"
+    dest: /usr/local/bin/cilium
+    state: link
+    force: true
+  tags: [k8s, cilium]
+
+- name: "Cilium | Check for an existing install"
+  ansible.builtin.command: kubectl -n kube-system get daemonset cilium
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: _cilium_ds
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [k8s, cilium]
+
+# One operator replica: with a single schedulable worker the default two
+# (with anti-affinity) would leave one Pending forever.
+- name: "Cilium | Install Cilium {{ cilium_version }}"
+  ansible.builtin.command:
+    argv:
+      - cilium
+      - install
+      - --version
+      - "{{ cilium_version }}"
+      - --set
+      - kubeProxyReplacement=true
+      - --set
+      - "k8sServiceHost={{ node_ip }}"
+      - --set
+      - "k8sServicePort={{ k8s_api_port }}"
+      - --set
+      - ipam.mode=kubernetes
+      - --set
+      - operator.replicas=1
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: _cilium_ds.rc != 0
+  tags: [k8s, cilium]
+
+- name: "Cilium | Wait until healthy"
+  ansible.builtin.command: cilium status --wait --wait-duration 10m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+  check_mode: false
+  tags: [k8s, cilium]

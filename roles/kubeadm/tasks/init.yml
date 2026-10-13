@@ -1,0 +1,62 @@
+---
+# roles/kubeadm/tasks/init.yml (control plane)
+# kubeadm init without kube-proxy (Cilium replaces it), then hands the admin
+# kubeconfig to the homelab user and to the controller (WSL).
+
+- name: "kubeadm | Render kubeadm config"
+  ansible.builtin.template:
+    src: kubeadm-config.yaml.j2
+    dest: /etc/kubernetes/kubeadm-config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  tags: [k8s, kubeadm, init]
+
+# Swap stays on with failSwapOn: false (see the template), so the Swap
+# preflight check is expected to complain.
+- name: "kubeadm | Initialise the control plane"
+  ansible.builtin.command:
+    cmd: kubeadm init --config /etc/kubernetes/kubeadm-config.yaml --ignore-preflight-errors=Swap
+    creates: /etc/kubernetes/admin.conf
+  register: _kubeadm_init
+  tags: [k8s, kubeadm, init]
+
+- name: "kubeadm | Show init output"
+  ansible.builtin.debug:
+    var: _kubeadm_init.stdout_lines
+  when: _kubeadm_init is changed
+  tags: [k8s, kubeadm, init]
+
+- name: "kubeadm | Create homelab's kube directory"
+  ansible.builtin.file:
+    path: /home/homelab/.kube
+    state: directory
+    owner: homelab
+    group: homelab
+    mode: "0700"
+  tags: [k8s, kubeadm, init]
+
+- name: "kubeadm | Give homelab the admin kubeconfig"
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/homelab/.kube/config
+    remote_src: true
+    owner: homelab
+    group: homelab
+    mode: "0600"
+  tags: [k8s, kubeadm, init]
+
+- name: "kubeadm | Fetch the admin kubeconfig to the controller"
+  ansible.builtin.fetch:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ k8s_controller_kubeconfig }}"
+    flat: true
+  tags: [k8s, kubeadm, init]
+
+- name: "kubeadm | Restrict the controller's kubeconfig"
+  ansible.builtin.file:
+    path: "{{ k8s_controller_kubeconfig }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  tags: [k8s, kubeadm, init]

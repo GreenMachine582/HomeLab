@@ -1,7 +1,8 @@
 # Bootstrapping Kubernetes nodes
 
 Runbook for `playbooks/bootstrap.yml`: takes a freshly installed node to a hardened, key-only host on the tailnet. Part
-of milestone M1 in the Kubernetes migration; containerd and kubeadm follow in M2.
+of milestone M1 in the Kubernetes migration. Next, [K8S_CLUSTER.md](./K8S_CLUSTER.md) (`playbooks/cluster.yml`)
+builds the cluster on these nodes (M2).
 
 Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the only Ansible controller.
 

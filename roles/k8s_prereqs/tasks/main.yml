@@ -1,0 +1,83 @@
+---
+# roles/k8s_prereqs/tasks/main.yml
+# Host settings every Kubernetes node needs before containerd and kubeadm.
+# Swap stays on: kubelet runs with failSwapOn: false and swapBehavior NoSwap
+# (see roles/kubeadm/templates/kubeadm-config.yaml.j2).
+
+- name: "K8s prereqs | Load kernel modules at boot"
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/k8s_prereqs)
+      overlay
+      br_netfilter
+  tags: [k8s, prereqs]
+
+- name: "K8s prereqs | Load kernel modules now"
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+  tags: [k8s, prereqs]
+
+- name: "K8s prereqs | Kernel networking sysctls"
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    sysctl_file: /etc/sysctl.d/99-k8s.conf
+    state: present
+    reload: true
+  loop:
+    - net.ipv4.ip_forward
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+  tags: [k8s, prereqs]
+
+# Decision 23/29: the API is addressed by name, so a control-plane IP change
+# is an Ansible re-run, not a cluster rebuild.
+- name: "K8s prereqs | Resolve {{ k8s_api_name }} to the control plane"
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '\s{{ k8s_api_name }}$'
+    line: "{{ k8s_control_plane_ip }} {{ k8s_api_name }}"
+  tags: [k8s, prereqs]
+
+# Raspberry Pi kernels ship with the memory cgroup controller off; kubelet
+# needs it. /boot/firmware/cmdline.txt must stay a single line.
+- name: "K8s prereqs | Check cgroup controllers"
+  ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
+  register: _cgroup_controllers
+  changed_when: false
+  check_mode: false
+  tags: [k8s, prereqs, cgroups]
+
+- name: "K8s prereqs | Enable the memory cgroup on Raspberry Pi"
+  ansible.builtin.lineinfile:
+    path: /boot/firmware/cmdline.txt
+    regexp: '^((?!.*\bcgroup_enable=memory\b).*\S)\s*$'
+    line: '\1 cgroup_enable=memory'
+    backrefs: true
+  register: _cmdline
+  when:
+    - "'memory' not in _cgroup_controllers.stdout.split()"
+    - ansible_architecture == 'aarch64'
+  tags: [k8s, prereqs, cgroups]
+
+- name: "K8s prereqs | Reboot to apply the kernel command line"
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+  when: _cmdline is changed
+  tags: [k8s, prereqs, cgroups]
+
+- name: "K8s prereqs | Assert the memory cgroup is available"
+  ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
+  register: _cgroup_controllers_after
+  changed_when: false
+  check_mode: false
+  failed_when: "'memory' not in _cgroup_controllers_after.stdout.split()"
+  tags: [k8s, prereqs, cgroups]

@@ -1,0 +1,81 @@
+---
+# roles/containerd/tasks/main.yml
+# Container runtime for kubelet: containerd.io from Docker's apt repo,
+# systemd cgroup driver (matches kubelet's cgroupDriver: systemd).
+
+- name: "containerd | Ensure apt keyrings directory exists"
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [k8s, containerd]
+
+- name: "containerd | Add Docker apt signing key"
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [k8s, containerd]
+
+- name: "containerd | Add Docker apt repository"
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}
+      signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+  tags: [k8s, containerd]
+
+- name: "containerd | Install containerd.io {{ containerd_version }}"
+  ansible.builtin.apt:
+    name: "containerd.io={{ containerd_version }}*"
+    state: present
+    update_cache: true
+    allow_change_held_packages: true
+  tags: [k8s, containerd]
+
+- name: "containerd | Hold containerd.io"
+  ansible.builtin.dpkg_selections:
+    name: containerd.io
+    selection: hold
+  tags: [k8s, containerd]
+
+# The packaged config disables the CRI plugin kubelet needs. Replace it with
+# the full default once; edits below then apply on top.
+- name: "containerd | Check for a CRI-enabled config"
+  ansible.builtin.command: grep -q SystemdCgroup /etc/containerd/config.toml
+  register: _containerd_cri_config
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [k8s, containerd]
+
+- name: "containerd | Generate the default config"
+  ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+  when: _containerd_cri_config.rc != 0
+  notify: Restart containerd
+  tags: [k8s, containerd]
+
+- name: "containerd | Use the systemd cgroup driver"
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+  notify: Restart containerd
+  tags: [k8s, containerd]
+
+- name: "containerd | Enable and start"
+  ansible.builtin.systemd:
+    name: containerd
+    enabled: true
+    state: started
+  tags: [k8s, containerd]
+
+- name: "containerd | Apply config changes before kubelet needs them"
+  ansible.builtin.meta: flush_handlers
+  tags: [k8s, containerd]

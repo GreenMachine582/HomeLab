@@ -1,0 +1,45 @@
+---
+# roles/k8s_node_config/tasks/main.yml (control plane)
+# Node labels and taints from the inventory groups (decision 5). Runs kubectl
+# with the admin kubeconfig.
+
+- name: "Nodes | Wait for every node to be Ready"
+  ansible.builtin.command: kubectl wait --for=condition=Ready node --all --timeout=10m
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+  check_mode: false
+  tags: [k8s, nodes]
+
+- name: "Nodes | Label workers"
+  ansible.builtin.command: "kubectl label node {{ item }} node-role.kubernetes.io/worker= --overwrite"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  loop: "{{ groups['k8s_workers'] }}"
+  register: _label_workers
+  changed_when: "'not labeled' not in _label_workers.stdout"
+  tags: [k8s, nodes]
+
+- name: "Nodes | Label data nodes"
+  ansible.builtin.command: "kubectl label node {{ item }} homelab/role=data homelab/storage=nvme --overwrite"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  loop: "{{ groups['k8s_data'] }}"
+  register: _label_data
+  changed_when: "'not labeled' not in _label_data.stdout"
+  tags: [k8s, nodes]
+
+# Off until general workers exist (k8s_data_taint_enabled); turning it off
+# again removes the taint.
+- name: "Nodes | Database taint on data nodes"
+  ansible.builtin.command: >-
+    kubectl taint node {{ item }}
+    {{ 'homelab/dedicated=database:NoSchedule --overwrite'
+       if k8s_data_taint_enabled else 'homelab/dedicated:NoSchedule-' }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  loop: "{{ groups['k8s_data'] }}"
+  register: _taint_data
+  changed_when: _taint_data.rc == 0 and ('modified' in _taint_data.stdout or 'tainted' in _taint_data.stdout)
+  failed_when: _taint_data.rc != 0 and 'not found' not in _taint_data.stderr
+  tags: [k8s, nodes]
