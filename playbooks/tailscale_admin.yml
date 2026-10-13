@@ -1,0 +1,144 @@
+---
+# playbooks/tailscale_admin.yml
+#
+# Tailnet admin from the controller, through the Tailscale API:
+#   1. renders tailscale/policy.hujson.j2, validates it with Tailscale and
+#      shows the diff against the live policy;
+#   2. lists stale devices from tailscale_stale_devices.
+# Nothing changes unless you pass confirm=true:
+#
+#   ansible-playbook playbooks/tailscale_admin.yml                  # dry run
+#   ansible-playbook playbooks/tailscale_admin.yml -e confirm=true  # apply
+#
+# Needs an OAuth client separate from the nodes' one, with scopes
+# "Policy File" (write) and "Devices: Core" (write), in vault.yml as
+# vault_tailscale_admin_oauth_client_id / _secret. Optional in overrides.yml:
+# tailscale_admin_login (your login email, enables the policy's tests).
+# See docs/K8S_SITE_MOVE.md.
+
+- name: "Tailscale admin | Policy and devices"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    _cp: "{{ hostvars[groups['k8s_control_plane'][0]] }}"
+    ssh_port: "{{ _cp.ssh_port }}"
+    tailscale_site_route: "{{ _cp.lan_subnet if _cp.tailscale_subnet_router | default(false) | bool else '' }}"
+    tailscale_admin_login: "{{ _cp.tailscale_admin_login | default('') }}"
+    tailscale_stale_devices: "{{ _cp.tailscale_stale_devices | default(['homelab-edge', 'homelab-observe', 'homelab-svc-01']) }}"
+    _apply: "{{ confirm | default(false) | bool }}"
+    _api: https://api.tailscale.com/api/v2
+
+  tasks:
+    - name: "Tailscale admin | Get an API token"
+      ansible.builtin.uri:
+        url: "{{ _api }}/oauth/token"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          grant_type: client_credentials
+          client_id: "{{ _cp.vault_tailscale_admin_oauth_client_id }}"
+          client_secret: "{{ _cp.vault_tailscale_admin_oauth_client_secret }}"
+      register: _token
+      no_log: true
+
+    - name: "Tailscale admin | Set auth header"
+      ansible.builtin.set_fact:
+        _auth: "Bearer {{ _token.json.access_token }}"
+      no_log: true
+
+    # ── Policy ────────────────────────────────────────────────────────────────
+    - name: "Tailscale admin | Render the policy"
+      ansible.builtin.set_fact:
+        _policy: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../tailscale/policy.hujson.j2') }}"
+
+    - name: "Tailscale admin | Validate the policy with Tailscale"
+      ansible.builtin.uri:
+        url: "{{ _api }}/tailnet/-/acl/validate"
+        method: POST
+        headers:
+          Authorization: "{{ _auth }}"
+          Content-Type: application/hujson
+        body: "{{ _policy }}"
+        return_content: true
+      register: _validate
+
+    - name: "Tailscale admin | Fail on policy errors"
+      ansible.builtin.fail:
+        msg: "Tailscale rejected the policy: {{ _validate.json }}"
+      when: (_validate.json | default({})).message is defined
+
+    - name: "Tailscale admin | Fetch the live policy"
+      ansible.builtin.uri:
+        url: "{{ _api }}/tailnet/-/acl"
+        headers:
+          Authorization: "{{ _auth }}"
+          Accept: application/hujson
+        return_content: true
+      register: _live
+
+    - name: "Tailscale admin | Diff live → new"
+      ansible.builtin.shell: |
+        diff -u <(printf '%s\n' "$LIVE") <(printf '%s\n' "$NEW") || true
+      args:
+        executable: /bin/bash
+      environment:
+        LIVE: "{{ _live.content }}"
+        NEW: "{{ _policy }}"
+      register: _diff
+      changed_when: false
+
+    - name: "Tailscale admin | Policy diff"
+      ansible.builtin.debug:
+        msg: "{{ _diff.stdout_lines if _diff.stdout | length > 0 else 'No change.' }}"
+
+    - name: "Tailscale admin | Apply the policy"
+      ansible.builtin.uri:
+        url: "{{ _api }}/tailnet/-/acl"
+        method: POST
+        headers:
+          Authorization: "{{ _auth }}"
+          Content-Type: application/hujson
+          If-Match: "{{ _live.etag | default(omit) }}"
+        body: "{{ _policy }}"
+      when:
+        - _apply
+        - _diff.stdout | length > 0
+      changed_when: true
+
+    # ── Stale devices ─────────────────────────────────────────────────────────
+    - name: "Tailscale admin | List devices"
+      ansible.builtin.uri:
+        url: "{{ _api }}/tailnet/-/devices"
+        headers:
+          Authorization: "{{ _auth }}"
+      register: _devices
+
+    - name: "Tailscale admin | Find stale devices"
+      ansible.builtin.set_fact:
+        _stale: >-
+          {{ _devices.json.devices
+             | selectattr('hostname', 'in', tailscale_stale_devices)
+             | list }}
+
+    - name: "Tailscale admin | Stale devices"
+      ansible.builtin.debug:
+        msg: "{{ _stale | map(attribute='hostname') | list if _stale | length > 0 else 'None.' }}"
+
+    - name: "Tailscale admin | Remove stale devices"
+      ansible.builtin.uri:
+        url: "{{ _api }}/device/{{ item.id }}"
+        method: DELETE
+        headers:
+          Authorization: "{{ _auth }}"
+      loop: "{{ _stale }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+      when: _apply
+      changed_when: true
+
+    - name: "Tailscale admin | Dry run"
+      ansible.builtin.debug:
+        msg: "Dry run: nothing changed. Re-run with -e confirm=true to apply the policy diff and remove the stale devices."
+      when: not _apply

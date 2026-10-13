@@ -23,6 +23,11 @@ homelab_users:
     ssh_key: "{{ vault_homelab_ssh_pubkey }}"
     sudo_passwordless: true
 
+# ── Break-glass SSH (docs/K8S_SITE_MOVE.md) ────────────────────────────────────
+# Public half of the user CA made by `controller.yml --tags ssh_ca`; empty
+# (feature off) until that key exists in the repo's .ssh/ folder.
+ssh_user_ca_pubkey: "{{ lookup('ansible.builtin.file', inventory_dir ~ '/../.ssh/homelab-user-ca.pub', errors='ignore') | default('', true) }}"
+
 # ── Notifications ─────────────────────────────────────────────────────────────
 # ntfy lived on homelab-observe, which is gone. Discord only for now.
 notify_ntfy_url: ""

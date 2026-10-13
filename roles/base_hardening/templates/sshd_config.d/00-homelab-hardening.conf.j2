@@ -10,3 +10,9 @@ X11Forwarding no
 MaxAuthTries {{ ssh_max_auth_tries }}
 ClientAliveInterval {{ ssh_client_alive_interval }}
 ClientAliveCountMax {{ ssh_client_alive_count_max }}
+{% if ssh_user_ca_pubkey | default('') | length > 0 %}
+# Break-glass: short-lived certificates signed by the homelab user CA (whose
+# private key stays on the controller). Principal "admin" → user admin only.
+TrustedUserCAKeys /etc/ssh/homelab_user_ca.pub
+AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u
+{% endif %}
