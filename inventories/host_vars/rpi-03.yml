@@ -7,8 +7,9 @@
 # bootstrap_user: <imager-user>
 
 # ── Storage (roles/nvme_storage) ──────────────────────────────────────────────
-# Off until `lsblk` on the Pi confirms the NVMe is NOT the boot disk. If the Pi
-# boots from NVMe, local PVs go in a directory on the root filesystem instead.
-nvme_enabled: false
+# The Pi boots from SD/USB; the NVMe is a separate data disk mounted at
+# nvme_mount_point (local PVs in M2+). The role never reformats an existing
+# filesystem and refuses a partitioned or otherwise-mounted device.
+nvme_enabled: true
 nvme_device: /dev/nvme0n1
 nvme_mount_point: /mnt/nvme

@@ -7,10 +7,10 @@ Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the 
 
 ## Nodes
 
-| Inventory name | Role                    | OS                              | Install user |
-|----------------|-------------------------|---------------------------------|--------------|
-| `laptop-01`    | Control plane (amd64)   | Debian 13                       | see below    |
-| `rpi-03`       | Data node, Pi 5 + NVMe  | Raspberry Pi OS Lite (trixie)   | see below    |
+| Inventory name | Role                    | OS                              | Install user | Status               |
+|----------------|-------------------------|---------------------------------|--------------|----------------------|
+| `laptop-01`    | Control plane (amd64)   | Debian 13                       | `root`       | Bootstrapped 13 Oct  |
+| `rpi-03`       | Data node, Pi 5 + NVMe  | Raspberry Pi OS Lite (trixie)   | `admin`      | Next                 |
 
 Groups in [`inventories/k8s.yml`](../inventories/k8s.yml): `k8s` → `k8s_control_plane`, `k8s_workers`, plus
 `k8s_data` for the database node. They're deliberately not called `data`/`svc`, so the legacy group vars never apply.
@@ -100,3 +100,15 @@ ssh -p <ssh_port> -o PubkeyAuthentication=no admin@<laptop-01 IP>    # → Permi
 ssh -p <ssh_port> -i .ssh/homelab homelab@<laptop-01 IP> ping -c2 <rpi-03 IP>   # nodes reach each other (M1 exit)
 ansible-playbook playbooks/bootstrap.yml --limit laptop-01        # re-run: probe says "hardened", no prompt
 ```
+
+## Troubleshooting
+
+- **`Connection reset by peer` / `kex_exchange_identification` after a few failed logins**: OpenSSH 10's
+  `PerSourcePenalties` briefly blocks your IP. Wait about a minute and re-run.
+- **`root@…: Permission denied (publickey)`** after hardening is expected: root login is off. Log in as `admin` with
+  `.ssh/homelab-edge`, or as `homelab` with `.ssh/homelab`, on `ssh_port`.
+- **`Connection refused` on `ssh_port` for a fresh node**: the probe handles this by falling back to
+  `fallback_ssh_port`. If it still fails, check `ssh_port`/`fallback_ssh_port` in `overrides.yml`.
+- **`nvme_storage` stops with "partitioned or mounted elsewhere"**: by design, so it can't format a disk that may hold
+  data or the OS. Check `lsblk -f`; wipe the disk deliberately (`wipefs -a`) only if its contents aren't needed, or set
+  `nvme_enabled: false`.
