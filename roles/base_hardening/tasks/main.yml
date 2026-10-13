@@ -197,6 +197,45 @@
     ansible_port: "{{ ssh_port }}"
   tags: [ssh, security]
 
+# If this run logged in with a password (a fresh node), that login no longer
+# works: sshd is now key-only and may be on a new port. Hand the rest of the
+# play to the key-based identity the users role just authorised. Callers opt
+# in by passing ssh_post_harden_user/ssh_post_harden_key.
+- name: "Security | Scan host key on {{ ssh_port }} for the post-hardening login"
+  ansible.builtin.command: "ssh-keyscan -p {{ ssh_port }} {{ ansible_host }}"
+  register: _post_harden_host_keys
+  changed_when: false
+  check_mode: false
+  delegate_to: localhost
+  become: false
+  when: ssh_post_harden_user | default('') | length > 0
+  tags: [ssh, security]
+
+- name: "Security | Trust host key on {{ ssh_port }}"
+  ansible.builtin.known_hosts:
+    name: "{{ ansible_host if ssh_port | int == 22 else '[' ~ ansible_host ~ ']:' ~ ssh_port }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ _post_harden_host_keys.stdout_lines | default([]) | select('match', '^[^#]') | list }}"
+  no_log: true
+  delegate_to: localhost
+  become: false
+  when: ssh_post_harden_user | default('') | length > 0
+  tags: [ssh, security]
+
+- name: "Security | Switch Ansible to the post-hardening identity"
+  ansible.builtin.set_fact:
+    ansible_user: "{{ ssh_post_harden_user }}"
+    ansible_ssh_private_key_file: "{{ ssh_post_harden_key }}"
+    ansible_ssh_common_args: "-o PreferredAuthentications=publickey"
+    ansible_become: true
+  when: ssh_post_harden_user | default('') | length > 0
+  tags: [ssh, security]
+
+- name: "Security | Reconnect with the new identity"
+  ansible.builtin.meta: reset_connection
+  tags: [ssh, security]
+
 - name: "Security | Apply kernel hardening sysctls"
   ansible.posix.sysctl:
     name: "{{ item.name }}"

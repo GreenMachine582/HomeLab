@@ -208,34 +208,14 @@
         name: users
       tags: [base, users]
 
+    # On fresh nodes base_hardening hands over to the homelab key itself,
+    # the moment sshd goes key-only, so the rest of the role can still connect.
     - name: "Roles | Base hardening"
       ansible.builtin.include_role:
         name: base_hardening
-      tags: [base, hardening]
-
-    # Fresh nodes only: password auth is now off, so switch to the homelab
-    # key the users role just authorised. Trust the host key on ssh_port
-    # first in case base_hardening moved sshd.
-    - name: "Ansible | Trust host key on the hardened port"
-      ansible.builtin.shell:
-        cmd: "ssh-keyscan -p {{ ssh_port }} {{ ansible_host }} 2>/dev/null"
-      register: _post_harden_host_keys
-      changed_when: false
-      delegate_to: localhost
-      become: false
-      when: not _hardened
-      tags: [base, hardening]
-
-    - name: "Ansible | Add host key to known_hosts"
-      ansible.builtin.known_hosts:
-        name: "{{ '[' ~ ansible_host ~ ']:' ~ ssh_port if ssh_port | int != 22 else ansible_host }}"
-        key: "{{ item }}"
-        state: present
-      loop: "{{ _post_harden_host_keys.stdout_lines | default([]) | select('match', '^[^#]') | list }}"
-      no_log: true
-      delegate_to: localhost
-      become: false
-      when: not _hardened
+      vars:
+        ssh_post_harden_user: "{{ '' if _hardened else 'homelab' }}"
+        ssh_post_harden_key: ~/homelab/.ssh/homelab
       tags: [base, hardening]
 
     # Removes the one-off override that allowed the first root password login
@@ -245,20 +225,6 @@
       ansible.builtin.file:
         path: /etc/ssh/sshd_config.d/99-bootstrap-root.conf
         state: absent
-      tags: [base, hardening]
-
-    - name: "Ansible | Switch to the homelab key"
-      ansible.builtin.set_fact:
-        ansible_user: homelab
-        ansible_port: "{{ ssh_port }}"
-        ansible_ssh_private_key_file: ~/homelab/.ssh/homelab
-        ansible_ssh_common_args: "-o PreferredAuthentications=publickey"
-        ansible_become: true
-      when: not _hardened
-      tags: [base, hardening]
-
-    - name: "Ansible | Reconnect with the new identity"
-      ansible.builtin.meta: reset_connection
       tags: [base, hardening]
 
     - name: "Roles | NVMe storage"
