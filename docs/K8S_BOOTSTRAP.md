@@ -51,6 +51,8 @@ Groups in [`inventories/k8s.yml`](../inventories/k8s.yml): `k8s` → `k8s_contro
 5. **Pi storage**: on the Pi, run `lsblk`. If `/` is on `nvme0n1`, the Pi boots from the NVMe, so leave
    `nvme_enabled: false` in `host_vars/rpi-03.yml`. `roles/nvme_storage` also refuses any partitioned or mounted device.
 6. **Tailscale**: no existing tailnet device may already be named `laptop-01` or `rpi-03`. The role stops if one is.
+7. **IP changes**: router DHCP reservations are deferred for now. If a node's lease changes, update its `ip_*` in
+   `overrides.yml` and re-run.
 
 ## Run
 
