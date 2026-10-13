@@ -19,9 +19,16 @@ node IPs change, the cluster is **reset and rebuilt** at the site; it's empty, s
    - `tailscale_tailnet`: the probe then tries MagicDNS names first.
    - `home_lan_subnet`: the site must never advertise this.
    - `tailscale_admin_login`: optional; your login email, which turns on the policy's built-in tests.
-2. **Admin OAuth client** (Tailscale admin console → Settings → OAuth clients): scopes **Policy File: write** and
-   **Devices: Core: write**. Store it in `vault.yml` as `vault_tailscale_admin_oauth_client_id` / `_secret`. It's
-   separate from the nodes' client and never leaves the controller.
+2. **Admin OAuth client**: separate from the nodes' client, and it never leaves the controller.
+   - Tailscale admin console → **Settings → OAuth clients** (newer consoles: **Settings → Trust credentials**, type
+     OAuth). Description: `homelab-admin (controller)`.
+   - Scopes: **General → Policy File: Write** and **Devices → Core: Write**. Nothing else.
+   - Devices: Core write asks for tags: pick `tag:homelab`.
+   - Generate, then copy the client ID and the secret (`tskey-client-…`). The secret is shown only once.
+   - `ansible-vault edit inventories/group_vars/all/vault.yml` and add `vault_tailscale_admin_oauth_client_id` and
+     `vault_tailscale_admin_oauth_client_secret` (see `vault.yml.example`).
+   - If removing the stale devices fails with 403, delete them in the console once by hand. They predate
+     `tag:homelab`, so the client may not be allowed to manage them.
 3. **Tailscale policy** (`tailscale/policy.hujson.j2`). It also removes the stale `homelab-edge`, `homelab-observe`
    and `homelab-svc-01` devices.
    ```bash
@@ -44,8 +51,14 @@ node IPs change, the cluster is **reset and rebuilt** at the site; it's empty, s
 5. **Argon cases**: `bootstrap.yml` installs the power-button and fan daemon (`argon_case` in host_vars). Then set
    each case's **power jumper to "always on"**, so a Pi boots by itself when power returns. That's a physical
    setting on the case board.
-6. **laptop-01 BIOS**: enable **power on after AC loss** (the name varies by vendor: "AC Recovery", "Restore on AC
-   Power Loss"). The battery covers short cuts; this covers long ones.
+6. **laptop-01 BIOS**: enable **power on when AC is connected**, if the firmware has it. The battery covers short cuts;
+   this covers ones long enough to drain it. Where to look:
+   - Lenovo ThinkPad: Config → Power → "Power On with AC Attach".
+   - Dell: Power Management → "AC Behavior" / "Wake on AC".
+   - HP: Advanced → Boot Options or Power-On Options → "Power on when AC detected".
+   - Others: "AC Recovery", "Auto Power On", "Restore on AC Power Loss". Many consumer laptops don't have it.
+
+   Without it, laptop-01 stays off after a long outage until someone presses the power button.
 7. **Optional, to save time at the site:** `cluster_reset.yml` now. Otherwise do it after the move.
 
 ## At the site
