@@ -25,7 +25,9 @@
     k8s_version: "{{ _cp.k8s_version }}"
     k8s_minor: "{{ _cp.k8s_minor }}"
     k8s_api_name: "{{ _cp.k8s_api_name }}"
-    k8s_control_plane_ip: "{{ _cp.k8s_control_plane_ip }}"
+    # k8s-api from the controller: the LAN IP at home, laptop-01's Tailscale
+    # IP once the cluster is remote (k8s_api_client_ip in overrides.yml).
+    k8s_control_plane_ip: "{{ _cp.k8s_api_client_ip | default(_cp.k8s_control_plane_ip) }}"
     cilium_cli_version: "{{ _cp.cilium_cli_version }}"
 
   tasks:
@@ -53,3 +55,37 @@
       ansible.builtin.include_role:
         name: k8s_client
       tags: [controller, client]
+
+    # Break-glass SSH user CA (docs/K8S_SITE_MOVE.md). Only with --tags ssh_ca.
+    # The private key stays here; bootstrap.yml installs the public half on
+    # the nodes; scripts/sign-breakglass.sh signs one-hour certificates.
+    - name: "Controller | Break-glass SSH user CA"
+      tags: [never, ssh_ca]
+      become: false
+      vars:
+        _ca_key: "{{ playbook_dir }}/../.ssh/homelab-user-ca"
+      block:
+        - name: "Controller | Check for an existing CA"
+          ansible.builtin.stat:
+            path: "{{ _ca_key }}"
+          register: _ca
+
+        - name: "Controller | Passphrase for the new CA key"
+          ansible.builtin.pause:
+            prompt: "Passphrase for the break-glass CA key (store it in your password manager)"
+            echo: false
+          register: _ca_pass
+          when: not _ca.stat.exists
+
+        - name: "Controller | Create the CA key pair"
+          ansible.builtin.command:
+            argv: [ssh-keygen, -t, ed25519, -f, "{{ _ca_key }}", -C, homelab-user-ca, -N, "{{ _ca_pass.user_input }}"]
+            creates: "{{ _ca_key }}"
+          no_log: true
+          when: not _ca.stat.exists
+
+        - name: "Controller | Next step"
+          ansible.builtin.debug:
+            msg: >-
+              CA at {{ _ca_key }}(.pub). Back up the private key offline with the
+              age key. Run bootstrap.yml to install the public key on the nodes.

@@ -93,6 +93,12 @@
         - nvme_enabled | default(false)
       tags: [nvme, storage]
 
+    - name: "Roles | Argon case (power button, fan)"
+      ansible.builtin.include_role:
+        name: argon_case
+      when: argon_case is defined
+      tags: [argon]
+
     - name: "Roles | Laptop power settings"
       ansible.builtin.include_role:
         name: laptop_power
@@ -103,6 +109,13 @@
       ansible.builtin.include_role:
         name: tailscale
       tags: [tailscale]
+
+    # After Tailscale, so a static-IP change at the site can reconnect over
+    # the tailnet. Reboots the node when its address changes.
+    - name: "Roles | Node network (Wi-Fi off, static node_ip)"
+      ansible.builtin.include_role:
+        name: node_network
+      tags: [network]
 
     - name: "Roles | Firewall"
       ansible.builtin.include_role:

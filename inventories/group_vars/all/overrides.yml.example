@@ -38,3 +38,14 @@ ip_laptop_01: "EDIT_BEFORE_USE"   # control plane
 ip_rpi_03:    "EDIT_BEFORE_USE"   # data node (Pi 5 + NVMe)
 # ip_rpi_01:  "EDIT_BEFORE_USE"
 # ip_rpi_02:  "EDIT_BEFORE_USE"
+
+# ── Site network (roles/node_network, docs/K8S_SITE_MOVE.md) ───────────────────
+# The site router can't reserve addresses, so nodes get static IPs: pick
+# ip_* outside its DHCP pool, set these, then node_network_static: true.
+node_network_static: false
+lan_gateway: "EDIT_BEFORE_USE"           # site router, e.g. 192.168.20.1
+# lan_dns: ["192.168.20.1", "1.1.1.1"]  # default: [lan_gateway, 1.1.1.1]
+home_lan_subnet: "EDIT_BEFORE_USE"       # home LAN; must never be advertised from the site
+tailscale_subnet_router: false           # true: laptop-01 advertises lan_subnet
+# k8s-api on the controller: laptop-01's Tailscale IP once the cluster is remote
+# k8s_api_client_ip: "100.x.y.z"

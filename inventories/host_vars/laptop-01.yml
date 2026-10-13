@@ -9,3 +9,12 @@ bootstrap_user: root
 # ── Power (roles/laptop_power) ───────────────────────────────────────────────
 laptop_power_enabled: true
 laptop_battery_charge_limit: 80
+
+# ── Network (roles/node_network, roles/tailscale) ────────────────────────────
+# Wired only: a second LAN address (Wi-Fi) breaks Cilium's node-to-node trust.
+node_disable_wifi: true
+
+# Site subnet router: lets the home PC reach non-tailnet devices at the site
+# (router UI, fresh nodes). Turn on with tailscale_subnet_router: true in
+# overrides.yml once lan_subnet is the site's and doesn't overlap home.
+tailscale_advertise_routes: "{{ [lan_subnet] if tailscale_subnet_router | default(false) | bool else [] }}"

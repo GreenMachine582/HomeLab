@@ -124,11 +124,13 @@
       capabilities:
         devices:
           create:
-            reusable: true
+            # Single use, short-lived: the key is spent by the `tailscale up`
+            # below, so a leaked copy is worthless.
+            reusable: false
             ephemeral: false
             preauthorized: true
             tags: "{{ tailscale_tags }}"
-      expirySeconds: 0
+      expirySeconds: 3600
     status_code: 200
   register: ts_key_result
   no_log: true
@@ -154,6 +156,32 @@
   changed_when: true
   no_log: true
   tags: [tailscale]
+
+# `tailscale up` above only runs on first join; apply route changes (e.g. the
+# site subnet router) to nodes that are already on the tailnet.
+- name: "Tailscale | Refuse to advertise the home LAN"
+  ansible.builtin.assert:
+    that: home_lan_subnet | default('') not in tailscale_advertise_routes
+    fail_msg: >-
+      {{ home_lan_subnet }} is the home LAN; advertising it from the site would
+      hijack local traffic at home. Use a non-overlapping site subnet.
+  when: tailscale_advertise_routes | length > 0
+  tags: [tailscale, routes]
+
+- name: "Tailscale | Read current preferences"
+  ansible.builtin.command: tailscale debug prefs
+  register: ts_prefs
+  changed_when: false
+  check_mode: false
+  when: tailscale_up
+  tags: [tailscale, routes]
+
+- name: "Tailscale | Apply advertised routes"
+  ansible.builtin.command: "tailscale set --advertise-routes={{ tailscale_advertise_routes | join(',') }}"
+  when:
+    - tailscale_up
+    - (ts_prefs.stdout | from_json).AdvertiseRoutes | default([], true) | sort != tailscale_advertise_routes | sort
+  tags: [tailscale, routes]
 
 - name: "Tailscale | Enable IP forwarding (subnet router)"
   ansible.posix.sysctl:

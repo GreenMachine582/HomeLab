@@ -1,0 +1,157 @@
+---
+# roles/node_network/tasks/main.yml
+# Wi-Fi off where asked, and a static node_ip on the wired interface.
+#
+# Changing a node's own address cuts the SSH session making the change, so
+# the new config is written, a reboot is scheduled a few seconds out, and
+# Ansible reconnects on node_ip (or stays on Tailscale if that's the
+# endpoint). Works the same for NetworkManager (Pi OS) and ifupdown
+# (Debian netinst on laptop-01).
+
+- name: "Network | Block Wi-Fi"
+  when: node_disable_wifi | bool
+  tags: [network, wifi]
+  block:
+    - name: "Network | Install rfkill"
+      ansible.builtin.apt:
+        name: rfkill
+        state: present
+
+    - name: "Network | Check Wi-Fi state"
+      ansible.builtin.command: rfkill list wifi
+      register: _rfkill
+      changed_when: false
+      check_mode: false
+
+    - name: "Network | Soft-block Wi-Fi (systemd-rfkill keeps it across reboots)"
+      ansible.builtin.command: rfkill block wifi
+      when:
+        - _rfkill.stdout | length > 0
+        - "'Soft blocked: no' in _rfkill.stdout"
+
+- name: "Network | Static address"
+  when: node_network_static | bool
+  tags: [network, static-ip]
+  block:
+    - name: "Network | Assert the site settings are filled in"
+      ansible.builtin.assert:
+        that:
+          - lan_gateway != 'EDIT_BEFORE_USE'
+          - lan_subnet != 'EDIT_BEFORE_USE'
+          - node_ip != 'EDIT_BEFORE_USE'
+        fail_msg: Set lan_subnet, lan_gateway and ip_* in overrides.yml first.
+
+    - name: "Network | Work out interface and prefix"
+      ansible.builtin.set_fact:
+        _net_iface: "{{ node_interface | default(ansible_default_ipv4.interface) }}"
+        _net_prefix: "{{ lan_subnet.split('/')[1] }}"
+
+    - name: "Network | Is NetworkManager managing the network?"
+      ansible.builtin.command: systemctl is-active NetworkManager
+      register: _nm_active
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    # ── NetworkManager (Pi OS) ────────────────────────────────────────────────
+    - name: "Network | NetworkManager connection on {{ _net_iface }}"
+      when: _nm_active.rc == 0
+      block:
+        - name: "Network | Find the connection"
+          ansible.builtin.command: "nmcli -g GENERAL.CONNECTION device show {{ _net_iface }}"
+          register: _nm_conn
+          changed_when: false
+          check_mode: false
+
+        - name: "Network | Read its IPv4 settings"
+          ansible.builtin.command:
+            argv: [nmcli, -g, "ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns", connection, show, "{{ _nm_conn.stdout }}"]
+          register: _nm_ipv4
+          changed_when: false
+          check_mode: false
+
+        - name: "Network | Set the static address"
+          ansible.builtin.command:
+            argv:
+              - nmcli
+              - connection
+              - modify
+              - "{{ _nm_conn.stdout }}"
+              - ipv4.method
+              - manual
+              - ipv4.addresses
+              - "{{ node_ip }}/{{ _net_prefix }}"
+              - ipv4.gateway
+              - "{{ lan_gateway }}"
+              - ipv4.dns
+              - "{{ lan_dns | join(',') }}"
+          register: _net_changed_nm
+          when: >-
+            _nm_ipv4.stdout_lines !=
+            ['manual', node_ip ~ '/' ~ _net_prefix, lan_gateway, lan_dns | join(',')]
+
+    # ── ifupdown (Debian) ─────────────────────────────────────────────────────
+    - name: "Network | ifupdown on {{ _net_iface }}"
+      when: _nm_active.rc != 0
+      block:
+        - name: "Network | Write /etc/network/interfaces"
+          ansible.builtin.template:
+            src: interfaces.j2
+            dest: /etc/network/interfaces
+            owner: root
+            group: root
+            mode: "0644"
+            backup: true
+          register: _net_changed_ifupdown
+
+        - name: "Network | Is /etc/resolv.conf managed by something else?"
+          ansible.builtin.stat:
+            path: /etc/resolv.conf
+          register: _resolv
+
+        # Without DHCP nothing rewrites resolv.conf, so set it here unless
+        # systemd-resolved/resolvconf owns it (a symlink).
+        - name: "Network | DNS servers"
+          ansible.builtin.copy:
+            dest: /etc/resolv.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              # Managed by Ansible (roles/node_network)
+              {% for ns in lan_dns %}
+              nameserver {{ ns }}
+              {% endfor %}
+          when: not _resolv.stat.islnk | default(false)
+
+    # ── Apply ────────────────────────────────────────────────────────────────
+    - name: "Network | Apply: reboot in a few seconds"
+      ansible.builtin.command: systemd-run --on-active=5 systemctl reboot
+      when: >-
+        (_net_changed_nm | default({})) is changed
+        or (_net_changed_ifupdown | default({})) is changed
+      register: _net_reboot
+
+    - name: "Network | Reconnect on the new address"
+      when: _net_reboot is changed
+      block:
+        - name: "Network | Switch to node_ip unless connected over Tailscale"
+          ansible.builtin.set_fact:
+            ansible_host: "{{ node_ip }}"
+          when: "'.ts.net' not in ansible_host"
+
+        - name: "Network | Drop the old connection"
+          ansible.builtin.meta: reset_connection
+
+        - name: "Network | Wait for the node to come back"
+          ansible.builtin.wait_for_connection:
+            delay: 30
+            timeout: 600
+
+        - name: "Network | Refresh facts"
+          ansible.builtin.setup:
+
+        - name: "Network | Assert node_ip is live"
+          ansible.builtin.assert:
+            that: node_ip in ansible_all_ipv4_addresses
+            fail_msg: "{{ node_ip }} isn't configured after the reboot; addresses: {{ ansible_all_ipv4_addresses }}"
