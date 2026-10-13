@@ -1,0 +1,97 @@
+# Moving the cluster to the remote site
+
+The nodes live at a remote site. The main PC (WSL, the Ansible controller) stays at home and manages them over
+**Tailscale**. The site router can't reserve DHCP addresses, so nodes get **static IPs** from Ansible. Because the
+node IPs change, the cluster is **reset and rebuilt** at the site; it's empty, so nothing is lost.
+
+## Access paths
+
+| Situation                       | How you get in                                                                        |
+|---------------------------------|----------------------------------------------------------------------------------------|
+| Normal                          | Tailscale MagicDNS: Ansible (`<node>.<tailnet>.ts.net`), kubectl (`k8s-api` → laptop-01's Tailscale IP) |
+| Device not on the tailnet       | laptop-01's **subnet route** to the site LAN (router UI, a freshly imaged node)        |
+| Tailscale down for the node     | **Break-glass certificate**: RDP to the site PC, SSH over the LAN with a 1-hour cert   |
+| Node hung                       | Argon button (Pis) / site power cycle; nodes boot by themselves after power returns    |
+
+## Before leaving home
+
+1. **`overrides.yml`**:
+   - `tailscale_tailnet`: the probe then tries MagicDNS names first.
+   - `home_lan_subnet`: the site must never advertise this.
+   - `tailscale_admin_login`: optional; your login email, which turns on the policy's built-in tests.
+2. **Admin OAuth client** (Tailscale admin console → Settings → OAuth clients): scopes **Policy File: write** and
+   **Devices: Core: write**. Store it in `vault.yml` as `vault_tailscale_admin_oauth_client_id` / `_secret`. It's
+   separate from the nodes' client and never leaves the controller.
+3. **Tailscale policy** (`tailscale/policy.hujson.j2`). It also removes the stale `homelab-edge`, `homelab-observe`
+   and `homelab-svc-01` devices.
+   ```bash
+   ansible-playbook playbooks/tailscale_admin.yml                  # validate + diff, changes nothing
+   ansible-playbook playbooks/tailscale_admin.yml -e confirm=true  # apply
+   ```
+   The policy:
+   - only admins tag nodes as `tag:homelab`;
+   - your own devices can reach each other;
+   - admins reach nodes on `ssh_port`, 22 and 6443;
+   - the site route is admins-only and auto-approved for `tag:homelab`;
+   - nodes can't connect to your devices.
+4. **Break-glass CA**: creates `.ssh/homelab-user-ca`. Back it up offline next to the age key.
+   ```bash
+   ansible-playbook playbooks/controller.yml -K --tags ssh_ca
+   ansible-playbook playbooks/bootstrap.yml           # installs the CA public key on the nodes
+   ```
+   Test it at home: `ssh-keygen -t ed25519 -f /tmp/bg`, then `scripts/sign-breakglass.sh +5m` (paste `/tmp/bg.pub`
+   and save the output as `/tmp/bg-cert.pub`), then `ssh -i /tmp/bg -p <ssh_port> admin@<node>`.
+5. **Argon cases**: `bootstrap.yml` installs the power-button and fan daemon (`argon_case` in host_vars). Then set
+   each case's **power jumper to "always on"**, so a Pi boots by itself when power returns. That's a physical
+   setting on the case board.
+6. **laptop-01 BIOS**: enable **power on after AC loss** (the name varies by vendor: "AC Recovery", "Restore on AC
+   Power Loss"). The battery covers short cuts; this covers long ones.
+7. **Optional, to save time at the site:** `cluster_reset.yml` now. Otherwise do it after the move.
+
+## At the site
+
+1. Plug in. Nodes take a DHCP address from the site router and come back on Tailscale by themselves. Check with
+   `ansible-playbook playbooks/cluster_status.yml`, or `tailscale status` on the PC.
+2. Find out the site LAN (router UI through the RDP PC): subnet, gateway, and the **DHCP pool range**. Pick static
+   addresses **outside the pool**.
+3. **`overrides.yml`**:
+   ```yaml
+   lan_subnet: "<site subnet>/24"       # must not overlap home_lan_subnet
+   lan_gateway: "<site router>"
+   ip_laptop_01: "<static>"
+   ip_rpi_03: "<static>"
+   node_network_static: true
+   tailscale_subnet_router: true        # laptop-01 advertises lan_subnet
+   k8s_api_client_ip: "<laptop-01's Tailscale 100.x IP>"
+   ```
+4. Apply the node changes:
+   ```bash
+   ansible-playbook playbooks/bootstrap.yml
+   ```
+   This sets the static IPs (each node reboots once, and the play reconnects over Tailscale), turns the laptop's Wi-Fi
+   off, starts the subnet route (auto-approved by the policy), and re-applies UFW for the new `lan_subnet`.
+5. Push the policy again, because it now includes the site route, then rebuild the cluster:
+   ```bash
+   ansible-playbook playbooks/tailscale_admin.yml -e confirm=true
+   ansible-playbook playbooks/controller.yml -K                       # k8s-api → Tailscale IP
+   ansible-playbook playbooks/cluster_reset.yml                       # type "reset"
+   ansible-playbook playbooks/cluster.yml
+   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true
+   kubectl get nodes -o wide                                          # from home, over the tailnet
+   ```
+
+## Break-glass, when Tailscale is down
+
+1. RDP to the site PC, then `ssh-keygen -t ed25519 -f breakglass` (Windows has OpenSSH).
+2. Copy `breakglass.pub` to the home PC (RDP clipboard), then run `scripts/sign-breakglass.sh`, which is valid for
+   one hour by default.
+3. Paste the certificate back as `breakglass-cert.pub`, then `ssh -i breakglass -p <ssh_port> admin@<node LAN IP>`.
+   UFW allows SSH from the site LAN.
+4. Afterwards, delete both files on the site PC. The certificate expires by itself.
+
+## Still open
+
+- **Outside monitoring:** nothing alerts if the whole site goes silent. The external Uptime Kuma at home is in the
+  backlog and is now a priority.
+- **Backups:** backup drives at the site aren't off-site. The etcd snapshots and dumps also get copied home (etcd
+  snapshot fetch in M2 part B).

@@ -257,35 +257,30 @@ manage any other node over VPN. LAN access (direct IP on `ssh_port`) remains ava
 
 ### ACLs
 
-Tailscale ACLs are defined in the Tailscale admin console (not in this repo). Recommended policy:
+The tailnet policy is **code**: `tailscale/policy.hujson.j2`, validated and pushed by
+`playbooks/tailscale_admin.yml` (dry run by default, `-e confirm=true` to apply). Don't edit the policy in the admin
+console: the next push overwrites it. Summary:
 
-| Source            | Destination         | Ports            | Reason                              |
-|-------------------|---------------------|------------------|-------------------------------------|
-| `homelab-edge`    | all homelab nodes   | 22               | Ansible SSH                         |
-| `homelab-observe` | all homelab nodes   | 9100, 8080       | Prometheus scrape (node + cAdvisor) |
-| `tag:admin`       | all homelab nodes   | 22               | Admin SSH access                    |
-| `tag:admin`       | `homelab-observe`   | 3000, 3001, 9000 | Grafana, Uptime Kuma, Portainer     |
-| all homelab nodes | `homelab-observe`   | 3100             | Loki log ingestion                  |
-| `homelab-edge`    | `homelab-svc-01/02` | 8080, 8096, 8000 | Cloudflare Tunnel routing (Camunda/Jellyfin on svc-01, GreenTechHub on svc-02) |
-| svc nodes         | `homelab-data-01`   | 5432, 6379       | Postgres/Redis (shared data tier)   |
-| deny              | all                 | all              | Default deny                        |
+| Source              | Destination                  | Ports                    | Reason                                   |
+|---------------------|------------------------------|--------------------------|------------------------------------------|
+| `autogroup:member`  | `autogroup:self`             | all                      | Your own devices reach each other        |
+| `autogroup:admin`   | `tag:homelab`                | `ssh_port`, 22, 6443     | Ansible/admin SSH (22 = fresh nodes), kubectl |
+| `autogroup:admin`   | site `lan_subnet` (route)    | all                      | Router UI, nodes not on the tailnet yet  |
+| (everything else)   |                              |                          | Denied: nodes can't reach your devices   |
 
-Tag admin devices in the Tailscale console as `tag:admin`. This gives you fine-grained per-node ACL control — tighter 
-than a blanket subnet route allow rule.
-
-> The edge subnet router (`lan_subnet`) should **not** be granted broad access in ACLs. It exists only to reach 
-> non-Tailscale LAN devices; homelab nodes are accessed directly by their own Tailscale IPs.
+`tag:homelab` is owned by `autogroup:admin`, and laptop-01's site route is auto-approved for `tag:homelab`. The site
+route must never overlap the home LAN; the `tailscale` role refuses to advertise `home_lan_subnet`. See
+[K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md) for the remote-site access paths, including break-glass SSH certificates.
 
 ### Key Rotation
 
-Tailscale auth keys are stored in `inventories/group_vars/all/vault.yml`. On expiry, generate a new reusable key from the Tailscale admin 
-console and update the vault:
+Nodes join with **single-use, one-hour** auth keys that the `tailscale` role mints through the nodes' OAuth client
+(`vault_tailscale_oauth_client_id` / `_secret`), so there's no stored auth key to rotate. Rotate the OAuth client
+secrets (nodes' and admin) in the admin console, then update `vault.yml`:
 
 ```bash
 ansible-vault edit inventories/group_vars/all/vault.yml
 ```
-
-Then re-run the relevant deploy playbook to apply the new key.
 
 ### MagicDNS
 

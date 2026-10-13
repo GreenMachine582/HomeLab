@@ -2,7 +2,8 @@
 
 Runbook for `playbooks/bootstrap.yml`: takes a freshly installed node to a hardened, key-only host on the tailnet. Part
 of milestone M1 in the Kubernetes migration. Next, [K8S_CLUSTER.md](./K8S_CLUSTER.md) (`playbooks/cluster.yml`)
-builds the cluster on these nodes (M2).
+builds the cluster on these nodes (M2), and [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md) covers running them at the
+remote site.
 
 Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the only Ansible controller.
 
@@ -89,9 +90,14 @@ It prompts once, hidden, for the install user's password, if any targeted node i
    moves sshd to `ssh_port` and switches it to **key-only with no root login** and asserts the effective `sshd -T` matches. The play then
    reconnects as `homelab` with the key.
 5. **`nvme_storage`**: `k8s_data` nodes, only when `nvme_enabled: true`.
+   **`argon_case`**: Pis with `argon_case: v2|v3`. Runs Argon's pinned installer once (power button and fan daemon,
+   i2c, Pi 5 NVMe/PCIe settings), sets the fan curve, and reboots if `config.txt` changed.
 6. **`laptop_power`**: laptop-01 only. The lid switch is ignored, and the battery charge is capped at 80% if the
    firmware allows it.
-7. **`tailscale`**: installs it from the Debian repo, then joins the tailnet with a freshly minted, tagged auth key.
+7. **`tailscale`**: installs it from the Debian repo, then joins the tailnet with a freshly minted, single-use,
+   tagged auth key. It also applies `tailscale_advertise_routes` (laptop-01's site subnet route).
+   **`node_network`**: Wi-Fi off where `node_disable_wifi`, and a static `node_ip` when `node_network_static`
+   (remote site, [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md)). Reboots the node once if its address changes.
 8. **`firewall`**: UFW default-deny inbound; SSH allowed from the LAN and the tailnet. A 5-minute auto-rollback guards
    against lockout.
 
