@@ -23,7 +23,6 @@
 #
 # Full map (seed task, Infisical lookups, and the UI must all agree on this):
 #   vault_discord_alerts_webhook      → /prod/discord/ALERTS_WEBHOOK
-#   vault_discord_public_key          → /prod/discord/PUBLIC_KEY
 #   vault_camunda_db_user             → /prod/camunda/DB_USER
 #   vault_camunda_db_password         → /prod/camunda/DB_PASSWORD
 #   vault_camunda_admin_user          → /prod/camunda/ADMIN_USER
@@ -34,7 +33,6 @@
 #   vault_n8n_owner_email             → /prod/n8n/OWNER_EMAIL
 #   vault_n8n_owner_password          → /prod/n8n/OWNER_PASSWORD
 #   vault_n8n_encryption_key          → /prod/n8n/ENCRYPTION_KEY
-#   vault_n8n_webhook_secret          → /prod/n8n/WEBHOOK_SECRET
 #   vault_greentechhub_db_user        → /prod/greentechhub/DB_USER
 #   vault_greentechhub_db_password    → /prod/greentechhub/DB_PASSWORD
 #   vault_django_secret_key           → /prod/greentechhub/DJANGO_SECRET_KEY
@@ -114,14 +112,6 @@ vault_n8n_owner_email: "admin@example.com"
 vault_n8n_owner_password: "changeme"
 # Generate with: openssl rand -base64 32
 vault_n8n_encryption_key: "changeme"
-
-# ── discord-gateway ───────────────────────────────────────────────────────────
-# discord-gateway handles INBOUND Discord slash commands routed to n8n workflows.
-# Retained; review after Phase 3 to decide if slash-command automation is needed (TODO #34).
-# DISCORD_PUBLIC_KEY: Discord Developer Portal → your app → General Information
-vault_discord_public_key: "changeme"
-# Shared secret validated by discord-gateway when n8n calls back
-vault_n8n_webhook_secret: "changeme"
 
 # ── PostgreSQL — GreenTechHub (svc-02) ────────────────────────────────────────
 vault_greentechhub_db_user: "greentechhub"

@@ -132,7 +132,6 @@ New `host_roles` to wire into the parameterized bootstrap (topology brief §3.3)
 | `camunda-platform` | **pc-01** | Zeebe + Operate + Tasklist + **Elasticsearch stays here** (data-tier exception preserved — version-locked, single consumer, own snapshots) |
 | `n8n-automation` | **pc-01** | Postgres/Redis via `requires:` → data tier (G8). Queue-mode option later: broker on rpi-03, workers on pc-01 |
 | `authentik-sso` | **pc-01** | Bundled Postgres/Redis for now (`COMPOSE_PROFILES=local-infra`); flips to data tier in G8 with zero repo changes |
-| `discord-gateway` *(if kept, B6)* | pc-01 | Target is now amd64 — ghcr CI can build single-arch; buildx multi-arch optional for portability |
 | `greentechhub` *(new repo, was B2/svc-02)* | **laptop-01** | Django + Celery worker; Postgres/Redis via `requires:` from day one. Flower optional |
 | `jellyfin-media` *(new repo, was svc-03)* | **pc-01** | QSV via `/dev/dri`; library on 1 TB HDD; Sonarr/Radarr/Prowlarr optional later |
 | `homelab-host-agents` *(new, G6)* | every device | node-exporter + portainer-agent, once per device |
@@ -154,7 +153,6 @@ repos** — the old B2 plan of `docker-compose.svc02.yml`/`svc03.yml` inside Hom
 | n8n (main) | ~0.5 GB | |
 | Authentik server + worker (+ bundled PG/Redis until G8) | ~1.5 GB | Drops ~0.5 GB after G8 |
 | Jellyfin | ~1.5 GB | Transcode is QSV (GPU), not CPU/RAM-bound |
-| discord-gateway (if kept) | ~0.1 GB | |
 | **Headroom** | **~5 GB** | Burst, page cache, future services |
 
 Disk: 240 GB SSD → OS + `/var/lib/docker` + ES data + app volumes. 1 TB HDD → `/srv/media` +
@@ -217,7 +215,7 @@ Pi-hole-on-edge being the suspect device) are unchanged.
 
 The fleet is now **arm64 + amd64**. Upstream images used are all multi-arch (Postgres, Redis,
 Prometheus stack, Jellyfin, n8n, Authentik, Camunda/ES on amd64). Rules: `arch:` in `topology.yml`
-is authoritative; custom builds (`discord-gateway`, future BottleBot) must publish an image matching
+is authoritative; custom builds (future BottleBot) must publish an image matching
 their target device's arch — single-arch amd64 is acceptable while their `device:` is pc-01/laptop-01;
 switch CI to buildx multi-arch only if a repo ever retargets to a Pi.
 
@@ -306,8 +304,7 @@ bootstrap playbooks aligned (F1–F5, F6 deferred); `topology.yml` v1 + resolver
 | Merge `wip/svc` → master (keep master's TODO.md; then re-baseline TODO against this brief) | B1 | ☐ open |
 | Bootstrap pc-01 | B3 (retargeted) | ☐ open |
 | Deploy-verify `camunda-platform`, `n8n-automation` | B4/B5, D1/D2 verify | ☐ open |
-| discord-gateway keep/remove decision | B6 | ☐ open — decision gate |
-| Extract + deploy `discord-gateway` (amd64 image) *if kept* | D3 | ☐ conditional |
+| discord-gateway keep/remove decision | B6 | ☑ closed — removed (Oct 2026) |
 | Bootstrap-lock signaling, both halves together; endpoint per §7.5 | B7 | ☐ open — design resolved |
 | Authentik: outpost on edge, group_vars, `services.yml` entry, deploy-verify | E2–E5 | ☐ open |
 
@@ -370,12 +367,12 @@ bootstrapped pc-01 and may be pulled earlier if wanted.
 | B1 | Merge wip/svc | → Stage 3, open |
 | B2 | Create svc02/svc03 compose files in HomeLab | **Superseded** — own repos `greentechhub`, `jellyfin-media` (Stage 8) |
 | B3–B5 | Bootstrap + deploy svc-01 (rpi-03) | **Retargeted** to pc-01 → Stage 3 |
-| B6 | discord-gateway keep/remove | → Stage 3, decision gate |
+| B6 | discord-gateway keep/remove | **Closed** — removed (Oct 2026) |
 | B7 | Bootstrap-lock signaling | → Stage 3; endpoint reconciled (§7.5) |
 | C1–C4, C6 | observe-services extraction | ✅ Done (Stage 0) |
 | C5 | observe deploy-verify | → Stage 1 (merged with A3) |
 | D1, D2 | camunda/n8n extraction | ✅ Done (Stage 0); deploy-verify → Stage 3 |
-| D3 | discord-gateway split | → Stage 3, conditional on B6; amd64 image note (§6.3) |
+| D3 | discord-gateway split | **Dropped** — gateway removed (B6) |
 | E0, E1, E6 | Authentik repo/compose/docs | ✅ Done (Stage 0) |
 | E2–E5 | Outpost, vars, registry entry, verify | → Stage 3; device is now pc-01 |
 | F1–F5 (F6) | Bootstrap playbook alignment | ✅ Done (F6 stays deferred) |
@@ -400,7 +397,7 @@ bootstrapped pc-01 and may be pulled earlier if wanted.
    key-prefix restriction, and `homelab-data-services`'s README documents it as the working
    default. This was carried as an open decision gate longer than it should have been — the
    implementation had already settled it.
-2. **discord-gateway keep/remove** (B6) — Stage 3 gate (carried over).
+2. ~~**discord-gateway keep/remove** (B6)~~ — closed: removed (Oct 2026).
 3. **BottleBot** — Phases 2–3 of the repo-split plan named it the proof-of-concept extraction; the
    mechanism got proven on real services instead. Decide whether BottleBot still gets built, and if
    so its device (laptop-01 headroom fits).

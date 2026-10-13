@@ -18,7 +18,7 @@
 **Changelog from v7:**
 - **`camunda-platform` and `n8n-automation` extracted and registered** in `services.yml` (svc-01 split, Milestone D1/D2) — deploy-verify pending `homelab-svc-01` bootstrap.
 - **Authentik will bundle its own Postgres container, for now** in `authentik-sso` (§5), superseding this doc's earlier draft wording ("reuses the existing svc-01 PostgreSQL instance, no bundled container") — self-contained, matching the "each service repo owns its own backup" principle (§10.7) already applied to every other split repo. A pragmatic starting point while Authentik work is just getting underway, not a final architectural commitment — may move to a shared instance later if that proves more efficient.
-- **`deploy-service`'s `type: image` deployment path is implemented** (`deploy_service/cli.py`, `compose.py`) — the CLI no longer hard-exits on it; this was the last blocker noted for Milestone D3 (discord-gateway).
+- **`deploy-service`'s `type: image` deployment path is implemented** (`deploy_service/cli.py`, `compose.py`) — the CLI no longer hard-exits on it; this was the last blocker noted for Milestone D3 (discord-gateway, since dropped).
 
 **Changelog from v6:**
 - **Small/new-service repo default made explicit (§7).** A service defaults to its own repo unless it demonstrably shares deploy/upgrade/rollback/backup cadence with an existing repo — size alone isn't a reason to cluster. First applied to `authentik-sso` (§5), which gets its own repo rather than folding into `docker-compose.svc01.yml`.
@@ -98,13 +98,12 @@ homelab/
   secrets/vault.yml(.example)
   scripts/                # backup_databases.sh, test_connectivity.sh
   docs/                   # NETWORK.md, TROUBLESHOOTING.md
-  discord-gateway/
   .github/workflows/      # deploy.yml, test.yml
 ```
 
-Node roles today: `homelab-edge` (active), `homelab-observe` (active), `homelab-svc-01` (active — Camunda 8 + Elasticsearch via `camunda-platform`, n8n via `n8n-automation`, discord-gateway still Ansible-managed), `homelab-svc-02` (planned), `homelab-svc-03` (future, Jellyfin).
+Node roles today: `homelab-edge` (active), `homelab-observe` (active), `homelab-svc-01` (active — Camunda 8 + Elasticsearch via `camunda-platform`, n8n via `n8n-automation`), `homelab-svc-02` (planned), `homelab-svc-03` (future, Jellyfin).
 
-> **Current state (post-edge-split, post-observe-split, post-svc01-split):** `roles/edge_services/`, `roles/observe_services/`, and `roles/camunda/` have all been deleted; `docker-compose.edge.yml` now contains only Infisical + Semaphore (bootstrap tier), `docker-compose.observe.yml`/`docs/MONITORING.md` are gone (migrated to `homelab-observe-services`), and Camunda/Elasticsearch/n8n are gone from `docker-compose.svc01.yml` (migrated to `camunda-platform`/`n8n-automation`, leaving only discord-gateway + portainer-agent there). The network appliance services run in `homelab-edge-services`. The compose file rename (`docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml`) remains deferred — the service strip achieves the same isolation without requiring a reference update across bootstrap roles.
+> **Current state (post-edge-split, post-observe-split, post-svc01-split):** `roles/edge_services/`, `roles/observe_services/`, and `roles/camunda/` have all been deleted; `docker-compose.edge.yml` now contains only Infisical + Semaphore (bootstrap tier), `docker-compose.observe.yml`/`docs/MONITORING.md` are gone (migrated to `homelab-observe-services`), and Camunda/Elasticsearch/n8n are gone from `docker-compose.svc01.yml` (migrated to `camunda-platform`/`n8n-automation`, leaving only portainer-agent there; discord-gateway was dropped Oct 2026). The network appliance services run in `homelab-edge-services`. The compose file rename (`docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml`) remains deferred — the service strip achieves the same isolation without requiring a reference update across bootstrap roles.
 
 ---
 
@@ -132,7 +131,7 @@ Decided/concrete moves:
 | `docker-compose.observe.yml` + `roles/observe_services/` + `docs/MONITORING.md` | `homelab-observe-services` (clustered — see §7) |
 | Camunda 8 + Elasticsearch | `camunda-platform` |
 | n8n | `n8n-automation` |
-| `discord-gateway/` | `discord-gateway` |
+| `discord-gateway/` | ~~`discord-gateway`~~ — dropped Oct 2026 |
 | `scripts/backup_databases.sh` | Moves with whichever repo owns the data it backs up; cross-service backup orchestration (if any) stays central |
 | BottleBot | Own repo from day one — proof-of-concept for the whole pattern, and the **first service migrated** under the revised sequencing in §8 |
 | Authentik SSO (server, worker, Redis, own Postgres for now) | `authentik-sso` — own repo from day one (created, `docker-compose.yml` written; TODO.md Milestone E0/E1 done, E2-E6 remain). Bundles its own Postgres container for now — self-contained, like every other split repo (see §10.7 "each service repo owns its own backup"); may move to a shared instance later if that proves more efficient. See §7 for why this doesn't cluster into `camunda-platform`/`n8n-automation` despite being small. |
@@ -157,9 +156,9 @@ v2 assumed every service should roll back via Docker image tags. That only makes
 |---|---|---|---|---|
 | Pure upstream images | Grafana, Prometheus, Loki, Pi-hole, n8n/Camunda (if kept on stock images) | No | `git pull` → `docker compose pull` → `up -d` | Revert the version pin in compose (`image: grafana/grafana:10.4.2`), redeploy |
 | Config-only stacks | `homelab-observe-services`, `homelab-edge-services` as a whole | No | Same as above, at the repo/stack level | `git checkout` previous tag of the *config repo* → redeploy — config is what changes, not an image |
-| Custom applications | BottleBot, discord-gateway | Yes | CI builds → pushes to a registry → `deploy-service` pulls the built image | Pull and run the previous image tag from the registry |
+| Custom applications | BottleBot | Yes | CI builds → pushes to a registry → `deploy-service` pulls the built image | Pull and run the previous image tag from the registry |
 
-**Confirmed:** discord-gateway is a custom build, so it sits in this row alongside BottleBot — both get `deployment.type: image` and registry-based rollback in `services.yml`.
+**Confirmed:** BottleBot is a custom build (discord-gateway was too, dropped Oct 2026) — it gets `deployment.type: image` and registry-based rollback in `services.yml`.
 
 This means `rollback: image_tag` as a blanket default (v2) is replaced by an explicit per-repo `deployment.type` and `rollback.strategy`, so the deploy engine knows exactly what to do per service rather than assuming one mechanism fits all.
 
@@ -357,7 +356,7 @@ Raised directly by the repo owner: some services are too small to justify their 
 **Applying both lenses, the resolved split:**
 - **`homelab-edge-services`** (clustered): Caddy, Cloudflared, Pi-hole, Unbound — operationally "one appliance," same deploy/upgrade/rollback/backup cycle, no independent lifecycle or sharing intent.
 - **`homelab-observe-services`** (clustered): Grafana, Prometheus, Loki, Alertmanager, Uptime Kuma, ntfy — same reasoning, one appliance.
-- **svc-01 splits further rather than clustering**: `camunda-platform`, `n8n-automation`, `discord-gateway` as separate repos, since they have different upgrade cadences, backup requirements, and failure domains — they fail the "deployment unit" test even though they currently live in one compose file.
+- **svc-01 splits further rather than clustering**: `camunda-platform`, `n8n-automation` (and `discord-gateway`, dropped Oct 2026) as separate repos, since they have different upgrade cadences, backup requirements, and failure domains — they fail the "deployment unit" test even though they currently live in one compose file.
 - **BottleBot**: separate repo, no clustering — proof-of-concept for the whole pattern.
 - **`authentik-sso`**: separate repo despite being small — see "Default for new/small services" above.
 
@@ -372,7 +371,7 @@ This resolves the original open question from v1: the schema in §6 already supp
 1. **Phase 1 — build the mechanism, in place.** Build `deploy-service` and `services.yml` inside the existing `HomeLab` monorepo, without moving anything yet. Confirm the webhook auth (custom headers, validated by n8n) and secrets injection path work end-to-end against a no-op or trivial target. Also in this phase: rename `docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml` and strip the network appliance services from it (they'll exist temporarily in neither compose until `homelab-edge-services` is stood up in Phase 4 — on a live node, coordinate this rename with a deploy window). Update `roles/infisical`, `roles/semaphore`, and `bootstrap_edge.yml` to reference the new filename.
 2. **Phase 2 — convert one service.** Extract BottleBot into its own repo (it's new, has no production dependents, and was always going to be standalone).
 3. **Phase 3 — prove the mechanism against it.** Deploy BottleBot through `deploy-service` end-to-end: webhook → (Camunda or n8n, per §6.4) → `deploy-service` → pull/layer-env/hooks/compose-up/healthcheck. BottleBot is a "custom application" per §6.1, so confirm its image-based rollback works by deliberately rolling back to a previous `ghcr.io` tag at least once.
-4. **Phase 4 — convert the rest, one at a time.** ✅ `homelab-edge-services` (network appliance tier — live). ✅ `homelab-observe-services` (extracted, registered; deploy-verify pending live node). ✅ `camunda-platform` / `n8n-automation` (extracted, registered; deploy-verify pending `homelab-svc-01` bootstrap). Remaining: `discord-gateway`, gated on the B6 keep/remove decision — independent of the other splits.
+4. **Phase 4 — convert the rest, one at a time.** ✅ `homelab-edge-services` (network appliance tier — live). ✅ `homelab-observe-services` (extracted, registered; deploy-verify pending live node). ✅ `camunda-platform` / `n8n-automation` (extracted, registered; deploy-verify pending `homelab-svc-01` bootstrap). Remaining: none — `discord-gateway` was dropped (B6 closed, Oct 2026).
    > Note: the `docker-compose.edge.yml` → `docker-compose.bootstrap-edge.yml` rename described in Phase 1 was intentionally deferred — the appliance service strip achieves the same isolation without requiring a filename change and reference update across bootstrap roles. The rename can be revisited in Phase 5.
 5. **Phase 5 — retire the old path.** Once all services are migrated and stable, remove the old direct `ansible-playbook`-driven deploy logic for services (bootstrap-level Ansible roles stay, per §4). Specifically: delete `roles/edge_services/`, delete `playbooks/deploy_edge.yml`, update `playbooks/update_all.yml` and `playbooks/backup.yml` to cover bootstrap-tier services only (Infisical, Semaphore).
 6. **Throughout:** keep README/BOOTSTRAP.md/NODES.md updated as structure stabilizes, rather than as a single end-of-migration step.
@@ -468,7 +467,7 @@ Cloudflared maintains the Cloudflare Tunnel. If it exits, all remote access via 
 - ~~`deploy-service` language/runtime~~ — **closed**: Python.
 - ~~`deploy-service` CLI interface~~ — **closed**: see §6.3 for the drafted `deploy` / `rollback` / `status` interface.
 - ~~`deploy-service` execution location~~ — **closed**: runs only on `homelab-edge`, reaches other nodes over SSH via Tailscale.
-- ~~Image registry/build path~~ — **closed**: `ghcr.io` for the "custom application" row (BottleBot, discord-gateway). Everything else never touches a registry.
+- ~~Image registry/build path~~ — **closed**: `ghcr.io` for the "custom application" row (BottleBot). Everything else never touches a registry.
 - ~~Webhook header secret + rotation~~ — **dropped**: superseded by the three-gate auth model in §6.4.
 - ~~Origin whitelist enforcement point~~ — **closed**: in-process, inside the automation (Camunda) itself, not at the network/Caddy layer — chosen specifically for unified audit visibility.
 - ~~Scheduling mechanism~~ — **closed in design**: maintenance window via a gateway check (and optionally a timer boundary event for approval expiry) on the approval user task; serialization via Zeebe message correlation keys, which provide mutual exclusion as an engine guarantee rather than a custom lock. See §6.5.

@@ -243,7 +243,7 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 
 **`jellyfin-media`** (new repo, deployed via `deploy-service`): Jellyfin, QSV hardware transcode via `/dev/dri` (HD 630), library on the 1TB HDD (`/srv/media`). Optional Sonarr/Radarr/Prowlarr later.
 
-**`discord-gateway`** *(conditional — pending the B6 keep/remove decision)*: if kept, extracted to its own repo and deployed via `deploy-service` as an amd64 image (single-arch is fine while targeting pc-01/laptop-01 — see `docs/consolidated_brief.md` §6.3), replacing the old Ansible-deployed `docker-compose.svc01.yml` path. `portainer-agent` stays host-level (Portainer server on `homelab-observe` connects here).
+**`portainer-agent`** stays host-level (Portainer server on `homelab-observe` connects here). discord-gateway was dropped in Oct 2026.
 
 **Observability:**
 
@@ -263,7 +263,6 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 | n8n (main)                                              | ~0.5GB     |                                                      |
 | Authentik server + worker (+ bundled PG/Redis until Stage 6) | ~1.5GB | Drops ~0.5GB after Stage 6                          |
 | Jellyfin                                                | ~1.5GB     | Transcode is QSV (GPU), not CPU/RAM-bound           |
-| discord-gateway (if kept)                               | ~0.1GB     |                                                      |
 | **Headroom**                                             | **~5GB**   | Burst, page cache, future services                  |
 
 ### Deployment Notes
@@ -272,8 +271,6 @@ ACL: accessible from edge node and admin devices only. Tailscale runs directly o
 /opt/deploy-service-venv/bin/deploy-service deploy camunda-platform --config /opt/homelab/services.yml
 /opt/deploy-service-venv/bin/deploy-service deploy n8n-automation --config /opt/homelab/services.yml
 /opt/deploy-service-venv/bin/deploy-service deploy jellyfin-media --config /opt/homelab/services.yml
-# discord-gateway: only once extracted (D3), conditional on the B6 keep/remove decision
-/opt/deploy-service-venv/bin/deploy-service deploy discord-gateway --config /opt/homelab/services.yml
 ```
 
 BIOS/OS prep before this node can be bootstrapped: enable IGD/primary-display, pull the RX 580 dGPU (sold/shelved — no ROCm support), Debian 13 netinstall (no DE) on the SSD. See `TODO.md` Stage 2.

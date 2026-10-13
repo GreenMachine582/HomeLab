@@ -1,18 +1,6 @@
 version: "3.9"
 
 services:
-  discord-gateway:
-    build: ./discord-gateway
-    container_name: discord-gateway
-    restart: unless-stopped
-    env_file:
-      - ./discord-gateway/.env
-      - ./discord-gateway/.env.secrets
-    volumes:
-      - ./discord-gateway/data:/app/data
-    networks:
-      - mgmt_net
-
   portainer-agent:
     image: portainer/agent:latest
     container_name: portainer-agent

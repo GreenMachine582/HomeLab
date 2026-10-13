@@ -35,8 +35,7 @@ since a Discord-outage alert can't rely on Discord).
 - [ ] Merge `wip/svc` into master (keep master's TODO.md — this file — then re-baseline against it)
 - [ ] Bootstrap pc-01
 - [ ] Deploy-verify `camunda-platform`, `n8n-automation`
-- [ ] discord-gateway keep/remove decision
-- [ ] Extract + deploy `discord-gateway` (amd64 image) *if kept*
+- [x] discord-gateway keep/remove decision — **removed** (Oct 2026); code deleted, no tag or repo
 - [ ] Bootstrap-lock signaling — Ansible + Camunda BPMN sides land together; endpoint targets pc-01 (`{{ ip_svc_01 }}` reconciled to resolve from `topology.yml`)
 - [ ] Authentik: proxy outpost on `homelab-edge-services`, `group_vars/edge.yml` update, `services.yml` entry, deploy-verify
 
@@ -79,7 +78,6 @@ since a Discord-outage alert can't rely on Discord).
 
 See [docs/consolidated_brief.md](./docs/consolidated_brief.md) §10 for full context.
 
-- discord-gateway keep/remove — Stage 3 gate
 - BottleBot: still get built? If so, device = laptop-01 headroom
 - PSU trust on pc-01 (Litepower Gen 2) — replace preemptively or on first symptom
 - Media library growth — 1 TB HDD is a starting point, H110M has 4× SATA + spare bays
