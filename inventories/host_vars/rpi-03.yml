@@ -13,3 +13,6 @@
 nvme_enabled: true
 nvme_device: /dev/nvme0n1
 nvme_mount_point: /mnt/nvme
+
+# ── Case (roles/argon_case) ──────────────────────────────────────────────────
+argon_case: v3

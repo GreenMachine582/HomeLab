@@ -1,0 +1,7 @@
+---
+# roles/argon_case/handlers/main.yml
+
+- name: Restart argononed
+  ansible.builtin.systemd:
+    name: argononed
+    state: restarted

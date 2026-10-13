@@ -1,0 +1,82 @@
+---
+# roles/argon_case/tasks/main.yml
+# Power button and fan for Argon ONE V2/V3 cases via the vendor installer.
+# The installer is non-interactive. It installs python3-smbus/i2c-tools/
+# gpiod, enables i2c, edits config.txt (on a Pi 5 also dtparam=nvme and
+# pciex1_gen=3), sets the Pi 5 EEPROM PSU option, and installs
+# argononed.service. Note: it downloads its helper scripts from
+# download.argon40.com without checksums; only argon1.sh itself is pinned.
+# Manual: set the case's power jumper to "always on" so the Pi boots after
+# a power cut (docs/K8S_SITE_MOVE.md).
+
+- name: "Argon | Assert a supported case"
+  ansible.builtin.assert:
+    that: argon_case in ['v2', 'v3']
+    fail_msg: "argon_case must be v2 (Pi 4) or v3 (Pi 5), got {{ argon_case }}"
+  tags: [argon]
+
+- name: "Argon | Remember config.txt before the installer"
+  ansible.builtin.stat:
+    path: /boot/firmware/config.txt
+    checksum_algorithm: sha256
+  register: _argon_config_before
+  tags: [argon]
+
+- name: "Argon | Create installer directory"
+  ansible.builtin.file:
+    path: /opt/argon
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [argon]
+
+- name: "Argon | Download the pinned installer"
+  ansible.builtin.get_url:
+    url: "{{ argon_installer_url }}"
+    dest: /opt/argon/argon1.sh
+    checksum: "sha256:{{ argon_installer_sha256 }}"
+    mode: "0755"
+  tags: [argon]
+
+- name: "Argon | Run the installer (once)"
+  ansible.builtin.command:
+    cmd: bash /opt/argon/argon1.sh
+    creates: /etc/argon/argononed.py
+  register: _argon_install
+  tags: [argon]
+
+- name: "Argon | Fan curve"
+  ansible.builtin.copy:
+    dest: /etc/argononed.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/argon_case): temperature °C = fan %
+      {% for temp, speed in argon_fan_curve | dictsort %}
+      {{ temp }}={{ speed }}
+      {% endfor %}
+  notify: Restart argononed
+  tags: [argon]
+
+- name: "Argon | Enable the daemon"
+  ansible.builtin.systemd:
+    name: argononed
+    enabled: true
+    state: started
+    daemon_reload: true
+  tags: [argon]
+
+- name: "Argon | Check config.txt after the installer"
+  ansible.builtin.stat:
+    path: /boot/firmware/config.txt
+    checksum_algorithm: sha256
+  register: _argon_config_after
+  tags: [argon]
+
+- name: "Argon | Reboot to apply config.txt changes"
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+  when: _argon_config_before.stat.checksum | default('') != _argon_config_after.stat.checksum | default('')
+  tags: [argon]
