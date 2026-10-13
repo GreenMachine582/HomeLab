@@ -2,8 +2,9 @@
 # host_vars/laptop-01.yml
 # Control plane (amd64, Debian 13). Wired Ethernet, lid closed.
 
-# Uncomment if the user created at install isn't "admin".
-# bootstrap_user: <install-user>
+# First login is as root with its password (Debian: root password set at
+# install). Needs a one-off PermitRootLogin override, see docs/K8S_BOOTSTRAP.md.
+bootstrap_user: root
 
 # ── Power (roles/laptop_power) ───────────────────────────────────────────────
 laptop_power_enabled: true

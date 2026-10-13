@@ -40,8 +40,14 @@ Groups in [`inventories/k8s.yml`](../inventories/k8s.yml): `k8s` → `k8s_contro
    `vault_deploy_ssh_pubkey` isn't used by k8s nodes.
 4. **Install user**: the playbook first logs in as `bootstrap_user` (default `admin`) with a password and needs `sudo`.
    - If you created a different user, set `bootstrap_user` in `host_vars/<node>.yml`.
-   - Debian only gives that user sudo if you left the **root password blank** during install. If you set one, fix it
-     on the console: `su -`, then `apt install sudo && usermod -aG sudo <user>`, then log out and back in.
+   - **Root** (`bootstrap_user: root`, used by laptop-01): Debian refuses root password logins over SSH by default.
+     Allow it once on the console; the playbook deletes this file again after hardening:
+     ```bash
+     echo 'PermitRootLogin yes' > /etc/ssh/sshd_config.d/99-bootstrap-root.conf && systemctl restart ssh
+     ```
+     The playbook installs `sudo` itself (Debian leaves it out when a root password is set).
+   - A non-root user needs sudo. Debian only grants that if the **root password was left blank** during install.
+     Otherwise fix it on the console: `su -`, then `apt install sudo && usermod -aG sudo <user>`.
 5. **Pi storage**: on the Pi, run `lsblk`. If `/` is on `nvme0n1`, the Pi boots from the NVMe, so leave
    `nvme_enabled: false` in `host_vars/rpi-03.yml`. `roles/nvme_storage` also refuses any partitioned or mounted device.
 6. **Tailscale**: no existing tailnet device may already be named `laptop-01` or `rpi-03`. The role stops if one is.

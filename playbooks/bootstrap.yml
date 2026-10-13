@@ -88,6 +88,9 @@
         ansible_user: "{{ bootstrap_user }}"
         ansible_password: "{{ _bootstrap_pw.user_input }}"
         ansible_become_password: "{{ _bootstrap_pw.user_input }}"
+        # Already root: no sudo needed (and a root-password Debian install
+        # has no sudo yet). Turned back on when switching to homelab.
+        ansible_become: "{{ bootstrap_user != 'root' }}"
       no_log: true
       when: not _hardened
 
@@ -112,6 +115,15 @@
     - name: "System | Set hostname"
       ansible.builtin.hostname:
         name: "{{ inventory_hostname }}"
+
+    # Debian skips sudo when a root password is set at install; the users
+    # role needs it for the sudoers drop-ins.
+    - name: "System | Install sudo"
+      ansible.builtin.apt:
+        name: sudo
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
 
   tasks:
     - name: "Roles | Users"
@@ -149,11 +161,21 @@
       when: not _hardened
       tags: [base, hardening]
 
+    # Removes the one-off override that allowed the first root password login
+    # (docs/K8S_BOOTSTRAP.md). Already inert: 00-homelab-hardening.conf sets
+    # PermitRootLogin no first, and sshd uses the first value it reads.
+    - name: "Security | Remove temporary root-login override"
+      ansible.builtin.file:
+        path: /etc/ssh/sshd_config.d/99-bootstrap-root.conf
+        state: absent
+      tags: [base, hardening]
+
     - name: "Ansible | Switch to the homelab key"
       ansible.builtin.set_fact:
         ansible_user: homelab
         ansible_ssh_private_key_file: ~/homelab/.ssh/homelab
         ansible_ssh_common_args: "-o PreferredAuthentications=publickey"
+        ansible_become: true
       when: not _hardened
       tags: [base, hardening]
 
