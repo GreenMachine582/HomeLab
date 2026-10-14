@@ -74,6 +74,69 @@
           ({{ node_ip }}); check the routes above.
       when: _lan_addresses | length > 1
 
+# laptop-01 runs closed at the site: lid ignored, never sleeps, battery
+# capped, power monitor and Wake-on-LAN running, Wi-Fi off.
+- name: "Status | Laptop power"
+  hosts: k8s
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Status | Laptop power settings"
+      when: laptop_power_enabled | default(false) | bool
+      block:
+        - name: "Status | Read lid, sleep, battery, services, Wake-on-LAN, Wi-Fi"
+          ansible.builtin.shell: |
+            warn() { echo "WARN: $*"; }
+            logind="$(systemd-analyze cat-config systemd/logind.conf 2>/dev/null)"
+            for k in HandleLidSwitch HandleLidSwitchExternalPower HandleLidSwitchDocked; do
+                v="$(printf '%s\n' "$logind" | grep -E "^$k=" | tail -1 | cut -d= -f2)"
+                echo "lid $k: ${v:-default}"
+                [ "$v" = ignore ] || warn "$k is '${v:-default}', not ignore"
+            done
+            for t in sleep suspend hibernate hybrid-sleep; do
+                s="$(systemctl is-enabled "$t.target" 2>/dev/null)"
+                echo "target $t: $s"
+                [ "$s" = masked ] || warn "$t.target is '$s', not masked"
+            done
+            for b in /sys/class/power_supply/BAT*; do
+                [ -e "$b" ] || continue
+                echo "battery ${b##*/}: $(cat "$b/capacity")% $(cat "$b/status"), limit $(cat "$b/charge_control_end_threshold" 2>/dev/null || echo none)"
+            done
+            for p in /sys/class/power_supply/*; do
+                [ "$(cat "$p/type" 2>/dev/null)" = Mains ] && echo "ac online: $(cat "$p/online")"
+            done
+            units="homelab-power-monitor"
+            {% if wol_mac | default('') | length > 0 %}
+            units="$units homelab-wol"
+            iface="$(ip route show default | awk '{print $5; exit}')"
+            w="$(ethtool "$iface" 2>/dev/null | awk '$1 == "Wake-on:" {print $2}')"
+            echo "wake-on-lan $iface: $w"
+            [ "$w" = g ] || warn "Wake-on-LAN on $iface is '$w', not g"
+            {% endif %}
+            for u in $units; do
+                s="$(systemctl is-active "$u")"
+                echo "service $u: $s"
+                [ "$s" = active ] || warn "$u is $s"
+            done
+            {% if node_disable_wifi | default(false) | bool %}
+            wifi="$(rfkill list wifi 2>/dev/null | awk -F': ' '/Soft blocked/ {print $2}' | sort -u | tr '\n' ' ')"
+            echo "wifi soft blocked: ${wifi:-no device}"
+            case "$wifi" in *no*) warn "Wi-Fi isn't blocked";; esac
+            {% endif %}
+            true
+          register: _laptop
+          changed_when: false
+
+        - name: "Status | Laptop report"
+          ansible.builtin.debug:
+            msg: "{{ _laptop.stdout_lines | reject('match', '^WARN: ') | list }}"
+
+        - name: "Status | Laptop warnings"
+          ansible.builtin.debug:
+            msg: "WARNING: {{ _laptop.stdout_lines | select('match', '^WARN: ') | map('regex_replace', '^WARN: ', '') | join('; ') }}"
+          when: "_laptop.stdout_lines | select('match', '^WARN: ') | list | length > 0"
+
 - name: "Status | Cluster"
   hosts: k8s_control_plane
   become: true

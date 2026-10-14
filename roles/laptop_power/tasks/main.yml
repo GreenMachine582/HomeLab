@@ -1,7 +1,8 @@
 ---
 # roles/laptop_power/tasks/main.yml
-# Makes a laptop behave like a server: lid closed doesn't suspend it, the
-# battery (its built-in UPS) isn't held at 100% forever, and a power monitor
+# Makes a laptop behave like a server: lid closed doesn't suspend it, it
+# can't sleep at all (sleep targets masked), the battery (its built-in UPS)
+# isn't held at 100% forever, and a power monitor
 # reports site power cuts and shuts down cleanly before the battery runs out.
 
 - name: "Laptop | Ensure logind drop-in directory exists"
@@ -26,6 +27,19 @@
       HandleLidSwitchExternalPower={{ laptop_lid_switch_action }}
       HandleLidSwitchDocked={{ laptop_lid_switch_action }}
   notify: Restart systemd-logind
+  tags: [laptop, power]
+
+# The control plane must never sleep, whatever asks: a stray
+# `systemctl suspend`, an idle action, a package default.
+- name: "Laptop | Mask sleep targets"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    masked: true
+  loop:
+    - sleep.target
+    - suspend.target
+    - hibernate.target
+    - hybrid-sleep.target
   tags: [laptop, power]
 
 - name: "Laptop | Find battery charge threshold controls"
