@@ -6,22 +6,24 @@
 #
 # node_ip is the LAN address Kubernetes uses (kubelet --node-ip, etcd,
 # k8s-api). IPs live in the gitignored group_vars/all/overrides.yml (ip_laptop_01,
-# ip_rpi_03, ...); pin them with router DHCP reservations (deferred for now).
+# ip_rpi_03, ...); roles/node_network makes them static
+# (node_network_static, docs/K8S_SITE_MOVE.md).
 #
 # Group names are k8s_* on purpose: the legacy group_vars/data.yml
 # (Postgres/Redis firewall rules) must never apply to these hosts.
 
 all:
-  vars:
-    ansible_user: homelab
-    ansible_ssh_private_key_file: ~/homelab/.ssh/homelab
-    ansible_python_interpreter: /usr/bin/python3
-    ansible_port: "{{ ssh_port }}"
-    # The probe (playbooks/tasks/probe_ssh.yml) may swap in a Tailscale name.
-    ansible_host: "{{ node_ip }}"
-
   children:
     k8s:
+      # Connection settings live on k8s, not all: the implicit localhost
+      # (controller.yml, tailscale_admin.yml) inherits all-group vars.
+      vars:
+        ansible_user: homelab
+        ansible_ssh_private_key_file: ~/homelab/.ssh/homelab
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_port: "{{ ssh_port }}"
+        # The probe (playbooks/tasks/probe_ssh.yml) may swap in a Tailscale name.
+        ansible_host: "{{ node_ip }}"
       children:
         k8s_control_plane:
           hosts:
