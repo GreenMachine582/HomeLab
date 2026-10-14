@@ -6,7 +6,7 @@
 #   ansible-playbook playbooks/cluster_status.yml
 #   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true
 #   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true \
-#     -e connectivity_test_only='client-egress-l7$'
+#     -e connectivity_test_only=echo-ingress-l7
 #
 # Per node: addresses, routes to the other nodes, UFW status; warns when a
 # node has more than one address on the LAN (it may send cluster traffic
@@ -355,6 +355,15 @@
           loop_control:
             label: "{{ item.item | default('') }}"
           when: _conn.rc != 0 and item.stdout_lines is defined
+
+        - name: "Status | Fail if the test filter matched nothing"
+          ansible.builtin.fail:
+            msg: >-
+              connectivity_test_only='{{ connectivity_test_only }}' matched no
+              tests; use a plain substring of a test name (no $ anchor).
+          when:
+            - connectivity_test_only | default('') | length > 0
+            - _conn.stdout is search('All 0 tests')
 
         - name: "Status | Fail if the connectivity test failed"
           ansible.builtin.fail:
