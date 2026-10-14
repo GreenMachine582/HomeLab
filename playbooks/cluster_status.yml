@@ -5,12 +5,15 @@
 #
 #   ansible-playbook playbooks/cluster_status.yml
 #   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true
+#   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true \
+#     -e connectivity_test_only='client-egress-l7$'
 #
 # Per node: addresses, routes to the other nodes, UFW status; warns when a
 # node has more than one address on the LAN (it may send cluster traffic
 # from one the others don't trust). From the control plane: nodes, Cilium
 # nodes, pods, cilium status. connectivity_test=true also runs
-# `cilium connectivity test` (it deploys test pods, then removes them).
+# `cilium connectivity test` (it deploys test pods, then removes them);
+# connectivity_test_only passes a --test filter (regex) to run just those.
 # See docs/K8S_CLUSTER.md.
 
 - name: "Probe | Discover each node's SSH endpoint"
@@ -209,7 +212,9 @@
           changed_when: false
 
         - name: "Status | cilium connectivity test"
-          ansible.builtin.command: cilium connectivity test
+          ansible.builtin.command:
+            argv: "{{ ['cilium', 'connectivity', 'test']
+                      + (['--test', connectivity_test_only] if connectivity_test_only | default('') | length > 0 else []) }}"
           register: _conn
           changed_when: false
           failed_when: false
@@ -263,6 +268,15 @@
               echo "-- TPROXY rules in the agent's iptables"
               kubectl -n kube-system exec "$agent" -c cilium-agent -- \
                 sh -c 'iptables-save -t mangle 2>&1 | grep -iE "tproxy|CILIUM_PRE_mangle" | head -10' 2>&1
+              # How far proxied requests got: no to-proxy means the BPF
+              # redirect; to-proxy without L7 events means the host between
+              # TPROXY and the proxy; an L7 request without a response means
+              # the proxy's upstream side. The buffer holds a few minutes, so
+              # use connectivity_test_only for this to cover the failures.
+              echo "-- hubble: test-namespace drops, proxy hops and L7 events (last 40)"
+              kubectl -n kube-system exec "$agent" -c cilium-agent -- \
+                hubble observe --last 4000 --namespace cilium-test-1 -o compact 2>&1 \
+                | grep -E 'DROPPED|to-proxy|from-proxy|http-|dns-|L7|ERROR' | tail -40
               envoy="$(kubectl -n kube-system get pods -l k8s-app=cilium-envoy \
                          --field-selector=spec.nodeName="$node" -o name | head -1)"
               if [ -n "$envoy" ]; then
@@ -322,6 +336,12 @@
             journalctl -k --since=-40min --no-pager 2>/dev/null | grep 'UFW BLOCK' | tail -15
             echo "-- INPUT chain head (Cilium's chain should come before UFW's)"
             iptables -L INPUT -v -n --line-numbers | head -12
+            echo "-- Cilium's proxy accept rules (packet counts)"
+            iptables -L CILIUM_INPUT -v -n 2>&1 | head -8
+            iptables -L CILIUM_OUTPUT -v -n 2>&1 | head -10
+            echo "-- Tailscale table 52 (consulted before main, rule 5270)"
+            ip route show table 52 | grep -v '^100\.' | head -10
+            echo "$(ip route show table 52 | grep -c '^100\.') tailnet (100.x) routes not shown"
           delegate_to: "{{ item }}"
           loop: "{{ _test_nodes.stdout_lines | default([]) | select('in', groups['k8s']) | list }}"
           register: _proxy_host
