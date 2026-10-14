@@ -38,55 +38,40 @@
       - ipam.mode=kubernetes
       - --set
       - operator.replicas=1
-      - --set
-      - "socketLB.enabled={{ cilium_socket_lb | bool | lower }}"
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   when: _cilium_ds.rc != 0
   tags: [k8s, cilium]
 
-# Existing installs: apply a changed cilium_socket_lb with a Helm upgrade
-# (so the release values stay right for Flux), then restart the agents,
-# which don't reload cilium-config on their own.
-- name: "Cilium | Read the running config"
-  ansible.builtin.command: kubectl -n kube-system get configmap cilium-config -o json
+# Existing installs: move to cilium_version with a Helm upgrade (so the
+# release stays right for Flux to adopt). Downgrades work the same way.
+- name: "Cilium | Read the running version"
+  ansible.builtin.command: >-
+    kubectl -n kube-system get daemonset cilium
+    -o jsonpath={.spec.template.spec.containers[0].image}
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
-  register: _cilium_cfg
+  register: _cilium_image
   changed_when: false
   check_mode: false
   when: _cilium_ds.rc == 0
   tags: [k8s, cilium]
 
-- name: "Cilium | Socket load balancing: running vs wanted"
-  ansible.builtin.debug:
-    msg: >-
-      bpf-lb-sock running '{{ (_cilium_cfg.stdout | from_json).data['bpf-lb-sock'] | default('unset') }}',
-      wanted '{{ cilium_socket_lb | bool | lower }}'
-  when: _cilium_ds.rc == 0
-  tags: [k8s, cilium]
-
-- name: "Cilium | Apply socket load balancing setting"
+- name: "Cilium | Change version to {{ cilium_version }}"
   when:
     - _cilium_ds.rc == 0
-    - (_cilium_cfg.stdout | from_json).data['bpf-lb-sock'] | default('unset') != (cilium_socket_lb | bool | lower)
+    - (':v' ~ cilium_version ~ '@') not in _cilium_image.stdout
   tags: [k8s, cilium]
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   block:
-    - name: "Cilium | Upgrade with socketLB.enabled={{ cilium_socket_lb | bool | lower }}"
-      ansible.builtin.command:
-        argv:
-          - cilium
-          - upgrade
-          - --version
-          - "{{ cilium_version }}"
-          - --reuse-values
-          - --set
-          - "socketLB.enabled={{ cilium_socket_lb | bool | lower }}"
+    - name: "Cilium | Running image"
+      ansible.builtin.debug:
+        msg: "{{ _cilium_image.stdout }} → {{ cilium_version }}"
 
-    - name: "Cilium | Restart the agents"
-      ansible.builtin.command: kubectl -n kube-system rollout restart daemonset/cilium
+    - name: "Cilium | Upgrade to {{ cilium_version }}"
+      ansible.builtin.command:
+        argv: [cilium, upgrade, --version, "{{ cilium_version }}", --reuse-values]
 
     - name: "Cilium | Wait for the agents"
       ansible.builtin.command: kubectl -n kube-system rollout status daemonset/cilium --timeout=10m

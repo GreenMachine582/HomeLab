@@ -12,7 +12,7 @@ Runs from **WSL on the main PC**, in `~/homelab`, like the bootstrap.
 |-------------------|------------------------------------------------------------------------|---------------------------|
 | Kubernetes        | v1.36.5, packages held                                                 | `group_vars/k8s.yml`      |
 | Container runtime | containerd 2.4 (`containerd.io`, Docker's apt repo), systemd cgroups   | `roles/containerd`        |
-| CNI               | Cilium 1.20.2, kube-proxy replacement, IPAM `kubernetes`               | `group_vars/k8s.yml`      |
+| CNI               | Cilium 1.20.1 (held: 1.20.2 needs kernel BTF, absent on Pi kernels), kube-proxy replacement, IPAM `kubernetes` | `group_vars/k8s.yml`      |
 | Pod / Service     | 10.244.0.0/16 / 10.96.0.0/12                                           | `group_vars/k8s.yml`      |
 | API endpoint      | `k8s-api:6443` (every node's `/etc/hosts` → control plane `node_ip`)   | `roles/k8s_prereqs`       |
 | Control plane     | `laptop-01`, keeps its `NoSchedule` taint                              | `inventories/k8s.yml`     |

@@ -54,14 +54,14 @@ k8s_pod_cidr: 10.244.0.0/16
 k8s_service_cidr: 10.96.0.0/12
 k8s_control_plane_ip: "{{ hostvars[groups['k8s_control_plane'][0]].node_ip }}"
 
-cilium_version: "1.20.2"
+# Held at 1.20.1: 1.20.2 (and 1.19.8) load socket-LB programs that need
+# kernel BTF, which Raspberry Pi OS kernels don't ship, so the Pis' agents
+# can't start their datapath and no pod there gets a network. Kube-proxy
+# replacement forces socket LB on, so socketLB.enabled=false can't avoid it.
+# Before upgrading, check /sys/kernel/btf/vmlinux exists on the Pis or the
+# release notes say this is fixed. homelab-cluster's HelmRelease must match.
+cilium_version: "1.20.1"
 cilium_cli_version: "v0.20.1"
-# Socket-level load balancing needs kernel BTF (/sys/kernel/btf/vmlinux),
-# which Raspberry Pi OS kernels don't ship: with it on, the Pis' agents
-# can't load their datapath and no pod there gets a network. Services still
-# load-balance per packet at the tc layer. Keep in step with socketLB.enabled
-# in homelab-cluster's Cilium HelmRelease when Flux adopts it.
-cilium_socket_lb: false
 
 # Database taint on k8s_data nodes. Off until rpi-01/02 join as general
 # workers; with it on now, general pods would have nowhere to run.
