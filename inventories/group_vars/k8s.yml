@@ -32,6 +32,12 @@ ssh_user_ca_pubkey: "{{ lookup('ansible.builtin.file', inventory_dir ~ '/../.ssh
 # ntfy lived on homelab-observe, which is gone. Discord only for now.
 notify_ntfy_url: ""
 
+# ── Wake-on-LAN (roles/wake_on_lan) ───────────────────────────────────────────
+# The Pis boot by themselves when power returns (Argon "always on") and wake
+# the nodes that can't (wol_mac in host_vars). The first worker posts the result.
+wol_waker: "{{ inventory_hostname in groups['k8s_workers'] }}"
+wol_report: "{{ inventory_hostname == groups['k8s_workers'] | first }}"
+
 # ── Kubernetes (playbooks/cluster.yml) ─────────────────────────────────────────
 # 1.36 is the newest minor in Cilium 1.20's tested matrix (decision 27).
 # Packages are held; upgrading is a deliberate PR that bumps these.

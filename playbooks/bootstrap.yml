@@ -105,6 +105,13 @@
       when: laptop_power_enabled | default(false)
       tags: [laptop, power]
 
+    # Targets (wol_mac set) arm Wake-on-LAN; wakers (the Pis) wake them at boot.
+    - name: "Roles | Wake-on-LAN"
+      ansible.builtin.include_role:
+        name: wake_on_lan
+      when: (wol_waker | default(false) | bool) or (wol_mac | default('') | length > 0)
+      tags: [wol]
+
     - name: "Roles | Tailscale"
       ansible.builtin.include_role:
         name: tailscale

@@ -11,7 +11,8 @@ node IPs change, the cluster is **reset and rebuilt** at the site; it's empty, s
 | Normal                          | Tailscale MagicDNS: Ansible (`<node>.<tailnet>.ts.net`), kubectl (`k8s-api` → laptop-01's Tailscale IP) |
 | Device not on the tailnet       | laptop-01's **subnet route** to the site LAN (router UI, a freshly imaged node)        |
 | Tailscale down for the node     | **Break-glass certificate**: RDP to the site PC, SSH over the LAN with a 1-hour cert   |
-| Node hung                       | Argon button (Pis) / site power cycle; nodes boot by themselves after power returns    |
+| laptop-01 off                   | `playbooks/wake.yml` (Wake-on-LAN from a Pi); the Pis also do this after every boot     |
+| Node hung                       | Argon button (Pis) / site power cycle; Pis boot by themselves, then wake laptop-01     |
 
 ## Before leaving home
 
@@ -51,14 +52,21 @@ node IPs change, the cluster is **reset and rebuilt** at the site; it's empty, s
 5. **Argon cases**: `bootstrap.yml` installs the power-button and fan daemon (`argon_case` in host_vars). Then set
    each case's **power jumper to "always on"**, so a Pi boots by itself when power returns. That's a physical
    setting on the case board.
-6. **laptop-01 BIOS**: enable **power on when AC is connected**, if the firmware has it. The battery covers short cuts;
-   this covers ones long enough to drain it. Where to look:
-   - Lenovo ThinkPad: Config → Power → "Power On with AC Attach".
-   - Dell: Power Management → "AC Behavior" / "Wake on AC".
-   - HP: Advanced → Boot Options or Power-On Options → "Power on when AC detected".
-   - Others: "AC Recovery", "Auto Power On", "Restore on AC Power Loss". Many consumer laptops don't have it.
-
-   Without it, laptop-01 stays off after a long outage until someone presses the power button.
+6. **laptop-01 power** (it has no AC power-on in its BIOS, tested 14 Oct):
+   - BIOS: Network → **Wake on LAN = AC Only**.
+   - `overrides.yml`: `mac_laptop_01` (its wired NIC, `ip -br link`). Then `bootstrap.yml --tags wol,laptop`.
+   - What happens in an outage:
+     - **Power cut:** the Pis die at once. laptop-01 runs on its battery and posts **🔋 Site power lost**.
+     - **Power back:** if laptop-01 was still running, it posts **🔌 Site power restored**.
+     - **Long outage:** at `laptop_shutdown_battery_percent` (15%) it posts **🪫** and shuts down cleanly, so Wake-on-LAN
+       stays armed.
+     - **Power back after that:** the Pis boot by themselves (Argon always-on). rpi-03 sends magic packets until
+       laptop-01 answers SSH (about 2 minutes), then posts **⏰ Wake** (or **❌** after 10 minutes).
+   - The site router is usually down during a cut too, so the alerts arrive once its internet is back. They carry the
+     time the event happened.
+   - Wake on demand from home: `ansible-playbook playbooks/wake.yml` (polls until SSH is up).
+   - Test: `sudo poweroff` laptop-01 with AC connected, then `wake.yml`. Unplug the charger for 30 seconds to see the
+     power alerts.
 7. **Optional, to save time at the site:** `cluster_reset.yml` now. Otherwise do it after the move.
 
 ## At the site

@@ -1,0 +1,93 @@
+---
+# roles/wake_on_lan/tasks/main.yml
+# Target: arms Wake-on-LAN (magic packet) on wol_interface at every boot;
+# Linux leaves it off ("Wake-on: d") even with WoL enabled in the BIOS.
+# Waker: a boot-time service that wakes the targets, plus the script
+# playbooks/wake.yml runs on demand.
+
+# ── Target ────────────────────────────────────────────────────────────────────
+- name: "WoL | Target"
+  when: wol_mac | length > 0
+  tags: [wol]
+  block:
+    - name: "WoL | Check wol_mac matches {{ wol_interface }}"
+      ansible.builtin.assert:
+        that: (ansible_facts[wol_interface | replace('-', '_')].macaddress | default('')) | lower == wol_mac | lower
+        fail_msg: >-
+          wol_mac ({{ wol_mac }}) isn't the MAC of {{ wol_interface }}
+          ({{ ansible_facts[wol_interface | replace('-', '_')].macaddress | default('not found') }}).
+          Fix mac_{{ inventory_hostname | replace('-', '_') }} in overrides.yml.
+        quiet: true
+
+    - name: "WoL | Install ethtool"
+      ansible.builtin.apt:
+        name: ethtool
+        state: present
+
+    - name: "WoL | Arm Wake-on-LAN at boot"
+      ansible.builtin.template:
+        src: homelab-wol.service.j2
+        dest: /etc/systemd/system/homelab-wol.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: "WoL | Enable the boot unit"
+      ansible.builtin.systemd:
+        name: homelab-wol.service
+        enabled: true
+        daemon_reload: true
+
+    - name: "WoL | Current setting"
+      ansible.builtin.command: "ethtool {{ wol_interface }}"
+      register: _wol_ethtool
+      changed_when: false
+
+    - name: "WoL | Arm it now"
+      ansible.builtin.command: "ethtool -s {{ wol_interface }} wol g"
+      when: "'Wake-on: g' not in (_wol_ethtool.stdout_lines | map('trim') | list)"
+      changed_when: true
+
+# ── Waker ─────────────────────────────────────────────────────────────────────
+- name: "WoL | Waker"
+  when: wol_waker | bool
+  tags: [wol]
+  block:
+    - name: "WoL | Install wakeonlan"
+      ansible.builtin.apt:
+        name: wakeonlan
+        state: present
+
+    - name: "WoL | Script directory"
+      ansible.builtin.file:
+        path: "{{ wol_script_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: "WoL | Wake script"
+      ansible.builtin.template:
+        src: wake-targets.sh.j2
+        dest: "{{ wol_script_dir }}/wake-targets.sh"
+        owner: root
+        group: root
+        mode: "0700"
+
+    # Enabled, not started: it runs at boot. playbooks/wake.yml runs the
+    # script directly.
+    - name: "WoL | Wake-at-boot unit"
+      ansible.builtin.template:
+        src: homelab-wol-wake.service.j2
+        dest: /etc/systemd/system/homelab-wol-wake.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: "WoL | Enable the wake-at-boot unit"
+      ansible.builtin.systemd:
+        name: homelab-wol-wake.service
+        enabled: true
+        daemon_reload: true

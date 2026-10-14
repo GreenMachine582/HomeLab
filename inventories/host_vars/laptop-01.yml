@@ -9,6 +9,14 @@ bootstrap_user: root
 # ── Power (roles/laptop_power) ───────────────────────────────────────────────
 laptop_power_enabled: true
 laptop_battery_charge_limit: 80
+# Power monitor (site power alerts, clean shutdown) is on by default; this
+# is the battery % it shuts down at.
+laptop_shutdown_battery_percent: 15
+
+# ── Wake-on-LAN (roles/wake_on_lan) ──────────────────────────────────────────
+# No AC power-on in this ThinkPad's BIOS (tested 14 Oct): the Pis wake it.
+# BIOS: Network → Wake on LAN = AC Only.
+wol_mac: "{{ mac_laptop_01 | default('') }}"
 
 # ── Network (roles/node_network, roles/tailscale) ────────────────────────────
 # Wired only: a second LAN address (Wi-Fi) breaks Cilium's node-to-node trust.

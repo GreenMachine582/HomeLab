@@ -1,7 +1,8 @@
 ---
 # roles/laptop_power/tasks/main.yml
-# Makes a laptop behave like a server: lid closed doesn't suspend it, and the
-# battery (its built-in UPS) isn't held at 100% forever.
+# Makes a laptop behave like a server: lid closed doesn't suspend it, the
+# battery (its built-in UPS) isn't held at 100% forever, and a power monitor
+# reports site power cuts and shuts down cleanly before the battery runs out.
 
 - name: "Laptop | Ensure logind drop-in directory exists"
   ansible.builtin.file:
@@ -72,3 +73,34 @@
   ansible.builtin.command: systemd-tmpfiles --create /etc/tmpfiles.d/homelab-battery.conf
   when: _laptop_tmpfiles is changed
   tags: [laptop, power, battery]
+
+# ── Power monitor ────────────────────────────────────────────────────────────
+# notify_script_dir comes from base_hardening, which runs first.
+- name: "Laptop | Power monitor"
+  when: laptop_power_monitor | bool
+  tags: [laptop, power, monitor]
+  block:
+    - name: "Laptop | Power monitor script"
+      ansible.builtin.template:
+        src: power-monitor.sh.j2
+        dest: "{{ notify_script_dir }}/power-monitor.sh"
+        owner: root
+        group: root
+        mode: "0700"
+      notify: Restart power monitor
+
+    - name: "Laptop | Power monitor unit"
+      ansible.builtin.template:
+        src: homelab-power-monitor.service.j2
+        dest: /etc/systemd/system/homelab-power-monitor.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart power monitor
+
+    - name: "Laptop | Enable and start the power monitor"
+      ansible.builtin.systemd:
+        name: homelab-power-monitor.service
+        enabled: true
+        state: started
+        daemon_reload: true
