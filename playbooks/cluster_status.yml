@@ -339,6 +339,25 @@
             echo "-- Cilium's proxy accept rules (packet counts)"
             iptables -L CILIUM_INPUT -v -n 2>&1 | head -8
             iptables -L CILIUM_OUTPUT -v -n 2>&1 | head -10
+            # TPROXY drops the packet silently when no socket listens on its
+            # --on-port, so compare the rule hit counts with the listeners.
+            echo "-- TPROXY rule hit counts (mangle PREROUTING, all chains in order)"
+            iptables -t mangle -L PREROUTING -v -n | head -8
+            iptables -t mangle -L CILIUM_PRE_mangle -v -n 2>&1 | head -12
+            echo "-- proxy listeners (ports in TPROXY rules, and Envoy/agent sockets)"
+            ports="$(iptables -t mangle -S CILIUM_PRE_mangle 2>/dev/null \
+                     | grep -o 'on-port [0-9]*' | awk '{print $2}' | sort -u | tr '\n' ' ')"
+            echo "TPROXY ports: ${ports:-none}"
+            for p in $ports; do
+              ss -Hltnup "sport = :$p" | sed "s/^/port $p: /" | grep . || echo "port $p: nothing listening"
+            done
+            ss -Hltnp | grep -E '"(cilium-envoy|envoy|cilium-agent)"' | head -10
+            echo "-- iptables backends (rules in both get traversed)"
+            iptables -V
+            for b in legacy nft; do
+              command -v "iptables-$b-save" >/dev/null || continue
+              echo "$b: $(iptables-$b-save 2>/dev/null | grep -c TPROXY) TPROXY, $(iptables-$b-save 2>/dev/null | grep -c '^-A ufw') ufw, $(iptables-$b-save 2>/dev/null | grep -c '^-A ts-') tailscale rules"
+            done
             echo "-- Tailscale table 52 (consulted before main, rule 5270)"
             ip route show table 52 | grep -v '^100\.' | head -10
             echo "$(ip route show table 52 | grep -c '^100\.') tailnet (100.x) routes not shown"
