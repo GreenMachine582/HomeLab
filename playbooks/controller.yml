@@ -31,6 +31,14 @@
     cilium_cli_version: "{{ _cp.cilium_cli_version }}"
 
   tasks:
+    # First: a conflicting Kubernetes source (e.g. a manual kubectl install)
+    # breaks every apt update, including the next task's.
+    - name: "Controller | Kubernetes apt repository"
+      ansible.builtin.include_role:
+        name: kubeadm
+        tasks_from: repo
+      tags: [controller, client, kubectl]
+
     - name: "Controller | Base packages"
       ansible.builtin.apt:
         name:
