@@ -58,6 +58,14 @@
   when: _cilium_ds.rc == 0
   tags: [k8s, cilium]
 
+- name: "Cilium | Socket load balancing: running vs wanted"
+  ansible.builtin.debug:
+    msg: >-
+      bpf-lb-sock running '{{ (_cilium_cfg.stdout | from_json).data['bpf-lb-sock'] | default('unset') }}',
+      wanted '{{ cilium_socket_lb | bool | lower }}'
+  when: _cilium_ds.rc == 0
+  tags: [k8s, cilium]
+
 - name: "Cilium | Apply socket load balancing setting"
   when:
     - _cilium_ds.rc == 0
@@ -84,10 +92,28 @@
       ansible.builtin.command: kubectl -n kube-system rollout status daemonset/cilium --timeout=10m
       changed_when: false
 
+# --wait redraws its status every few seconds; only the last one matters.
 - name: "Cilium | Wait until healthy"
-  ansible.builtin.command: cilium status --wait --wait-duration 10m
+  ansible.builtin.shell: |
+    cilium status --wait --wait-duration 10m >/dev/null 2>&1
+    rc=$?
+    cilium status 2>&1 | sed 's/\x1b\[[0-9;]*[A-Za-z]//g'
+    exit $rc
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
+  register: _cilium_status
   changed_when: false
+  failed_when: false
   check_mode: false
+  tags: [k8s, cilium]
+
+- name: "Cilium | Status"
+  ansible.builtin.debug:
+    msg: "{{ _cilium_status.stdout_lines }}"
+  tags: [k8s, cilium]
+
+- name: "Cilium | Fail if unhealthy"
+  ansible.builtin.fail:
+    msg: "Cilium isn't healthy after 10 minutes; see the status above."
+  when: _cilium_status.rc != 0
   tags: [k8s, cilium]
