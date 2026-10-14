@@ -286,6 +286,56 @@
             msg: "{{ _conn_diag.stdout_lines }}"
           when: _conn.rc != 0
 
+        # Proxied traffic is TPROXY'd to 127.0.0.1 and delivered locally, so
+        # the host stack can drop it where Cilium can't see: reverse-path
+        # filtering (Cilium needs rp_filter off on its interfaces), the proxy
+        # routing rules/tables 2004 and 2005 (Tailscale also adds ip rules),
+        # and UFW's INPUT chain.
+        - name: "Status | Nodes the test pods ran on"
+          ansible.builtin.shell: |
+            for ns in $(kubectl get ns -o name | grep '^namespace/cilium-test' | cut -d/ -f2); do
+              kubectl -n "$ns" get pods -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}'
+            done | grep . | sort -u
+          register: _test_nodes
+          changed_when: false
+          when: _conn.rc != 0
+
+        - name: "Status | Host checks for the proxy path"
+          ansible.builtin.shell: |
+            echo "-- rp_filter (kernel uses max(all, iface); Cilium needs 0)"
+            for f in /proc/sys/net/ipv4/conf/all/rp_filter /proc/sys/net/ipv4/conf/default/rp_filter \
+                     /proc/sys/net/ipv4/conf/cilium_*/rp_filter; do
+              [ -e "$f" ] && echo "$(echo "$f" | cut -d/ -f7) $(cat "$f")"
+            done
+            cat /proc/sys/net/ipv4/conf/lxc*/rp_filter 2>/dev/null | sort | uniq -c \
+              | awk '{print "lxc* =" $2 " on " $1 " interfaces"}'
+            grep -rHs 'rp_filter' /etc/sysctl.conf /etc/sysctl.d /usr/lib/sysctl.d /run/sysctl.d
+            echo "-- kernel drop counters"
+            awk '/^TcpExt:/ { if (!h) { split($0, k); h = 1 } else { split($0, v);
+                   for (i = 2; i in k; i++) if (k[i] ~ /IPReversePathFilter/) print k[i], v[i] } }' /proc/net/netstat
+            echo "-- ip rules"
+            ip rule show
+            echo "-- proxy route tables 2004 and 2005"
+            ip route show table 2004
+            ip route show table 2005
+            echo "-- UFW blocks in the last 40 minutes (last 15)"
+            journalctl -k --since=-40min --no-pager 2>/dev/null | grep 'UFW BLOCK' | tail -15
+            echo "-- INPUT chain head (Cilium's chain should come before UFW's)"
+            iptables -L INPUT -v -n --line-numbers | head -12
+          delegate_to: "{{ item }}"
+          loop: "{{ _test_nodes.stdout_lines | default([]) | select('in', groups['k8s']) | list }}"
+          register: _proxy_host
+          changed_when: false
+          when: _conn.rc != 0
+
+        - name: "Status | Proxy path report"
+          ansible.builtin.debug:
+            msg: "{{ ['== ' ~ item.item] + item.stdout_lines }}"
+          loop: "{{ _proxy_host.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item | default('') }}"
+          when: _conn.rc != 0 and item.stdout_lines is defined
+
         - name: "Status | Fail if the connectivity test failed"
           ansible.builtin.fail:
             msg: "cilium connectivity test failed (rc={{ _conn.rc }}); see the output above."
