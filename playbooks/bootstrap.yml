@@ -27,7 +27,12 @@
 
   tasks:
     - name: "Probe | Endpoint and identity"
-      ansible.builtin.include_tasks: tasks/probe_ssh.yml
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        # Always, so --tags runs still connect on the probed endpoint.
+        apply:
+          tags: [always]
+      tags: [always]
 
 # ── Bootstrap play ─────────────────────────────────────────────────────────────
 - name: "Bootstrap | Users, SSH hardening, Tailscale, firewall"
