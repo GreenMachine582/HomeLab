@@ -178,7 +178,24 @@
 
         - name: "Status | Connectivity test result"
           ansible.builtin.debug:
-            msg: "{{ _conn.stdout_lines[-25:] }}"
+            msg: "{{ _conn.stdout_lines[-25:] + _conn.stderr_lines[-15:] }}"
+
+        # Before the always: cleanup deletes the namespaces.
+        - name: "Status | Why the test pods didn't start"
+          ansible.builtin.shell: |
+            for ns in $(kubectl get ns -o name | grep '^namespace/cilium-test' | cut -d/ -f2); do
+              echo "== $ns"
+              kubectl -n "$ns" get pods -o wide
+              kubectl -n "$ns" get events --sort-by=.lastTimestamp | tail -20
+            done
+          register: _conn_diag
+          changed_when: false
+          when: _conn.rc != 0
+
+        - name: "Status | Test pod diagnostics"
+          ansible.builtin.debug:
+            msg: "{{ _conn_diag.stdout_lines }}"
+          when: _conn.rc != 0
 
         - name: "Status | Fail if the connectivity test failed"
           ansible.builtin.fail:
