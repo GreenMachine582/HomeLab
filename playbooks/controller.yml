@@ -45,6 +45,21 @@
         quiet: true
       tags: [always]
 
+    # At the remote site the LAN IP is only reachable through laptop-01's
+    # subnet route; laptop-01's own Tailscale IP always works.
+    - name: "Controller | Check k8s_api_client_ip is set for the remote site"
+      ansible.builtin.assert:
+        that:
+          - k8s_api_client_ip is defined
+          - k8s_api_client_ip is match('^100\.')
+        fail_msg: >-
+          node_network_static is on (cluster at the remote site), so set
+          k8s_api_client_ip in overrides.yml to laptop-01's Tailscale IP
+          (`tailscale ip -4 laptop-01`), not '{{ k8s_api_client_ip | default('unset') }}'.
+        quiet: true
+      when: node_network_static | default(false) | bool
+      tags: [always]
+
   tasks:
     # First: a conflicting Kubernetes source (e.g. a manual kubectl install)
     # breaks every apt update, including the next task's.
@@ -77,6 +92,23 @@
     - name: "Controller | kubectl, cilium-cli, k8s-api, KUBECONFIG"
       ansible.builtin.include_role:
         name: k8s_client
+      tags: [controller, client]
+
+    # Warn only: on a first run there's no cluster yet.
+    - name: "Controller | Check the API is reachable"
+      ansible.builtin.command:
+        argv: [timeout, "5", bash, -c, "</dev/tcp/{{ k8s_control_plane_ip }}/{{ k8s_api_port | default(6443) }}"]
+      register: _api_reach
+      changed_when: false
+      failed_when: false
+      become: false
+      tags: [controller, client]
+
+    - name: "Controller | API reachability"
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'k8s-api (' ~ k8s_control_plane_ip ~ ') answers.' if _api_reach.rc == 0 else
+             'WARNING: k8s-api (' ~ k8s_control_plane_ip ~ ') does not answer. Is the cluster up, and is that address reachable from here?' }}
       tags: [controller, client]
 
     # Break-glass SSH user CA (docs/K8S_SITE_MOVE.md). Only with --tags ssh_ca.

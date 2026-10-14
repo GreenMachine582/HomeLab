@@ -36,9 +36,9 @@ tailscale_tailnet: "EDIT_BEFORE_USE"   # e.g. mango-beaver — find it under DNS
 # Static via roles/node_network at the site (see below).
 ip_laptop_01: "EDIT_BEFORE_USE"   # control plane
 mac_laptop_01: "EDIT_BEFORE_USE"  # wired NIC, for Wake-on-LAN (ip -br link)
+ip_rpi_01:    "EDIT_BEFORE_USE"   # node (Pi 4)
+ip_rpi_02:    "EDIT_BEFORE_USE"   # node (Pi 4)
 ip_rpi_03:    "EDIT_BEFORE_USE"   # data node (Pi 5 + NVMe)
-# ip_rpi_01:  "EDIT_BEFORE_USE"
-# ip_rpi_02:  "EDIT_BEFORE_USE"
 
 # ── Site network (roles/node_network, docs/K8S_SITE_MOVE.md) ───────────────────
 # The site router can't reserve addresses, so nodes get static IPs: pick
@@ -48,5 +48,6 @@ lan_gateway: "EDIT_BEFORE_USE"           # site router, e.g. 192.168.20.1
 # lan_dns: ["192.168.20.1", "1.1.1.1"]  # default: [lan_gateway, 1.1.1.1]
 home_lan_subnet: "EDIT_BEFORE_USE"       # home LAN; must never be advertised from the site
 tailscale_subnet_router: false           # true: laptop-01 advertises lan_subnet
-# k8s-api on the controller: laptop-01's Tailscale IP once the cluster is remote
+# k8s-api on the controller: laptop-01's Tailscale IP. Required (controller.yml
+# checks) once node_network_static is true.
 # k8s_api_client_ip: "100.x.y.z"
