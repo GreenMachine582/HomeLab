@@ -38,10 +38,51 @@
       - ipam.mode=kubernetes
       - --set
       - operator.replicas=1
+      - --set
+      - "socketLB.enabled={{ cilium_socket_lb | bool | lower }}"
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   when: _cilium_ds.rc != 0
   tags: [k8s, cilium]
+
+# Existing installs: apply a changed cilium_socket_lb with a Helm upgrade
+# (so the release values stay right for Flux), then restart the agents,
+# which don't reload cilium-config on their own.
+- name: "Cilium | Read the running config"
+  ansible.builtin.command: kubectl -n kube-system get configmap cilium-config -o json
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: _cilium_cfg
+  changed_when: false
+  check_mode: false
+  when: _cilium_ds.rc == 0
+  tags: [k8s, cilium]
+
+- name: "Cilium | Apply socket load balancing setting"
+  when:
+    - _cilium_ds.rc == 0
+    - (_cilium_cfg.stdout | from_json).data['bpf-lb-sock'] | default('unset') != (cilium_socket_lb | bool | lower)
+  tags: [k8s, cilium]
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  block:
+    - name: "Cilium | Upgrade with socketLB.enabled={{ cilium_socket_lb | bool | lower }}"
+      ansible.builtin.command:
+        argv:
+          - cilium
+          - upgrade
+          - --version
+          - "{{ cilium_version }}"
+          - --reuse-values
+          - --set
+          - "socketLB.enabled={{ cilium_socket_lb | bool | lower }}"
+
+    - name: "Cilium | Restart the agents"
+      ansible.builtin.command: kubectl -n kube-system rollout restart daemonset/cilium
+
+    - name: "Cilium | Wait for the agents"
+      ansible.builtin.command: kubectl -n kube-system rollout status daemonset/cilium --timeout=10m
+      changed_when: false
 
 - name: "Cilium | Wait until healthy"
   ansible.builtin.command: cilium status --wait --wait-duration 10m

@@ -56,6 +56,12 @@ k8s_control_plane_ip: "{{ hostvars[groups['k8s_control_plane'][0]].node_ip }}"
 
 cilium_version: "1.20.2"
 cilium_cli_version: "v0.20.1"
+# Socket-level load balancing needs kernel BTF (/sys/kernel/btf/vmlinux),
+# which Raspberry Pi OS kernels don't ship: with it on, the Pis' agents
+# can't load their datapath and no pod there gets a network. Services still
+# load-balance per packet at the tc layer. Keep in step with socketLB.enabled
+# in homelab-cluster's Cilium HelmRelease when Flux adopts it.
+cilium_socket_lb: false
 
 # Database taint on k8s_data nodes. Off until rpi-01/02 join as general
 # workers; with it on now, general pods would have nowhere to run.
