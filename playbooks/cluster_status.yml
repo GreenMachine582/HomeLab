@@ -228,7 +228,7 @@
                  | unique | list }}
 
         # Before the always: cleanup deletes the namespaces.
-        - name: "Status | Why the test pods didn't start"
+        - name: "Status | Why the tests failed"
           ansible.builtin.shell: |
             for ns in $(kubectl get ns -o name | grep '^namespace/cilium-test' | cut -d/ -f2); do
               echo "== $ns"
@@ -236,9 +236,17 @@
               kubectl -n "$ns" get events --sort-by=.lastTimestamp | tail -20
             done
             # The CNI errors only say the agent refused or failed; its own
-            # status and log say why.
-            for node in $(kubectl get pods -A --field-selector=status.phase=Pending \
-                            -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort -u); do
+            # status and log say why. Covers nodes with Pending pods and the
+            # nodes the test pods ran on (L7/FQDN failures with running pods
+            # mean the proxy path there: Envoy, or the TPROXY redirect).
+            nodes="$( {
+              kubectl get pods -A --field-selector=status.phase=Pending \
+                -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}'
+              for ns in $(kubectl get ns -o name | grep '^namespace/cilium-test' | cut -d/ -f2); do
+                kubectl -n "$ns" get pods -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}'
+              done
+            } | grep . | sort -u )"
+            for node in $nodes; do
               agent="$(kubectl -n kube-system get pods -l k8s-app=cilium \
                          --field-selector=spec.nodeName="$node" -o name | head -1)"
               [ -n "$agent" ] || continue
@@ -249,6 +257,25 @@
               echo "-- warnings and errors (last 30)"
               kubectl -n kube-system logs "$agent" -c cilium-agent --since=30m 2>&1 \
                 | grep -E 'level=(warn|error)|"level":"(warn|error)"' | tail -30
+              echo "-- proxy, envoy and tproxy log lines (last 20)"
+              kubectl -n kube-system logs "$agent" -c cilium-agent --since=30m 2>&1 \
+                | grep -iE 'envoy|tproxy|proxy|dnsproxy' | tail -20
+              echo "-- TPROXY rules in the agent's iptables"
+              kubectl -n kube-system exec "$agent" -c cilium-agent -- \
+                sh -c 'iptables-save -t mangle 2>&1 | grep -iE "tproxy|CILIUM_PRE_mangle" | head -10' 2>&1
+              envoy="$(kubectl -n kube-system get pods -l k8s-app=cilium-envoy \
+                         --field-selector=spec.nodeName="$node" -o name | head -1)"
+              if [ -n "$envoy" ]; then
+                echo "== cilium-envoy on $node ($envoy)"
+                kubectl -n kube-system get "$envoy" -o wide 2>&1
+                kubectl -n kube-system get "$envoy" \
+                  -o jsonpath='{range .status.containerStatuses[*]}restarts={.restartCount} last={.lastState.terminated.reason} exit={.lastState.terminated.exitCode}{"\n"}{end}' 2>&1
+                echo "-- envoy log (last 30, previous run first if it crashed)"
+                kubectl -n kube-system logs "$envoy" --previous --tail=30 2>/dev/null
+                kubectl -n kube-system logs "$envoy" --tail=30 2>&1
+              else
+                echo "== no cilium-envoy pod on $node (Envoy embedded in the agent, or DaemonSet not scheduled)"
+              fi
             done
           register: _conn_diag
           changed_when: false
