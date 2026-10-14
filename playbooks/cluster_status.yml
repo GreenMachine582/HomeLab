@@ -56,9 +56,47 @@
       register: _ufw
       changed_when: false
 
+    # Kernel options Cilium uses, from
+    # https://docs.cilium.io/en/stable/operations/system_requirements/
+    # Raspberry Pi OS kernels lack some that Debian's have.
+    - name: "Status | Kernel features for Cilium"
+      ansible.builtin.shell: |
+        modprobe configs 2>/dev/null
+        if [ -r /proc/config.gz ]; then cfg="$(zcat /proc/config.gz)"
+        elif [ -r "/boot/config-$(uname -r)" ]; then cfg="$(cat "/boot/config-$(uname -r)")"
+        else echo "no kernel config found"; exit 0; fi
+        check() {
+          for o in "$@"; do
+            printf '%s\n' "$cfg" | grep -Eq "^CONFIG_$o=(y|m)$" || missing="$missing $o"
+          done
+        }
+        missing=""
+        check BPF BPF_SYSCALL BPF_JIT CGROUP_BPF NET_CLS_BPF NET_CLS_ACT NET_SCH_INGRESS \
+              CRYPTO_SHA1 CRYPTO_USER_API_HASH PERF_EVENTS SCHEDSTATS VXLAN
+        echo "core:${missing:- ok}"
+        missing=""
+        check NETFILTER_XT_TARGET_TPROXY NETFILTER_XT_TARGET_MARK NETFILTER_XT_TARGET_CT \
+              NETFILTER_XT_MATCH_MARK NETFILTER_XT_MATCH_SOCKET
+        echo "L7 proxy and FQDN policy:${missing:- ok}"
+        missing=""
+        check NETFILTER_XT_SET IP_SET IP_SET_HASH_IP NETFILTER_XT_MATCH_COMMENT
+        echo "iptables masquerading:${missing:- ok}"
+        missing=""
+        check DEBUG_INFO_BTF INET_UDP_DIAG GENEVE
+        echo "optional (BTF, UDP socket termination, GENEVE):${missing:- ok}"
+        for m in xt_TPROXY xt_socket nf_tproxy_ipv4; do
+          modprobe -n "$m" 2>/dev/null && s=loadable || s="not available"
+          lsmod | grep -q "^$m " && s=loaded
+          echo "module $m: $s"
+        done
+      register: _kernel
+      changed_when: false
+
     - name: "Status | Report"
       ansible.builtin.debug:
         msg:
+          kernel: "{{ ansible_kernel }}"
+          kernel_features: "{{ _kernel.stdout_lines }}"
           node_ip: "{{ node_ip }}"
           interfaces: "{{ ansible_interfaces | sort }}"
           lan_addresses: "{{ _lan_addresses }}"
@@ -176,9 +214,18 @@
           changed_when: false
           failed_when: false
 
+        # The tail shows the last few failures in full; the summary names
+        # every failed test.
         - name: "Status | Connectivity test result"
           ansible.builtin.debug:
             msg: "{{ _conn.stdout_lines[-25:] + _conn.stderr_lines[-15:] }}"
+
+        - name: "Status | Connectivity test summary"
+          ansible.builtin.debug:
+            msg: >-
+              {{ (_conn.stdout_lines + _conn.stderr_lines)
+                 | select('search', '^Test \[|tests? failed|tests? skipped|All .* tests')
+                 | unique | list }}
 
         # Before the always: cleanup deletes the namespaces.
         - name: "Status | Why the test pods didn't start"
