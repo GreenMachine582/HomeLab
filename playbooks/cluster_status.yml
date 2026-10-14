@@ -271,7 +271,7 @@
               # How far proxied requests got: no to-proxy means the BPF
               # redirect; to-proxy without L7 events means the host between
               # TPROXY and the proxy; an L7 request without a response means
-              # the proxy's upstream side. The buffer holds a few minutes, so
+              # the upstream side of the proxy. The buffer holds a few minutes, so
               # use connectivity_test_only for this to cover the failures.
               echo "-- hubble: test-namespace drops, proxy hops and L7 events (last 40)"
               kubectl -n kube-system exec "$agent" -c cilium-agent -- \
