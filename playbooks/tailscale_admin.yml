@@ -21,12 +21,12 @@
   connection: local
   gather_facts: false
 
+  # ssh_port, lan_subnet, tailscale_subnet_router, tailscale_admin_login and
+  # the vault_* values all live in group_vars/all (overrides.yml, vault.yml),
+  # which localhost sees directly.
   vars:
-    _cp: "{{ hostvars[groups['k8s_control_plane'][0]] }}"
-    ssh_port: "{{ _cp.ssh_port }}"
-    tailscale_site_route: "{{ _cp.lan_subnet if _cp.tailscale_subnet_router | default(false) | bool else '' }}"
-    tailscale_admin_login: "{{ _cp.tailscale_admin_login | default('') }}"
-    tailscale_stale_devices: "{{ _cp.tailscale_stale_devices | default(['homelab-edge', 'homelab-observe', 'homelab-svc-01']) }}"
+    tailscale_site_route: "{{ lan_subnet if tailscale_subnet_router | default(false) | bool else '' }}"
+    tailscale_stale_devices: ['homelab-edge', 'homelab-observe', 'homelab-svc-01']
     _apply: "{{ confirm | default(false) | bool }}"
     _api: https://api.tailscale.com/api/v2
 
@@ -38,8 +38,8 @@
         body_format: form-urlencoded
         body:
           grant_type: client_credentials
-          client_id: "{{ _cp.vault_tailscale_admin_oauth_client_id }}"
-          client_secret: "{{ _cp.vault_tailscale_admin_oauth_client_secret }}"
+          client_id: "{{ vault_tailscale_admin_oauth_client_id }}"
+          client_secret: "{{ vault_tailscale_admin_oauth_client_secret }}"
       register: _token
       no_log: true
 

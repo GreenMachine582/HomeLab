@@ -19,16 +19,31 @@
   gather_facts: true
 
   # localhost isn't in the k8s group, so take the cluster settings from the
-  # control plane's view of group_vars/k8s.yml.
+  # control plane's view of group_vars/k8s.yml. Read each key through
+  # hostvars[host][key], which renders it; a copy of hostvars[host] holds raw
+  # templates that newer Ansible won't render (k8s-api once got the literal
+  # "{{ ... }}" text).
   vars:
-    _cp: "{{ hostvars[groups['k8s_control_plane'][0]] }}"
-    k8s_version: "{{ _cp.k8s_version }}"
-    k8s_minor: "{{ _cp.k8s_minor }}"
-    k8s_api_name: "{{ _cp.k8s_api_name }}"
+    _cp: "{{ groups['k8s_control_plane'][0] }}"
+    k8s_version: "{{ hostvars[_cp]['k8s_version'] }}"
+    k8s_minor: "{{ hostvars[_cp]['k8s_minor'] }}"
+    k8s_api_name: "{{ hostvars[_cp]['k8s_api_name'] }}"
     # k8s-api from the controller: the LAN IP at home, laptop-01's Tailscale
     # IP once the cluster is remote (k8s_api_client_ip in overrides.yml).
-    k8s_control_plane_ip: "{{ _cp.k8s_api_client_ip | default(_cp.k8s_control_plane_ip) }}"
-    cilium_cli_version: "{{ _cp.cilium_cli_version }}"
+    k8s_control_plane_ip: "{{ k8s_api_client_ip | default(hostvars[_cp]['node_ip']) }}"
+    cilium_cli_version: "{{ hostvars[_cp]['cilium_cli_version'] }}"
+
+  pre_tasks:
+    - name: "Controller | Check the cluster settings rendered"
+      ansible.builtin.assert:
+        that:
+          - k8s_control_plane_ip is match('^[0-9]+(\.[0-9]+){3}$')
+          - k8s_minor is match('^[0-9]+\.[0-9]+$')
+        fail_msg: >-
+          k8s-api would map to '{{ k8s_control_plane_ip }}' (k8s_minor
+          '{{ k8s_minor }}'). Set k8s_api_client_ip / ip_* in overrides.yml.
+        quiet: true
+      tags: [always]
 
   tasks:
     # First: a conflicting Kubernetes source (e.g. a manual kubectl install)
