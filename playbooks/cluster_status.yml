@@ -211,6 +211,24 @@
             xargs -r kubectl delete --wait=true
           changed_when: false
 
+        # Proxy listeners exist only while a test policy does, so sample
+        # them on every node during the test; the host checks read it back.
+        - name: "Status | Watch proxy listeners during the test"
+          ansible.builtin.shell: |
+            rm -f /tmp/cilium-proxy-listeners.stop
+            : > /tmp/cilium-proxy-listeners
+            end=$(( $(date +%s) + 2400 ))
+            while [ "$(date +%s)" -lt "$end" ] && [ ! -e /tmp/cilium-proxy-listeners.stop ]; do
+              ss -Hltnup | awk '{print $1, $5, $7}' | grep -E ':(1[0-9]{4}|20000) ' \
+                >> /tmp/cilium-proxy-listeners
+              sleep 2
+            done
+          async: 2500
+          poll: 0
+          delegate_to: "{{ item }}"
+          loop: "{{ groups['k8s'] }}"
+          changed_when: false
+
         - name: "Status | cilium connectivity test"
           ansible.builtin.command:
             argv: "{{ ['cilium', 'connectivity', 'test']
@@ -352,6 +370,23 @@
               ss -Hltnup "sport = :$p" | sed "s/^/port $p: /" | grep . || echo "port $p: nothing listening"
             done
             ss -Hltnp | grep -E '"(cilium-envoy|envoy|cilium-agent)"' | head -10
+            echo "-- proxy-range listeners seen during the test (2s samples: count, proto, address, process)"
+            if [ -s /tmp/cilium-proxy-listeners ]; then
+              sort /tmp/cilium-proxy-listeners | uniq -c | head -20
+            else
+              echo "none seen"
+            fi
+            # TPROXY only hands packets to sockets with IP_TRANSPARENT; Envoy
+            # counts listeners it could not create or set options on.
+            echo "-- Envoy listener counters (admin socket)"
+            sock=/var/run/cilium/envoy/sockets/admin.sock
+            if [ -S "$sock" ]; then
+              curl -s --max-time 5 --unix-socket "$sock" 'http://localhost/stats' \
+                | grep -E '^listener_manager\.(listener_(added|create_failure|create_success|removed|in_place_updated)|lds\.update_(rejected|success|failure)|total_filter_chains_draining)|^listener\..*_(17489|15337|13610)\.(downstream_cx_total|downstream_cx_transport_socket_connect_timeout|no_filter_chain_match)' \
+                | head -20
+            else
+              echo "no admin socket at $sock"
+            fi
             echo "-- iptables backends (rules in both get traversed)"
             iptables -V
             for b in legacy nft; do
@@ -389,6 +424,16 @@
             msg: "cilium connectivity test failed (rc={{ _conn.rc }}); see the output above."
           when: _conn.rc != 0
       always:
+        - name: "Status | Stop the proxy listener watch"
+          ansible.builtin.file:
+            path: /tmp/cilium-proxy-listeners.stop
+            state: touch
+            mode: "0644"
+          delegate_to: "{{ item }}"
+          loop: "{{ groups['k8s'] }}"
+          changed_when: false
+          failed_when: false
+
         - name: "Status | Remove the test namespaces"
           ansible.builtin.shell: >-
             kubectl get ns -o name | grep '^namespace/cilium-test' |
