@@ -92,8 +92,12 @@ It prompts once, hidden, for the install user's password, if any targeted node i
 5. **`nvme_storage`**: `k8s_data` nodes, only when `nvme_enabled: true`.
    **`argon_case`**: Pis with `argon_case: v2|v3`. Runs Argon's pinned installer once (power button and fan daemon,
    i2c, Pi 5 NVMe/PCIe settings), sets the fan curve, and reboots if `config.txt` changed.
-6. **`laptop_power`**: laptop-01 only. The lid switch is ignored, and the battery charge is capped at 80% if the
-   firmware allows it.
+6. **`laptop_power`** (tag `laptop`): laptop-01 only. The lid switch is ignored, and the battery charge is capped at
+   80% if the firmware allows it. A power monitor posts site power loss and restore to Discord, and shuts down
+   cleanly at 15% battery.
+   **`wake_on_lan`** (tag `wol`): arms Wake-on-LAN on nodes with `wol_mac` (laptop-01, which has no AC power-on), and
+   has the Pis wake them after every boot. `playbooks/wake.yml` wakes them on demand and waits for SSH. See
+   [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md).
 7. **`tailscale`**: installs it from the Debian repo, then joins the tailnet with a freshly minted, single-use,
    tagged auth key. It also applies `tailscale_advertise_routes` (laptop-01's site subnet route).
    **`node_network`**: Wi-Fi off where `node_disable_wifi`, and a static `node_ip` when `node_network_static`

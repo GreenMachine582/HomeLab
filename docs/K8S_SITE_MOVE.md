@@ -4,6 +4,9 @@ The nodes live at a remote site. The main PC (WSL, the Ansible controller) stays
 **Tailscale**. The site router can't reserve DHCP addresses, so nodes get **static IPs** from Ansible. Because the
 node IPs change, the cluster is **reset and rebuilt** at the site; it's empty, so nothing is lost.
 
+**Status:** pre-move checklist completed at home on 14 Oct 2026 (Argon, Wake-on-LAN, power alerts, Tailscale policy,
+break-glass). Site steps pending.
+
 ## Access paths
 
 | Situation                       | How you get in                                                                        |
@@ -19,6 +22,7 @@ node IPs change, the cluster is **reset and rebuilt** at the site; it's empty, s
 1. **`overrides.yml`**:
    - `tailscale_tailnet`: the probe then tries MagicDNS names first.
    - `home_lan_subnet`: the site must never advertise this.
+   - `mac_laptop_01`: laptop-01's wired NIC, for Wake-on-LAN (step 6).
    - `tailscale_admin_login`: optional; your login email, which turns on the policy's built-in tests.
 2. **Admin OAuth client**: separate from the nodes' client, and it never leaves the controller.
    - Tailscale admin console → **Settings → OAuth clients** (newer consoles: **Settings → Trust credentials**, type
@@ -36,7 +40,8 @@ node IPs change, the cluster is **reset and rebuilt** at the site; it's empty, s
    ansible-playbook playbooks/tailscale_admin.yml                  # validate + diff, changes nothing
    ansible-playbook playbooks/tailscale_admin.yml -e confirm=true  # apply
    ```
-   The policy:
+   Apply it now, not only at the site: the dry run changes nothing. If a stale device fails with 403, delete it in the
+   console (step 2). The policy:
    - only admins tag nodes as `tag:homelab`;
    - your own devices can reach each other;
    - admins reach nodes on `ssh_port`, 22 and 6443;
@@ -67,12 +72,22 @@ node IPs change, the cluster is **reset and rebuilt** at the site; it's empty, s
    - Wake on demand from home: `ansible-playbook playbooks/wake.yml` (polls until SSH is up).
    - Test: `sudo poweroff` laptop-01 with AC connected, then `wake.yml`. Unplug the charger for 30 seconds to see the
      power alerts.
-7. **Optional, to save time at the site:** `cluster_reset.yml` now. Otherwise do it after the move.
+7. **Don't reset the cluster yet.** `cluster_reset.yml` is step 5 at the site, right before `cluster.yml`. Until then,
+   the old control plane fails to start on its new address; that's harmless, since the cluster is empty.
+8. **Check everything over Tailscale only**, so nothing depends on the home LAN: `cluster_status.yml` reaches every
+   node, and `tailscale status` on the PC shows them online.
+9. **Back up** `.ssh/homelab-user-ca` and its passphrase offline, next to the age key.
+10. **Shut down cleanly**, then unplug once the LEDs are off:
+    ```bash
+    ansible k8s -b -m community.general.shutdown
+    ```
 
 ## At the site
 
-1. Plug in. Nodes take a DHCP address from the site router and come back on Tailscale by themselves. Check with
-   `ansible-playbook playbooks/cluster_status.yml`, or `tailscale status` on the PC.
+1. Plug in. The Pis boot by themselves (Argon always-on) and rpi-03 wakes laptop-01: expect **⏰ Wake** in Discord
+   within a few minutes. That's the first real-world wake test. If it doesn't come, run `wake.yml` or press the
+   laptop's power button. Nodes take a DHCP address from the site router and come back on Tailscale by themselves.
+   Check with `ansible-playbook playbooks/cluster_status.yml`, or `tailscale status` on the PC.
 2. Find out the site LAN (router UI through the RDP PC): subnet, gateway, and the **DHCP pool range**. Pick static
    addresses **outside the pool**.
 3. **`overrides.yml`**:
