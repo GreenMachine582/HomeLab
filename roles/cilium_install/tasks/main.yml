@@ -20,24 +20,11 @@
   tags: [k8s, cilium]
 
 # One operator replica: with a single schedulable worker the default two
-# (with anti-affinity) would leave one Pending forever.
+# (with anti-affinity) would leave one Pending forever. The same settings go
+# to install and upgrade, so an upgrade can reset the release's values.
 - name: "Cilium | Install Cilium {{ cilium_version }}"
   ansible.builtin.command:
-    argv:
-      - cilium
-      - install
-      - --version
-      - "{{ cilium_version }}"
-      - --set
-      - kubeProxyReplacement=true
-      - --set
-      - "k8sServiceHost={{ node_ip }}"
-      - --set
-      - "k8sServicePort={{ k8s_api_port }}"
-      - --set
-      - ipam.mode=kubernetes
-      - --set
-      - operator.replicas=1
+    argv: "{{ ['cilium', 'install', '--version', cilium_version] + _cilium_set_args }}"
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   when: _cilium_ds.rc != 0
@@ -45,6 +32,8 @@
 
 # Existing installs: move to cilium_version with a Helm upgrade (so the
 # release stays right for Flux to adopt). Downgrades work the same way.
+# --reset-values, not --reuse-values: the stored values pin the old image
+# tags, so reusing them changes the chart but not the running version.
 - name: "Cilium | Read the running version"
   ansible.builtin.command: >-
     kubectl -n kube-system get daemonset cilium
@@ -71,7 +60,7 @@
 
     - name: "Cilium | Upgrade to {{ cilium_version }}"
       ansible.builtin.command:
-        argv: [cilium, upgrade, --version, "{{ cilium_version }}", --reuse-values]
+        argv: "{{ ['cilium', 'upgrade', '--version', cilium_version, '--reset-values'] + _cilium_set_args }}"
 
     - name: "Cilium | Wait for the agents"
       ansible.builtin.command: kubectl -n kube-system rollout status daemonset/cilium --timeout=10m

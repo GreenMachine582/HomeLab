@@ -1,0 +1,12 @@
+---
+# roles/cilium_install/vars/main.yml
+# Helm values for install and upgrade. Kube-proxy replacement is on, so
+# Cilium reaches the API server directly by IP.
+_cilium_settings:
+  - kubeProxyReplacement=true
+  - "k8sServiceHost={{ node_ip }}"
+  - "k8sServicePort={{ k8s_api_port }}"
+  - ipam.mode=kubernetes
+  - operator.replicas=1
+
+_cilium_set_args: "{{ _cilium_settings | map('regex_replace', '^', '--set=') | list }}"
