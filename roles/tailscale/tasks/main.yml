@@ -148,6 +148,7 @@
       --advertise-routes={{ tailscale_advertise_routes | join(',') }}
       {% endif %}
       {% if tailscale_accept_routes %}--accept-routes{% endif %}
+      --accept-dns={{ tailscale_accept_dns | bool | lower }}
       {% if tailscale_exit_node %}--advertise-exit-node{% endif %}
       {{ tailscale_extra_args }}
   when:
@@ -181,6 +182,13 @@
   when:
     - tailscale_up
     - (ts_prefs.stdout | from_json).AdvertiseRoutes | default([], true) | sort != tailscale_advertise_routes | sort
+  tags: [tailscale, routes]
+
+- name: "Tailscale | Apply accept-dns"
+  ansible.builtin.command: "tailscale set --accept-dns={{ tailscale_accept_dns | bool | lower }}"
+  when:
+    - tailscale_up
+    - (ts_prefs.stdout | from_json).CorpDNS | default(true) | bool != tailscale_accept_dns | bool
   tags: [tailscale, routes]
 
 - name: "Tailscale | Enable IP forwarding (subnet router)"

@@ -109,8 +109,16 @@
             path: /etc/resolv.conf
           register: _resolv
 
-        # Without DHCP nothing rewrites resolv.conf, so set it here unless
-        # systemd-resolved/resolvconf owns it (a symlink).
+        # Debian 13's dhcpcd still regenerates resolv.conf at boot, with no
+        # nameservers for a static interface (seen on laptop-01 at the site).
+        - name: "Network | Stop dhcpcd rewriting resolv.conf"
+          ansible.builtin.lineinfile:
+            path: /etc/dhcpcd.conf
+            line: nohook resolv.conf
+            create: false
+          failed_when: false
+
+        # Set it here unless systemd-resolved/resolvconf owns it (a symlink).
         - name: "Network | DNS servers"
           ansible.builtin.copy:
             dest: /etc/resolv.conf
