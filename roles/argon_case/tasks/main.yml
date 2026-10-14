@@ -75,8 +75,37 @@
   register: _argon_config_after
   tags: [argon]
 
+# Not ansible.builtin.reboot: its SSH session (over Tailscale, or a
+# ControlPersist socket) can hang on the dying node. Schedule the reboot,
+# drop the connection, wait, then prove it rebooted via the boot ID.
 - name: "Argon | Reboot to apply config.txt changes"
-  ansible.builtin.reboot:
-    reboot_timeout: 600
   when: _argon_config_before.stat.checksum | default('') != _argon_config_after.stat.checksum | default('')
   tags: [argon]
+  block:
+    - name: "Argon | Boot ID before"
+      ansible.builtin.slurp:
+        src: /proc/sys/kernel/random/boot_id
+      register: _argon_boot_before
+
+    - name: "Argon | Reboot in a few seconds"
+      ansible.builtin.command: systemd-run --on-active=5 systemctl reboot
+      changed_when: true
+
+    - name: "Argon | Drop the old connection"
+      ansible.builtin.meta: reset_connection
+
+    - name: "Argon | Wait for the node to come back"
+      ansible.builtin.wait_for_connection:
+        delay: 30
+        timeout: 600
+
+    - name: "Argon | Boot ID after"
+      ansible.builtin.slurp:
+        src: /proc/sys/kernel/random/boot_id
+      register: _argon_boot_after
+
+    - name: "Argon | Assert it rebooted"
+      ansible.builtin.assert:
+        that: _argon_boot_after.content != _argon_boot_before.content
+        fail_msg: "{{ inventory_hostname }} answered but didn't reboot; reboot it and re-run."
+        quiet: true
