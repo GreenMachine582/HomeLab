@@ -215,31 +215,9 @@
         # them on every node during the test; the host checks read it back.
         - name: "Status | Watch proxy listeners during the test"
           ansible.builtin.shell: |
-            rm -f /tmp/cilium-proxy-listeners.stop /tmp/cilium-envoy-listeners.json /tmp/cilium-envoy-sockopts
+            rm -f /tmp/cilium-proxy-listeners.stop /tmp/cilium-envoy-listeners.json \
+              /tmp/cilium-envoy-sockopts /tmp/cilium-envoy-sockopts.py
             : > /tmp/cilium-proxy-listeners
-            # Reads socket options off the Envoy listening sockets: copies
-            # each fd with pidfd_getfd (syscalls 434/438) and asks the kernel.
-            cat > /tmp/cilium-envoy-sockopts.py <<'PY'
-            import ctypes, os, socket, sys
-            libc = ctypes.CDLL(None, use_errno=True)
-            pid = int(sys.argv[1])
-            pfd = libc.syscall(434, pid, 0)
-            if pfd < 0:
-                sys.exit("pidfd_open failed, errno %d" % ctypes.get_errno())
-            for fd in map(int, sys.argv[2:]):
-                n = libc.syscall(438, pfd, fd, 0)
-                if n < 0:
-                    print("fd %d: pidfd_getfd failed, errno %d" % (fd, ctypes.get_errno()))
-                    continue
-                s = socket.socket(fileno=n)
-                print("fd %d: %s IP_TRANSPARENT=%d IP_FREEBIND=%d SO_REUSEPORT=%d SO_MARK=%#x" % (
-                    fd, s.getsockname(),
-                    s.getsockopt(socket.SOL_IP, 19), s.getsockopt(socket.SOL_IP, 15),
-                    s.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT),
-                    s.getsockopt(socket.SOL_SOCKET, 36)))
-                s.close()
-            PY
-            sock=/var/run/cilium/envoy/sockets/admin.sock
             # Kernel drop reasons for IPv4 packets during the test (the
             # skb:kfree_skb tracepoint names the reason and the function).
             T=/sys/kernel/tracing
@@ -254,21 +232,6 @@
             while [ "$(date +%s)" -lt "$end" ] && [ ! -e /tmp/cilium-proxy-listeners.stop ]; do
               ss -Hltnup | awk '{print $1, $5, $7}' | grep -E ':(1[0-9]{4}|20000) ' \
                 >> /tmp/cilium-proxy-listeners
-              # Envoy listener config, once, while a proxy listener exists.
-              if [ ! -s /tmp/cilium-envoy-listeners.json ] && [ -S "$sock" ] \
-                 && grep -q cilium-envoy /tmp/cilium-proxy-listeners; then
-                curl -s --max-time 5 --unix-socket "$sock" \
-                  'http://localhost/config_dump?resource=dynamic_listeners' \
-                  > /tmp/cilium-envoy-listeners.json
-              fi
-              if [ ! -s /tmp/cilium-envoy-sockopts ]; then
-                line="$(ss -Hltnp | grep '"cilium-envoy"' | grep -E ':(1[0-9]{4}|20000) ')"
-                epid="$(printf '%s\n' "$line" | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)"
-                efds="$(printf '%s\n' "$line" | grep -o 'fd=[0-9]*' | cut -d= -f2 | tr '\n' ' ')"
-                if [ -n "$epid" ] && [ -n "$efds" ]; then
-                  python3 /tmp/cilium-envoy-sockopts.py "$epid" $efds > /tmp/cilium-envoy-sockopts 2>&1
-                fi
-              fi
               sleep 2
             done
             if [ -w "$T/events/skb/kfree_skb/enable" ]; then
@@ -357,13 +320,6 @@
                 echo "-- envoy log (last 30, previous run first if it crashed)"
                 kubectl -n kube-system logs "$envoy" --previous --tail=30 2>/dev/null
                 kubectl -n kube-system logs "$envoy" --tail=30 2>&1
-                echo "-- envoy log since start: privileged helper and socket option errors (last 15)"
-                kubectl -n kube-system logs "$envoy" 2>&1 \
-                  | grep -iE 'privileged|not permitted|permission denied|setsockopt|socket option|transparent|EPERM|starter' \
-                  | tail -15
-                echo "-- envoy container securityContext"
-                kubectl -n kube-system get "$envoy" \
-                  -o jsonpath='{range .spec.containers[*]}{.name}: {.securityContext}{"\n"}{end}' 2>&1
               else
                 echo "== no cilium-envoy pod on $node (Envoy embedded in the agent, or DaemonSet not scheduled)"
               fi
@@ -378,10 +334,10 @@
           when: _conn.rc != 0
 
         # Proxied traffic is TPROXY'd to 127.0.0.1 and delivered locally, so
-        # the host stack can drop it where Cilium can't see: reverse-path
-        # filtering (Cilium needs rp_filter off on its interfaces), the proxy
-        # routing rules/tables 2004 and 2005 (Tailscale also adds ip rules),
-        # and UFW's INPUT chain.
+        # the host stack can drop it where Cilium can't see: the source check
+        # (src_valid_mark/accept_local, rp_filter), the proxy routing rules
+        # and table 2004, and UFW's INPUT chain. The kernel drop reasons
+        # recorded during the test name the step.
         - name: "Status | Nodes the test pods ran on"
           ansible.builtin.shell: |
             for ns in $(kubectl get ns -o name | grep '^namespace/cilium-test' | cut -d/ -f2); do
@@ -448,27 +404,16 @@
             else
               echo "none seen"
             fi
-            # TPROXY only hands packets to sockets with IP_TRANSPARENT; Envoy
-            # counts listeners it could not create or set options on.
+            # Envoy counts listeners it could not create, and connections it took.
             echo "-- Envoy listener counters (admin socket)"
             sock=/var/run/cilium/envoy/sockets/admin.sock
             if [ -S "$sock" ]; then
               curl -s --max-time 5 --unix-socket "$sock" 'http://localhost/stats' \
-                | grep -E '^listener_manager\.(listener_(added|create_failure|create_success|removed|in_place_updated)|lds\.update_(rejected|success|failure)|total_filter_chains_draining)|^listener\..*_(17489|15337|13610)\.(downstream_cx_total|downstream_cx_transport_socket_connect_timeout|no_filter_chain_match)' \
+                | grep -E '^listener_manager\.(listener_(added|create_failure|create_success|removed|in_place_updated)|lds\.update_(rejected|success|failure)|total_filter_chains_draining)|^listener.127.0.0.1_[0-9]+.(downstream_cx_total|downstream_cx_transport_socket_connect_timeout|no_filter_chain_match)' \
                 | head -20
             else
               echo "no admin socket at $sock"
             fi
-            echo "-- Envoy listener config during the test (IP_TRANSPARENT is socket option level 0 name 19)"
-            if [ -s /tmp/cilium-envoy-listeners.json ]; then
-              grep -oE '"(name|transparent|freebind|address|port_value|level|int_value|state)": *("[^"]*"|[0-9a-z]+)' \
-                /tmp/cilium-envoy-listeners.json | head -40
-            else
-              echo "not captured"
-            fi
-            # By design Envoy itself runs with no capabilities: its parent,
-            # cilium-envoy-starter, keeps NET_ADMIN and sets IP_TRANSPARENT
-            # on Envoy's sockets for it. So the starter's capabilities matter.
             echo "-- kernel IPv4 drops during the test (count, function, reason; skb:kfree_skb)"
             T=/sys/kernel/tracing
             [ -d "$T/events" ] || T=/sys/kernel/debug/tracing
@@ -480,45 +425,6 @@
             else
               echo "tracefs not readable"
             fi
-            echo "-- nftables tables outside iptables-nft (their hooks run too)"
-            nft list tables 2>&1 | head -15
-            echo "-- nat PREROUTING (runs between mangle PREROUTING and routing)"
-            iptables -t nat -L PREROUTING -v -n 2>&1 | head -8
-            echo "-- socket options on Envoy proxy listeners during the test (TPROXY needs IP_TRANSPARENT=1)"
-            cat /tmp/cilium-envoy-sockopts 2>/dev/null || echo "not captured"
-            echo "-- cilium-envoy and its starter: capabilities (the starter needs NET_ADMIN)"
-            caps() {
-              for f in CapEff CapPrm CapBnd; do
-                v="$(awk -v f="$f:" '$1 == f {print $2}' "/proc/$1/status")"
-                out=""
-                for b in 10:NET_BIND_SERVICE 12:NET_ADMIN 13:NET_RAW 21:SYS_ADMIN; do
-                  n="${b%%:*}"
-                  [ $(( (0x$v >> n) & 1 )) -eq 1 ] && out="$out ${b#*:}"
-                done
-                echo "  $f=$v:${out:- none}"
-              done
-            }
-            pid="$(pgrep -o -x cilium-envoy)"
-            if [ -n "$pid" ]; then
-              echo "envoy pid $pid ($(cat /proc/$pid/comm), uid $(awk '/^Uid/ {print $2}' /proc/$pid/status))"
-              caps "$pid"
-              ppid="$(awk '/^PPid/ {print $2}' "/proc/$pid/status")"
-              echo "parent pid $ppid ($(cat /proc/$ppid/comm 2>/dev/null), uid $(awk '/^Uid/ {print $2}' /proc/$ppid/status 2>/dev/null))"
-              caps "$ppid"
-              echo "  seccomp=$(awk '/^Seccomp:/ {print $2}' /proc/$ppid/status) NoNewPrivs=$(awk '/^NoNewPrivs/ {print $2}' /proc/$ppid/status)"
-              echo "  apparmor=$(cat /proc/$ppid/attr/current 2>/dev/null || echo n/a)"
-            else
-              echo "no cilium-envoy process"
-            fi
-            echo "-- iptables backends (rules in both get traversed)"
-            iptables -V
-            for b in legacy nft; do
-              command -v "iptables-$b-save" >/dev/null || continue
-              echo "$b: $(iptables-$b-save 2>/dev/null | grep -c TPROXY) TPROXY, $(iptables-$b-save 2>/dev/null | grep -c '^-A ufw') ufw, $(iptables-$b-save 2>/dev/null | grep -c '^-A ts-') tailscale rules"
-            done
-            echo "-- Tailscale table 52 (consulted before main, rule 5270)"
-            ip route show table 52 | grep -v '^100\.' | head -10
-            echo "$(ip route show table 52 | grep -c '^100\.') tailnet (100.x) routes not shown"
           delegate_to: "{{ item }}"
           loop: "{{ _test_nodes.stdout_lines | default([]) | select('in', groups['k8s']) | list }}"
           register: _proxy_host

@@ -101,8 +101,10 @@ Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next P
 - **L7, FQDN or TLS-SNI connectivity tests time out (curl exit 28), everything else passes**: traffic redirected to
   Envoy or the DNS proxy isn't reaching it. The cause here was `net.ipv4.conf.all.src_valid_mark=1` (set at runtime,
   not by a sysctl file): the source check then follows the proxy mark to table 2004's `local default`, and the
-  kernel drops the SYN as `IP_LOCAL_SOURCE`. `k8s_prereqs` sets `accept_local=1` on the pod `lxc*` interfaces
-  (`/etc/sysctl.d/99-zzz-homelab-cilium-proxy.conf`), as Cilium already does for `cilium_*`. If it recurs, run
+  kernel drops the packet as `IP_LOCAL_SOURCE`, both redirected pod traffic arriving on `lxc*` and the replies to
+  Envoy's upstream connections arriving on `eth0`. `k8s_prereqs` sets `src_valid_mark=0` (and, as a fallback,
+  `accept_local=1` on the pod `lxc*` interfaces) in `/etc/sysctl.d/99-zzz-homelab-cilium-proxy.conf`. If the
+  report shows `src_valid_mark all=1` again, whatever sets it at runtime is back. If it recurs, run
   `cluster_status.yml -e connectivity_test=true -e connectivity_test_only=echo-ingress-l7`. The proxy path report
   shows `src_valid_mark`/`accept_local` and the kernel's drop reasons during the test.
 - **`check-log-errors` fails on the Pi** with `CONFIG_INET_UDP_DIAG` and GENEVE BIG TCP warnings: the Raspberry Pi
