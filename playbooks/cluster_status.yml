@@ -240,6 +240,16 @@
                 s.close()
             PY
             sock=/var/run/cilium/envoy/sockets/admin.sock
+            # Kernel drop reasons for IPv4 packets during the test (the
+            # skb:kfree_skb tracepoint names the reason and the function).
+            T=/sys/kernel/tracing
+            [ -d "$T/events" ] || T=/sys/kernel/debug/tracing
+            if [ -w "$T/events/skb/kfree_skb/enable" ]; then
+              echo 0 > "$T/events/skb/kfree_skb/enable"
+              : > "$T/trace"
+              echo 'protocol == 2048' > "$T/events/skb/kfree_skb/filter"
+              echo 1 > "$T/events/skb/kfree_skb/enable"
+            fi
             end=$(( $(date +%s) + 2400 ))
             while [ "$(date +%s)" -lt "$end" ] && [ ! -e /tmp/cilium-proxy-listeners.stop ]; do
               ss -Hltnup | awk '{print $1, $5, $7}' | grep -E ':(1[0-9]{4}|20000) ' \
@@ -261,6 +271,10 @@
               fi
               sleep 2
             done
+            if [ -w "$T/events/skb/kfree_skb/enable" ]; then
+              echo 0 > "$T/events/skb/kfree_skb/enable"
+              echo 0 > "$T/events/skb/kfree_skb/filter"
+            fi
           async: 2500
           poll: 0
           delegate_to: "{{ item }}"
@@ -442,6 +456,21 @@
             # By design Envoy itself runs with no capabilities: its parent,
             # cilium-envoy-starter, keeps NET_ADMIN and sets IP_TRANSPARENT
             # on Envoy's sockets for it. So the starter's capabilities matter.
+            echo "-- kernel IPv4 drops during the test (count, function, reason; skb:kfree_skb)"
+            T=/sys/kernel/tracing
+            [ -d "$T/events" ] || T=/sys/kernel/debug/tracing
+            if [ -r "$T/trace" ]; then
+              grep 'kfree_skb:' "$T/trace" \
+                | sed -E 's/.*location=([^+ ]+).*reason: ([A-Z_0-9]+).*/\1 \2/' \
+                | sort | uniq -c | sort -rn | head -15
+              echo "$(grep -c 'kfree_skb:' "$T/trace") drops recorded"
+            else
+              echo "tracefs not readable"
+            fi
+            echo "-- nftables tables outside iptables-nft (their hooks run too)"
+            nft list tables 2>&1 | head -15
+            echo "-- nat PREROUTING (runs between mangle PREROUTING and routing)"
+            iptables -t nat -L PREROUTING -v -n 2>&1 | head -8
             echo "-- socket options on Envoy proxy listeners during the test (TPROXY needs IP_TRANSPARENT=1)"
             cat /tmp/cilium-envoy-sockopts 2>/dev/null || echo "not captured"
             echo "-- cilium-envoy and its starter: capabilities (the starter needs NET_ADMIN)"
