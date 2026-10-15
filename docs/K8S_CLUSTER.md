@@ -79,8 +79,10 @@ for the test namespace, and the host's proxy path (TPROXY rule hits, proxy liste
 rp_filter, ip rules, UFW).
 
 Cilium settings live in `roles/cilium_install/vars/main.yml`. `cluster.yml` records the applied set in the
-`homelab-cilium-settings` ConfigMap and runs `cilium upgrade` when the version or any setting changes, so the agents
-restart once after a settings change.
+`homelab-cilium-settings` ConfigMap and runs `cilium upgrade` when the version or any setting changes. The chart's
+`rollOutCiliumPods`/`rollOutPods` options are on, so the agent, operator and Envoy pods restart to pick up the
+change. If the agent logs `Mismatch found … config-drift-checker`, the running agent doesn't match `cilium-config`;
+`kubectl -n kube-system rollout restart ds/cilium` fixes it.
 
 Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next PR).
 

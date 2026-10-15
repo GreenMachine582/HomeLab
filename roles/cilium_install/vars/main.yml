@@ -9,6 +9,12 @@ _cilium_settings:
   - "k8sServicePort={{ k8s_api_port }}"
   - ipam.mode=kubernetes
   - operator.replicas=1
+  # Restart the pods when cilium-config changes. Without these an upgrade
+  # that only changes settings rewrites the ConfigMap but the running
+  # agents keep the old values (the agent logs a config-drift warning).
+  - rollOutCiliumPods=true
+  - operator.rollOutPods=true
+  - envoy.rollOutPods=true
   # L7 and FQDN policy (and Gateway API) send traffic to Envoy or the DNS
   # proxy. On the Raspberry Pi OS kernel the iptables TPROXY rule matches
   # and Envoy's socket is transparent, yet the kernel drops the packet
