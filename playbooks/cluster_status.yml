@@ -215,8 +215,30 @@
         # them on every node during the test; the host checks read it back.
         - name: "Status | Watch proxy listeners during the test"
           ansible.builtin.shell: |
-            rm -f /tmp/cilium-proxy-listeners.stop /tmp/cilium-envoy-listeners.json
+            rm -f /tmp/cilium-proxy-listeners.stop /tmp/cilium-envoy-listeners.json /tmp/cilium-envoy-sockopts
             : > /tmp/cilium-proxy-listeners
+            # Reads socket options off Envoy's own listening sockets: copies
+            # each fd with pidfd_getfd (syscalls 434/438) and asks the kernel.
+            cat > /tmp/cilium-envoy-sockopts.py <<'PY'
+            import ctypes, os, socket, sys
+            libc = ctypes.CDLL(None, use_errno=True)
+            pid = int(sys.argv[1])
+            pfd = libc.syscall(434, pid, 0)
+            if pfd < 0:
+                sys.exit("pidfd_open failed, errno %d" % ctypes.get_errno())
+            for fd in map(int, sys.argv[2:]):
+                n = libc.syscall(438, pfd, fd, 0)
+                if n < 0:
+                    print("fd %d: pidfd_getfd failed, errno %d" % (fd, ctypes.get_errno()))
+                    continue
+                s = socket.socket(fileno=n)
+                print("fd %d: %s IP_TRANSPARENT=%d IP_FREEBIND=%d SO_REUSEPORT=%d SO_MARK=%#x" % (
+                    fd, s.getsockname(),
+                    s.getsockopt(socket.SOL_IP, 19), s.getsockopt(socket.SOL_IP, 15),
+                    s.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT),
+                    s.getsockopt(socket.SOL_SOCKET, 36)))
+                s.close()
+            PY
             sock=/var/run/cilium/envoy/sockets/admin.sock
             end=$(( $(date +%s) + 2400 ))
             while [ "$(date +%s)" -lt "$end" ] && [ ! -e /tmp/cilium-proxy-listeners.stop ]; do
@@ -228,6 +250,14 @@
                 curl -s --max-time 5 --unix-socket "$sock" \
                   'http://localhost/config_dump?resource=dynamic_listeners' \
                   > /tmp/cilium-envoy-listeners.json
+              fi
+              if [ ! -s /tmp/cilium-envoy-sockopts ]; then
+                line="$(ss -Hltnp | grep '"cilium-envoy"' | grep -E ':(1[0-9]{4}|20000) ')"
+                epid="$(printf '%s\n' "$line" | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)"
+                efds="$(printf '%s\n' "$line" | grep -o 'fd=[0-9]*' | cut -d= -f2 | tr '\n' ' ')"
+                if [ -n "$epid" ] && [ -n "$efds" ]; then
+                  python3 /tmp/cilium-envoy-sockopts.py "$epid" $efds > /tmp/cilium-envoy-sockopts 2>&1
+                fi
               fi
               sleep 2
             done
@@ -412,6 +442,8 @@
             # By design Envoy itself runs with no capabilities: its parent,
             # cilium-envoy-starter, keeps NET_ADMIN and sets IP_TRANSPARENT
             # on Envoy's sockets for it. So the starter's capabilities matter.
+            echo "-- socket options on Envoy proxy listeners during the test (TPROXY needs IP_TRANSPARENT=1)"
+            cat /tmp/cilium-envoy-sockopts 2>/dev/null || echo "not captured"
             echo "-- cilium-envoy and its starter: capabilities (the starter needs NET_ADMIN)"
             caps() {
               for f in CapEff CapPrm CapBnd; do
