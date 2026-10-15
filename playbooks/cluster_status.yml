@@ -401,6 +401,19 @@
             cat /proc/sys/net/ipv4/conf/lxc*/rp_filter 2>/dev/null | sort | uniq -c \
               | awk '{print "lxc* =" $2 " on " $1 " interfaces"}'
             grep -rHs 'rp_filter' /etc/sysctl.conf /etc/sysctl.d /usr/lib/sysctl.d /run/sysctl.d
+            # With src_valid_mark=1 the source check routes by the packet mark,
+            # so a proxied packet (mark 0x200 -> table 2004 local default)
+            # looks locally sourced and is dropped as IP_LOCAL_SOURCE unless
+            # accept_local=1. Both are OR-ed: all, then the interface.
+            echo "-- src_valid_mark and accept_local (non-zero only; proxied traffic needs src_valid_mark=0 or accept_local=1)"
+            for k in src_valid_mark accept_local; do
+              for f in /proc/sys/net/ipv4/conf/*/$k; do
+                v="$(cat "$f")"
+                [ "$v" != 0 ] && echo "$k $(echo "$f" | cut -d/ -f7)=$v"
+              done
+            done
+            echo "(end)"
+            grep -rHs -E 'src_valid_mark|accept_local' /etc/sysctl.conf /etc/sysctl.d /usr/lib/sysctl.d /run/sysctl.d
             echo "-- kernel drop counters"
             awk '/^TcpExt:/ { if (!h) { split($0, k); h = 1 } else { split($0, v);
                    for (i = 2; i in k; i++) if (k[i] ~ /IPReversePathFilter/) print k[i], v[i] } }' /proc/net/netstat
