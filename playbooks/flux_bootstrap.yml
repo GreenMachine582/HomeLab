@@ -1,0 +1,141 @@
+---
+# playbooks/flux_bootstrap.yml
+#
+# Installs Flux from the manifests committed to homelab-cluster
+# (clusters/prod/flux-system) and gives it the SOPS age key. Flux then
+# syncs clusters/prod from main. Runs on the controller (WSL):
+#
+#   ansible-playbook playbooks/flux_bootstrap.yml
+#
+# Safe to re-run, and the recovery step if Flux is broken or deleted. Not
+# `flux bootstrap github`: the repo is public (no deploy key or token needed)
+# and main only takes signed commits through PRs, so the manifests arrive by
+# PR like everything else. Needs controller.yml (flux, age) and the age key
+# at sops_age_key_file. See docs/K8S_CLUSTER.md.
+
+- name: "Flux | Install from homelab-cluster"
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  # localhost isn't in the k8s group; read the settings through the control
+  # plane's hostvars, as controller.yml does.
+  vars:
+    _cp: "{{ groups['k8s_control_plane'][0] }}"
+    _repo_url: "{{ hostvars[_cp]['flux_repo_url'] }}"
+    _branch: "{{ hostvars[_cp]['flux_branch'] }}"
+    _path: "{{ hostvars[_cp]['flux_path'] }}"
+    _key_file: "{{ hostvars[_cp]['sops_age_key_file'] }}"
+    _recipient: "{{ hostvars[_cp]['sops_age_recipient'] }}"
+    _raw: "{{ _repo_url | replace('https://github.com/', 'https://raw.githubusercontent.com/') }}/{{ _branch }}/{{ _path }}/flux-system"
+
+  environment:
+    KUBECONFIG: "{{ lookup('env', 'HOME') }}/.kube/homelab.conf"
+
+  tasks:
+    # ── The age key ───────────────────────────────────────────────────────────
+    - name: "Flux | Find the age key"
+      ansible.builtin.stat:
+        path: "{{ _key_file }}"
+      register: _key
+
+    - name: "Flux | Fail without the age key"
+      ansible.builtin.fail:
+        msg: >-
+          No age key at {{ _key_file }}. Restore it from an offline copy
+          (mode 0600), then re-run.
+      when: not _key.stat.exists
+
+    - name: "Flux | Read the key's public half"
+      ansible.builtin.command:
+        argv: [age-keygen, -y, "{{ _key_file }}"]
+      register: _pub
+      changed_when: false
+
+    - name: "Flux | Check it is the key in .sops.yaml"
+      ansible.builtin.assert:
+        that: _recipient in _pub.stdout_lines
+        fail_msg: >-
+          {{ _key_file }} holds {{ _pub.stdout_lines }}, but homelab-cluster
+          encrypts to {{ _recipient }}. Flux couldn't decrypt anything.
+        quiet: true
+
+    # ── Namespace and SOPS secret ─────────────────────────────────────────────
+    - name: "Flux | flux-system namespace"
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl create namespace flux-system --dry-run=client -o yaml | kubectl apply -f -
+      args:
+        executable: /bin/bash
+      register: _ns
+      changed_when: "'unchanged' not in _ns.stdout"
+
+    - name: "Flux | sops-age secret"
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl -n flux-system create secret generic sops-age \
+          --from-file=age.agekey="{{ _key_file }}" --dry-run=client -o yaml | kubectl apply -f -
+      args:
+        executable: /bin/bash
+      register: _secret
+      changed_when: "'unchanged' not in _secret.stdout"
+      no_log: true
+
+    # ── Flux itself ───────────────────────────────────────────────────────────
+    # Components (CRDs, controllers) first; the sync objects need the CRDs.
+    # Server-side apply reports every object the same way, changed or not.
+    - name: "Flux | Apply the controllers from {{ _branch }}"
+      ansible.builtin.command:
+        argv: [kubectl, apply, --server-side, --force-conflicts, -f, "{{ _raw }}/gotk-components.yaml"]
+      changed_when: false
+
+    - name: "Flux | Wait for the CRDs"
+      ansible.builtin.command: >-
+        kubectl wait --for=condition=Established --timeout=2m
+        crd/gitrepositories.source.toolkit.fluxcd.io crd/kustomizations.kustomize.toolkit.fluxcd.io
+      changed_when: false
+
+    - name: "Flux | Wait for the controllers"
+      ansible.builtin.command: kubectl -n flux-system wait --for=condition=Available deployment --all --timeout=5m
+      changed_when: false
+
+    - name: "Flux | Apply the sync (GitRepository + Kustomization)"
+      ansible.builtin.command:
+        argv: [kubectl, apply, --server-side, --force-conflicts, -f, "{{ _raw }}/gotk-sync.yaml"]
+      changed_when: false
+
+    - name: "Flux | flux check"
+      ansible.builtin.command: flux check
+      register: _check
+      changed_when: false
+
+    # apps only appears once flux-system has reconciled clusters/prod.
+    - name: "Flux | Wait until the Kustomizations are Ready"
+      ansible.builtin.command: >-
+        kubectl -n flux-system get kustomization {{ item }}
+        -o jsonpath={.status.conditions[?(@.type=="Ready")].status}
+      loop: [flux-system, apps]
+      register: _ready
+      until: _ready.stdout == 'True'
+      retries: 30
+      delay: 10
+      changed_when: false
+      failed_when: false
+
+    - name: "Flux | Status"
+      ansible.builtin.command: flux get all -A
+      register: _status
+      changed_when: false
+
+    - name: "Flux | Report"
+      ansible.builtin.debug:
+        msg: "{{ _check.stderr_lines[-3:] + _status.stdout_lines }}"
+
+    - name: "Flux | Fail if a Kustomization isn't Ready"
+      ansible.builtin.fail:
+        msg: >-
+          {{ _ready.results | rejectattr('stdout', 'eq', 'True') | map(attribute='item') | join(', ') }}
+          not Ready after 5 minutes. See the status above and
+          `flux logs --level=error`.
+      when: _ready.results | rejectattr('stdout', 'eq', 'True') | list | length > 0

@@ -105,6 +105,31 @@ at start (`TCMalloc assumes a 48-bit virtual address space`). The Pi 5 kernel is
 - The Pi 4 agents log `Envoy: Version check failed` periodically; `cluster_status.yml` expects that.
 - `cluster_status.yml` prints each node's `virtual address bits` among its kernel features.
 
+## Flux (M3)
+
+Everything inside the cluster comes from [homelab-cluster](https://github.com/GreenMachine582/homelab-cluster) `main`,
+path `clusters/prod`. Flux is installed from manifests committed there (`clusters/prod/flux-system`), not with
+`flux bootstrap github`. The repo is public, so Flux needs no deploy key or token. `main` only takes signed commits
+through PRs, so Flux's own manifests arrive by PR like everything else.
+
+```bash
+ansible-playbook playbooks/controller.yml -K --tags client   # flux, sops, age on the controller
+ansible-playbook playbooks/flux_bootstrap.yml                 # install / repair Flux
+flux get kustomizations
+```
+
+`flux_bootstrap.yml`:
+1. Checks that `~/.config/sops/age/keys.txt` holds the key `.sops.yaml` encrypts to (`sops_age_recipient`).
+2. Creates the `sops-age` secret in `flux-system`.
+3. Applies `gotk-components.yaml` and then `gotk-sync.yaml` from `main`.
+4. Waits until the `flux-system` and `apps` Kustomizations are Ready.
+
+Re-running it is also the recovery step when Flux is broken or was deleted.
+
+**Upgrading Flux:** bump `flux_version` in `group_vars/k8s.yml` (HomeLab PR). In a homelab-cluster PR, replace
+`gotk-components.yaml` with that release's `install.yaml`. Flux applies its own upgrade once that PR is merged. Then
+re-run `controller.yml --tags flux` for the CLI.
+
 ## etcd backups
 
 `cluster.yml` (tag `etcd_backup`, role `roles/etcd_backup`) sets up daily snapshots on laptop-01:

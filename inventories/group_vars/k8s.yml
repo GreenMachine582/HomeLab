@@ -64,6 +64,19 @@ k8s_control_plane_ip: "{{ hostvars[groups['k8s_control_plane'][0]].node_ip }}"
 cilium_version: "1.20.1"
 cilium_cli_version: "v0.20.1"
 
+# GitOps (homelab-cluster, M3). flux_version must match the release whose
+# install.yaml is committed as clusters/prod/flux-system/gotk-components.yaml;
+# bumping it is a PR in both repos. The CLI and sops live on the controller.
+flux_version: "2.9.6"
+sops_version: "3.13.3"
+flux_repo_url: https://github.com/GreenMachine582/homelab-cluster
+flux_branch: main
+flux_path: clusters/prod
+# Holds the cluster's SOPS private key; its public key must be the recipient
+# in homelab-cluster's .sops.yaml.
+sops_age_key_file: "{{ lookup('env', 'HOME') }}/.config/sops/age/keys.txt"
+sops_age_recipient: age19k96we2u9cytex9zru4r0yaskqc88aryvh2mw5d7m2etjqschevqgyvrs5
+
 # Database taint on k8s_data nodes. Off until rpi-01/02 join as general
 # workers; with it on now, general pods would have nowhere to run.
 k8s_data_taint_enabled: false

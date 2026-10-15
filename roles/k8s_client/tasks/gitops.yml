@@ -1,0 +1,66 @@
+---
+# roles/k8s_client/tasks/gitops.yml
+# flux CLI and sops, checksum-verified and versioned under /opt like
+# cilium-cli, plus age from apt. Used for homelab-cluster (Flux, SOPS secrets).
+
+- name: "Client | Work out the architecture"
+  ansible.builtin.set_fact:
+    _gitops_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+  tags: [client, flux, sops]
+
+- name: "Client | age"
+  ansible.builtin.apt:
+    name: age
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  tags: [client, sops]
+
+- name: "Client | Create tool directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "/opt/flux/v{{ flux_version }}"
+    - "/opt/sops/v{{ sops_version }}"
+  tags: [client, flux, sops]
+
+- name: "Client | Download flux {{ flux_version }}"
+  ansible.builtin.get_url:
+    url: "https://github.com/fluxcd/flux2/releases/download/v{{ flux_version }}/flux_{{ flux_version }}_linux_{{ _gitops_arch }}.tar.gz"
+    checksum: "sha256:https://github.com/fluxcd/flux2/releases/download/v{{ flux_version }}/flux_{{ flux_version }}_checksums.txt"
+    dest: "/opt/flux/v{{ flux_version }}/flux_{{ flux_version }}_linux_{{ _gitops_arch }}.tar.gz"
+    mode: "0644"
+  tags: [client, flux]
+
+- name: "Client | Unpack flux"
+  ansible.builtin.unarchive:
+    src: "/opt/flux/v{{ flux_version }}/flux_{{ flux_version }}_linux_{{ _gitops_arch }}.tar.gz"
+    dest: "/opt/flux/v{{ flux_version }}"
+    remote_src: true
+    creates: "/opt/flux/v{{ flux_version }}/flux"
+  tags: [client, flux]
+
+- name: "Client | Download sops {{ sops_version }}"
+  ansible.builtin.get_url:
+    url: "https://github.com/getsops/sops/releases/download/v{{ sops_version }}/sops-v{{ sops_version }}.linux.{{ _gitops_arch }}"
+    checksum: "sha256:https://github.com/getsops/sops/releases/download/v{{ sops_version }}/sops-v{{ sops_version }}.checksums.txt"
+    dest: "/opt/sops/v{{ sops_version }}/sops"
+    mode: "0755"
+  tags: [client, sops]
+
+- name: "Client | Put flux and sops on the PATH"
+  ansible.builtin.file:
+    src: "{{ item.src }}"
+    dest: "/usr/local/bin/{{ item.name }}"
+    state: link
+    force: true
+  loop:
+    - { name: flux, src: "/opt/flux/v{{ flux_version }}/flux" }
+    - { name: sops, src: "/opt/sops/v{{ sops_version }}/sops" }
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [client, flux, sops]

@@ -3,12 +3,14 @@
 #
 # Sets up the Ansible controller: WSL on the main PC, the only machine that
 # runs these playbooks and kubectl. Run once per controller, and again after
-# bumping k8s_version or cilium_cli_version. Needs your WSL sudo password:
+# bumping k8s_version, cilium_cli_version or flux_version. Needs your WSL
+# sudo password:
 #
 #   ansible-playbook playbooks/controller.yml -K
 #
 # Installs: sshpass (first password-based bootstrap), the Ansible
-# collections, kubectl and cilium-cli at the cluster's versions, the k8s-api
+# collections, kubectl, cilium-cli and flux at the cluster's versions, sops
+# and age (homelab-cluster secrets), the k8s-api
 # hosts entry, and KUBECONFIG=~/.kube/homelab.conf in ~/.bashrc.
 # See docs/K8S_CLUSTER.md.
 
@@ -32,6 +34,8 @@
     # IP once the cluster is remote (k8s_api_client_ip in overrides.yml).
     k8s_control_plane_ip: "{{ k8s_api_client_ip | default(hostvars[_cp]['node_ip']) }}"
     cilium_cli_version: "{{ hostvars[_cp]['cilium_cli_version'] }}"
+    flux_version: "{{ hostvars[_cp]['flux_version'] }}"
+    sops_version: "{{ hostvars[_cp]['sops_version'] }}"
 
   pre_tasks:
     - name: "Controller | Check the cluster settings rendered"
@@ -89,7 +93,7 @@
       become: false
       tags: [controller, collections]
 
-    - name: "Controller | kubectl, cilium-cli, k8s-api, KUBECONFIG"
+    - name: "Controller | kubectl, cilium-cli, flux, sops, k8s-api, KUBECONFIG"
       ansible.builtin.include_role:
         name: k8s_client
       tags: [controller, client]
