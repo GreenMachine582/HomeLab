@@ -1,0 +1,12 @@
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/etcd_backup/templates/homelab-etcd-snapshot.service.j2
+[Unit]
+Description=Snapshot etcd and archive the cluster PKI
+After=network-online.target kubelet.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/etcd-snapshot.sh
+Nice=10
+IOSchedulingClass=idle

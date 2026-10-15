@@ -1,0 +1,39 @@
+---
+# playbooks/etcd_restore_test.yml
+#
+# Restore rehearsal (M2 exit): takes a fresh snapshot through the timer's
+# service, restores it into a scratch dir on the control plane, starts a
+# throwaway etcd on loopback, and checks kube-system and every node are in
+# the restored data. The live etcd and cluster aren't touched.
+#
+#   ansible-playbook playbooks/etcd_restore_test.yml
+#
+# Needs cluster.yml --tags etcd_backup first. The real disaster restore is
+# in docs/K8S_CLUSTER.md.
+
+- name: "Probe | Discover the control plane's SSH endpoint"
+  hosts: k8s_control_plane
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        apply:
+          tags: [always]
+      tags: [always]
+      vars:
+        probe_allow_fresh: false
+
+- name: "etcd | Restore rehearsal"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: "Roles | etcd restore test"
+      ansible.builtin.include_role:
+        name: etcd_backup
+        tasks_from: restore_test

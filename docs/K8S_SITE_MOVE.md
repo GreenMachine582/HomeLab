@@ -130,4 +130,4 @@ break-glass). Site steps pending.
 - **Outside monitoring:** nothing alerts if the whole site goes silent. The external Uptime Kuma at home is in the
   backlog and is now a priority.
 - **Backups:** backup drives at the site aren't off-site. The etcd snapshots and dumps also get copied home (etcd
-  snapshot fetch in M2 part B).
+  snapshot fetch: `playbooks/etcd_fetch.yml`, see `K8S_CLUSTER.md`).

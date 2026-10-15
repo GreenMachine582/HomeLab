@@ -3,7 +3,8 @@
 #
 # Builds the Kubernetes cluster on nodes already prepared by bootstrap.yml:
 # containerd, kubeadm (init on k8s_control_plane, join for k8s_workers),
-# Cilium as the CNI and kube-proxy replacement, and node labels/taints.
+# Cilium as the CNI and kube-proxy replacement, node labels/taints, and the
+# daily etcd snapshot timer.
 #
 #   ansible-playbook playbooks/cluster.yml
 #
@@ -104,3 +105,17 @@
       ansible.builtin.include_role:
         name: k8s_node_config
       tags: [k8s, nodes]
+
+# ── etcd backups ──────────────────────────────────────────────────────────────
+# Daily snapshot timer; copy them home with etcd_fetch.yml, rehearse a
+# restore with etcd_restore_test.yml.
+- name: "Cluster | etcd snapshots"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Roles | etcd backup"
+      ansible.builtin.include_role:
+        name: etcd_backup
+      tags: [k8s, etcd_backup]

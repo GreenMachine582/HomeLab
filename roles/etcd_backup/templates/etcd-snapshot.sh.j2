@@ -1,0 +1,46 @@
+#!/bin/bash
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/etcd_backup/templates/etcd-snapshot.sh.j2
+#
+# Snapshots the kubeadm etcd, checks the file, archives /etc/kubernetes/pki
+# alongside it, and keeps the newest {{ etcd_backup_keep }} of each. Silent on success;
+# posts to Discord on any failure. Run by homelab-etcd-snapshot.timer.
+set -Eeuo pipefail
+
+HOST="{{ inventory_hostname }}"
+DIR="{{ etcd_backup_dir }}"
+KEEP={{ etcd_backup_keep }}
+PKI=/etc/kubernetes/pki
+
+notify() {
+    curl -sf --max-time 10 \
+        -H "Content-Type: application/json" \
+        --data-raw "{\"content\": \"$1\"}" \
+        "{{ notify_discord_webhook }}" > /dev/null || true
+}
+trap 'notify "❌ [etcd] Snapshot on $HOST failed at line $LINENO ($(date "+%Y-%m-%d %H:%M:%S")); see journalctl -u homelab-etcd-snapshot"' ERR
+
+umask 077
+stamp="$(date +%Y%m%d-%H%M%S)"
+snap="$DIR/etcd-$stamp.db"
+
+etcdctl --endpoints=https://127.0.0.1:2379 \
+    --cacert="$PKI/etcd/ca.crt" \
+    --cert="$PKI/etcd/healthcheck-client.crt" \
+    --key="$PKI/etcd/healthcheck-client.key" \
+    snapshot save "$snap.part" > /dev/null
+mv "$snap.part" "$snap"
+
+# Fails on a truncated or corrupt file; prints hash, revision, keys, size.
+etcdutl snapshot status "$snap" --write-out=table
+
+tar -czf "$DIR/pki-$stamp.tar.gz" -C /etc/kubernetes pki
+
+prune() {
+    ls -1t "$DIR"/$1 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f --
+}
+prune 'etcd-*.db'
+prune 'pki-*.tar.gz'
+rm -f "$DIR"/*.part
+
+echo "Saved $snap ($(du -h "$snap" | cut -f1)); keeping $KEEP."

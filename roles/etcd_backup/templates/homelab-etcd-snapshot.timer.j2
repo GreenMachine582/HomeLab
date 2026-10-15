@@ -1,0 +1,12 @@
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/etcd_backup/templates/homelab-etcd-snapshot.timer.j2
+[Unit]
+Description=Daily etcd snapshot
+
+[Timer]
+OnCalendar={{ etcd_backup_schedule }}
+RandomizedDelaySec={{ etcd_backup_randomized_delay }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
