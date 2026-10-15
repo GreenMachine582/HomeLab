@@ -1,0 +1,38 @@
+---
+# playbooks/etcd_fetch.yml
+#
+# Copies the newest etcd snapshot and its PKI archive from the control plane
+# to the controller (~/homelab-backups/etcd), keeping the newest 7 there.
+# The backups at the site aren't off-site; this is the copy that is.
+#
+#   ansible-playbook playbooks/etcd_fetch.yml
+#
+# Snapshots are taken daily by homelab-etcd-snapshot.timer (cluster.yml).
+# See docs/K8S_CLUSTER.md.
+
+- name: "Probe | Discover the control plane's SSH endpoint"
+  hosts: k8s_control_plane
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        apply:
+          tags: [always]
+      tags: [always]
+      vars:
+        probe_allow_fresh: false
+
+- name: "etcd | Fetch the newest snapshot"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Roles | etcd fetch"
+      ansible.builtin.include_role:
+        name: etcd_backup
+        tasks_from: fetch

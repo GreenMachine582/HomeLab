@@ -105,7 +105,53 @@ at start (`TCMalloc assumes a 48-bit virtual address space`). The Pi 5 kernel is
 - The Pi 4 agents log `Envoy: Version check failed` periodically; `cluster_status.yml` expects that.
 - `cluster_status.yml` prints each node's `virtual address bits` among its kernel features.
 
-Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next PR).
+## etcd backups
+
+`cluster.yml` (tag `etcd_backup`, role `roles/etcd_backup`) sets up daily snapshots on laptop-01:
+
+- `etcdctl`/`etcdutl` come from the etcd release that matches kubeadm's etcd image (read from
+  `/etc/kubernetes/manifests/etcd.yaml`), so they upgrade with the cluster.
+- `homelab-etcd-snapshot.timer` runs `/usr/local/sbin/etcd-snapshot.sh` daily at 03:30 (plus up to 15 minutes, and it
+  catches up after downtime). The script saves `etcd-<stamp>.db`, checks it with `etcdutl snapshot status`, and
+  archives `/etc/kubernetes/pki` as `pki-<stamp>.tar.gz` next to it. It keeps 7 of each in `/var/backups/etcd`
+  (root-only: these files hold every Secret and the CA keys). It posts to Discord only when it fails.
+- The first run of the role takes a snapshot right away.
+
+```bash
+ansible-playbook playbooks/cluster.yml --tags etcd_backup   # install or update
+ansible-playbook playbooks/etcd_fetch.yml                    # newest snapshot + PKI → ~/homelab-backups/etcd (keeps 7)
+ansible-playbook playbooks/etcd_restore_test.yml             # restore rehearsal
+```
+
+**Restore rehearsal** (`etcd_restore_test.yml`, the M2 exit): it takes a fresh snapshot through the service, restores
+it into `/var/tmp/etcd-restore-test`, and starts a throwaway etcd on `127.0.0.1:12379`. It then checks that
+`kube-system` and the same nodes as the live cluster are in the restored data, and cleans up. The live etcd isn't
+touched. Run it after Kubernetes or etcd upgrades too.
+
+Off-site: the site copies aren't off-site, so run `etcd_fetch.yml` from home (weekly, and before risky changes). M4
+adds the backup Pi as a second target.
+
+### Real restore (disaster only)
+
+Single control plane, so a restore puts the whole cluster back to the snapshot's moment; anything created since is
+lost. On laptop-01, as root:
+
+1. If the PKI is gone too (rebuilt laptop): `tar -xzf pki-<stamp>.tar.gz -C /etc/kubernetes`, from the same stamp.
+2. Stop the control plane: `mkdir /root/manifests && mv /etc/kubernetes/manifests/*.yaml /root/manifests/`, then wait
+   until `crictl ps` shows no `etcd` or `kube-apiserver`.
+3. `mv /var/lib/etcd /var/lib/etcd.broken`, then:
+   ```bash
+   etcdutl snapshot restore /var/backups/etcd/etcd-<stamp>.db --data-dir /var/lib/etcd \
+     --name laptop-01 --initial-cluster laptop-01=https://<node_ip>:2380 \
+     --initial-advertise-peer-urls https://<node_ip>:2380
+   ```
+   (Name and URLs as in `/root/manifests/etcd.yaml`.)
+4. `mv /root/manifests/*.yaml /etc/kubernetes/manifests/`, then wait for `kubectl get nodes` from the PC.
+5. `kubectl -n kube-system rollout restart ds/cilium deploy/coredns`, then `cluster_status.yml -e connectivity_test=true`.
+
+This covers a broken etcd on a working laptop-01. A rebuilt laptop-01 also needs the kubelet config, kubeconfigs and
+static pod manifests regenerated from the restored PKI (`kubeadm init phase …`). That path isn't tested yet; it's
+part of the M8 DR test.
 
 ## Troubleshooting
 

@@ -1,0 +1,20 @@
+---
+# roles/etcd_backup/defaults/main.yml
+# Daily etcd snapshot on the control plane (decision 6: keep 7).
+
+# Snapshots and PKI archives land here, root-only: both hold every Secret
+# and the cluster CA keys.
+etcd_backup_dir: /var/backups/etcd
+etcd_backup_keep: 7
+
+# systemd OnCalendar; Persistent=true catches up a run missed while off.
+etcd_backup_schedule: "*-*-* 03:30:00"
+etcd_backup_randomized_delay: 15min
+
+# etcdctl/etcdutl come from the etcd release that matches the image in
+# kubeadm's etcd manifest, so the tools never drift from the server.
+etcd_tools_dir: /opt/etcd
+
+# Where etcd_fetch.yml copies snapshots on the controller (WSL), outside
+# the repo clone.
+etcd_backup_controller_dir: "{{ lookup('env', 'HOME') }}/homelab-backups/etcd"

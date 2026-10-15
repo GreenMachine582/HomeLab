@@ -1,0 +1,72 @@
+---
+# roles/etcd_backup/tasks/fetch.yml (control plane → controller)
+# Copies the newest snapshot and its PKI archive to the controller, so a
+# site incident doesn't take the backups with it, and keeps the newest
+# {{ etcd_backup_keep }} there too. Used by playbooks/etcd_fetch.yml.
+
+- name: "etcd | Find snapshots"
+  ansible.builtin.find:
+    paths: "{{ etcd_backup_dir }}"
+    patterns: "etcd-*.db"
+  register: _etcd_snaps
+
+- name: "etcd | Fail if there are none"
+  ansible.builtin.fail:
+    msg: "No snapshots in {{ etcd_backup_dir }}; run cluster.yml --tags etcd_backup first."
+  when: _etcd_snaps.matched == 0
+
+- name: "etcd | Pick the newest"
+  ansible.builtin.set_fact:
+    _etcd_stamp: >-
+      {{ (_etcd_snaps.files | sort(attribute='mtime') | last).path | basename
+         | regex_replace('^etcd-(.*)\.db$', '\1') }}
+
+- name: "etcd | Controller backup directory"
+  ansible.builtin.file:
+    path: "{{ etcd_backup_controller_dir }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+
+- name: "etcd | Fetch snapshot {{ _etcd_stamp }}"
+  ansible.builtin.fetch:
+    src: "{{ etcd_backup_dir }}/{{ item }}"
+    dest: "{{ etcd_backup_controller_dir }}/{{ item }}"
+    flat: true
+  loop:
+    - "etcd-{{ _etcd_stamp }}.db"
+    - "pki-{{ _etcd_stamp }}.tar.gz"
+
+- name: "etcd | Find the controller's copies"
+  ansible.builtin.find:
+    paths: "{{ etcd_backup_controller_dir }}"
+    patterns: ["etcd-*.db", "pki-*.tar.gz"]
+  register: _etcd_local
+  delegate_to: localhost
+  become: false
+
+- name: "etcd | Restrict the controller's copies"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    mode: "0600"
+  loop: "{{ _etcd_local.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  delegate_to: localhost
+  become: false
+
+# Names sort by timestamp, so the oldest come first.
+- name: "etcd | Keep the newest {{ etcd_backup_keep }} on the controller"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: >-
+    {{ (_etcd_local.files | map(attribute='path') | select('search', '/etcd-') | sort)[:-(etcd_backup_keep | int)]
+       + (_etcd_local.files | map(attribute='path') | select('search', '/pki-') | sort)[:-(etcd_backup_keep | int)] }}
+  delegate_to: localhost
+  become: false
+
+- name: "etcd | Fetched"
+  ansible.builtin.debug:
+    msg: "etcd-{{ _etcd_stamp }}.db and pki-{{ _etcd_stamp }}.tar.gz → {{ etcd_backup_controller_dir }}"

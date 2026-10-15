@@ -1,0 +1,65 @@
+---
+# roles/etcd_backup/tasks/main.yml (control plane)
+# etcd tools matching the running etcd, plus a daily snapshot timer.
+# The snapshot script also archives /etc/kubernetes/pki: a restore onto a
+# rebuilt laptop-01 needs the same CA, or every node and kubeconfig breaks.
+# Restore rehearsal: playbooks/etcd_restore_test.yml.
+
+- name: "etcd | Tools"
+  ansible.builtin.include_tasks: tools.yml
+  tags: [k8s, etcd_backup]
+
+- name: "etcd | Backup directory"
+  ansible.builtin.file:
+    path: "{{ etcd_backup_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [k8s, etcd_backup]
+
+# notify_script_dir comes from base_hardening (bootstrap.yml).
+- name: "etcd | Snapshot script"
+  ansible.builtin.template:
+    src: etcd-snapshot.sh.j2
+    dest: /usr/local/sbin/etcd-snapshot.sh
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [k8s, etcd_backup]
+
+- name: "etcd | Snapshot service and timer"
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - homelab-etcd-snapshot.service
+    - homelab-etcd-snapshot.timer
+  register: _etcd_units
+  tags: [k8s, etcd_backup]
+
+- name: "etcd | Enable the snapshot timer"
+  ansible.builtin.systemd:
+    name: homelab-etcd-snapshot.timer
+    enabled: true
+    state: "{{ 'restarted' if _etcd_units is changed else 'started' }}"
+    daemon_reload: "{{ _etcd_units is changed }}"
+  tags: [k8s, etcd_backup]
+
+# First snapshot right away, so the M2 exit doesn't wait for 03:30.
+- name: "etcd | Find existing snapshots"
+  ansible.builtin.find:
+    paths: "{{ etcd_backup_dir }}"
+    patterns: "etcd-*.db"
+  register: _etcd_existing
+  tags: [k8s, etcd_backup]
+
+- name: "etcd | Take the first snapshot"
+  ansible.builtin.systemd:
+    name: homelab-etcd-snapshot.service
+    state: started
+  when: _etcd_existing.matched == 0
+  tags: [k8s, etcd_backup]

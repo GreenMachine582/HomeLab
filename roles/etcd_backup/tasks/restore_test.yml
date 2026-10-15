@@ -1,0 +1,114 @@
+---
+# roles/etcd_backup/tasks/restore_test.yml (control plane)
+# Restore rehearsal that leaves the live cluster alone: takes a fresh
+# snapshot through the real service, restores it into a scratch data dir,
+# runs a throwaway etcd on loopback ports 12379/12380, and checks the
+# restored data matches the cluster (kube-system exists, same node count).
+# Used by playbooks/etcd_restore_test.yml. The real restore is in
+# docs/K8S_CLUSTER.md.
+
+- name: "etcd | Tools"
+  ansible.builtin.include_tasks: tools.yml
+
+- name: "etcd | Take a fresh snapshot"
+  ansible.builtin.systemd:
+    name: homelab-etcd-snapshot.service
+    state: started
+
+- name: "etcd | Find snapshots"
+  ansible.builtin.find:
+    paths: "{{ etcd_backup_dir }}"
+    patterns: "etcd-*.db"
+  register: _etcd_snaps
+
+- name: "etcd | Pick the newest"
+  ansible.builtin.set_fact:
+    _etcd_snap: "{{ (_etcd_snaps.files | sort(attribute='mtime') | last).path }}"
+    _etcd_test_dir: /var/tmp/etcd-restore-test
+    _etcd_test_unit: homelab-etcd-restore-test
+    _etcd_test_endpoint: http://127.0.0.1:12379
+    _etcd_test_peer: http://127.0.0.1:12380
+
+- name: "etcd | Rehearse a restore of {{ _etcd_snap | basename }}"
+  block:
+    - name: "etcd | Clear any earlier attempt"
+      ansible.builtin.file:
+        path: "{{ _etcd_test_dir }}"
+        state: absent
+
+    - name: "etcd | Restore into a scratch data dir"
+      ansible.builtin.command:
+        argv:
+          - etcdutl
+          - snapshot
+          - restore
+          - "{{ _etcd_snap }}"
+          - --data-dir={{ _etcd_test_dir }}/data
+          - --name=restore-test
+          - --initial-cluster=restore-test={{ _etcd_test_peer }}
+          - --initial-advertise-peer-urls={{ _etcd_test_peer }}
+
+    - name: "etcd | Start a throwaway etcd on loopback"
+      ansible.builtin.command:
+        argv:
+          - systemd-run
+          - --unit={{ _etcd_test_unit }}
+          - --collect
+          - "{{ etcd_tools_dir }}/v{{ etcd_version }}/etcd"
+          - --name=restore-test
+          - --data-dir={{ _etcd_test_dir }}/data
+          - --listen-client-urls={{ _etcd_test_endpoint }}
+          - --advertise-client-urls={{ _etcd_test_endpoint }}
+          - --listen-peer-urls={{ _etcd_test_peer }}
+          - --initial-cluster=restore-test={{ _etcd_test_peer }}
+          - --initial-advertise-peer-urls={{ _etcd_test_peer }}
+
+    - name: "etcd | Wait until it's healthy"
+      ansible.builtin.command: etcdctl --endpoints={{ _etcd_test_endpoint }} endpoint health
+      register: _etcd_health
+      until: _etcd_health.rc == 0
+      retries: 15
+      delay: 2
+      changed_when: false
+
+    - name: "etcd | Read namespaces and nodes from the restored data"
+      ansible.builtin.command: etcdctl --endpoints={{ _etcd_test_endpoint }} get {{ item }} --prefix --keys-only
+      loop:
+        - /registry/namespaces/
+        - /registry/minions/
+      register: _etcd_restored
+      changed_when: false
+
+    - name: "etcd | Read the live node count"
+      ansible.builtin.command: kubectl get nodes --no-headers -o name
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: _etcd_live_nodes
+      changed_when: false
+
+    - name: "etcd | Check the restored data"
+      ansible.builtin.assert:
+        that:
+          - "'/registry/namespaces/kube-system' in _etcd_restored.results[0].stdout_lines"
+          - _restored_nodes | length == _etcd_live_nodes.stdout_lines | length
+        fail_msg: >-
+          Restored data doesn't match: nodes {{ _restored_nodes }} vs live
+          {{ _etcd_live_nodes.stdout_lines }}.
+        success_msg: >-
+          Restore OK: {{ _etcd_snap | basename }} has
+          {{ _etcd_restored.results[0].stdout_lines | select | list | length }} namespaces and
+          nodes {{ _restored_nodes | map('basename') | join(', ') }}.
+      vars:
+        _restored_nodes: "{{ _etcd_restored.results[1].stdout_lines | select | list }}"
+
+  always:
+    - name: "etcd | Stop the throwaway etcd"
+      ansible.builtin.systemd:
+        name: "{{ _etcd_test_unit }}"
+        state: stopped
+      failed_when: false
+
+    - name: "etcd | Remove the scratch data dir"
+      ansible.builtin.file:
+        path: "{{ _etcd_test_dir }}"
+        state: absent
