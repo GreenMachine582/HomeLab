@@ -16,14 +16,15 @@ Runs from **WSL on the main PC**, in `~/homelab`, like the bootstrap.
 | Pod / Service     | 10.244.0.0/16 / 10.96.0.0/12                                           | `group_vars/k8s.yml`      |
 | API endpoint      | `k8s-api:6443` (every node's `/etc/hosts` → control plane `node_ip`)   | `roles/k8s_prereqs`       |
 | Control plane     | `laptop-01`, keeps its `NoSchedule` taint                              | `inventories/k8s.yml`     |
-| Workers           | `rpi-03`, labelled `homelab/role=data`, `homelab/storage=nvme`; `rpi-01`, `rpi-02` joining (see K8S_BOOTSTRAP.md, "Adding a fresh node at the site") | `roles/k8s_node_config`   |
+| Workers           | `rpi-03`, labelled `homelab/role=data`, `homelab/storage=nvme`; `rpi-01`, `rpi-02` (Pi 4, no Envoy: `homelab/l7-proxy=unsupported`) | `roles/k8s_node_config`   |
 
 Why these versions: 1.37 is out, but Cilium 1.20 is only tested on Kubernetes 1.33–1.36. Debian 13 ships containerd
 1.7, and Kubernetes 1.36 needs 2.x. Bumping any of them is a PR that edits `group_vars/k8s.yml` (and
 `roles/containerd/defaults`).
 
-The **database taint** on rpi-03 is off (`k8s_data_taint_enabled: false`). With only one worker, it would leave
-general pods nowhere to run. Turn it on once rpi-01/02 join.
+The **database taint** on rpi-03 is off (`k8s_data_taint_enabled: false`). rpi-01/02 have joined, so general pods
+would have somewhere to go, but it stays off until the databases arrive (M6). Note that rpi-03 is also the only
+worker that can run Envoy, so L7/FQDN-policed workloads and the Gateway would need to tolerate the taint.
 
 ## Before the first run
 

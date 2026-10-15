@@ -13,8 +13,8 @@ Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the 
 |----------------|-------------------------|---------------------------------|--------------|----------------------|
 | `laptop-01`    | Control plane (amd64)   | Debian 13                       | `root`       | Bootstrapped 13 Oct  |
 | `rpi-03`       | Data node, Pi 5 + NVMe  | Raspberry Pi OS Lite (trixie)   | `admin`      | Bootstrapped 13 Oct  |
-| `rpi-01`       | Worker, Pi 4 2 GB, no case | Raspberry Pi OS Lite (trixie) | `admin`      | Identified 15 Oct    |
-| `rpi-02`       | Worker, Pi 4 8 GB, Argon ONE V2 | Raspberry Pi OS Lite (trixie) | `admin` | Identified 15 Oct    |
+| `rpi-01`       | Worker, Pi 4 2 GB, no case | Raspberry Pi OS Lite (trixie) | `admin`      | Joined 15 Oct        |
+| `rpi-02`       | Worker, Pi 4 8 GB, Argon ONE V2 | Raspberry Pi OS Lite (trixie) | `admin` | Joined 15 Oct        |
 
 Groups in [`inventories/k8s.yml`](../inventories/k8s.yml): `k8s` → `k8s_control_plane`, `k8s_workers`, plus
 `k8s_data` for the database node. They're deliberately not called `data`/`svc`, so the legacy group vars never apply.
