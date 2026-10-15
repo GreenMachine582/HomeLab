@@ -16,6 +16,10 @@ _cilium_settings:
   - rollOutCiliumPods=true
   - operator.rollOutPods=true
   - envoy.rollOutPods=true
+  # Envoy's tcmalloc needs a 48-bit virtual address space; the Pi 4 kernel is
+  # 39-bit and Envoy crash-loops there. Run it only on nodes labelled
+  # supported (roles/k8s_node_config, host_vars cilium_l7_proxy).
+  - envoy.nodeSelector.homelab/l7-proxy=supported
 
 _cilium_set_args: "{{ _cilium_settings | map('regex_replace', '^', '--set=') | list }}"
 

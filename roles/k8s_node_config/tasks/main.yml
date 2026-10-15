@@ -29,6 +29,22 @@
   changed_when: "'not labeled' not in _label_data.stdout"
   tags: [k8s, nodes]
 
+# Envoy (Cilium's L7 proxy) only runs where the kernel gives it a 48-bit
+# virtual address space: the Pi 4 kernel (bcm2711) is 39-bit and Envoy's
+# tcmalloc aborts there. cilium_l7_proxy: false in host_vars marks such nodes;
+# cilium-envoy is pinned to homelab/l7-proxy=supported (cilium_install vars),
+# so pods needing L7/FQDN/TLS policy or the Gateway must select it too.
+- name: "Nodes | L7 proxy support label"
+  ansible.builtin.command: >-
+    kubectl label node {{ item }} --overwrite
+    homelab/l7-proxy={{ 'supported' if hostvars[item].cilium_l7_proxy | default(true) | bool else 'unsupported' }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  loop: "{{ groups['k8s'] }}"
+  register: _label_l7
+  changed_when: "'not labeled' not in _label_l7.stdout"
+  tags: [k8s, nodes]
+
 # Off until general workers exist (k8s_data_taint_enabled); turning it off
 # again removes the taint.
 - name: "Nodes | Database taint on data nodes"

@@ -311,9 +311,15 @@
           loop: "{{ groups['k8s'] }}"
           changed_when: false
 
+        # Test pods go only to nodes that can run Envoy (homelab/l7-proxy,
+        # roles/k8s_node_config): on the Pi 4s every L7/FQDN/TLS test would
+        # fail. connectivity_test_all_nodes=true drops the selector to test
+        # the datapath across all nodes; expect proxy tests to fail there.
         - name: "Status | cilium connectivity test"
           ansible.builtin.command:
             argv: "{{ ['cilium', 'connectivity', 'test']
+                      + ([] if connectivity_test_all_nodes | default(false) | bool
+                         else ['--node-selector', 'homelab/l7-proxy=supported'])
                       + (['--test', connectivity_test_only] if connectivity_test_only | default('') | length > 0 else []) }}"
           register: _conn
           changed_when: false
@@ -334,8 +340,10 @@
 
         # check-log-errors always fails on the Raspberry Pi OS kernel: it lacks
         # CONFIG_INET_UDP_DIAG and GENEVE, and the agent logs both once at
-        # start. Treat a run whose only failure is exactly those as passed;
-        # anything else (another test, or another log line) still fails.
+        # start. The Pi 4 agents also log failed Envoy version checks, because
+        # Envoy is pinned off those nodes. Treat a run whose only failure is
+        # exactly those lines as passed; anything else still fails. (An Envoy
+        # outage on a supported node fails the L7 tests, which run there.)
         - name: "Status | Separate the known Pi kernel log lines"
           ansible.builtin.set_fact:
             _conn_failed_tests: >-
@@ -344,7 +352,8 @@
                  | map('trim') | unique | list }}
             _conn_unknown_log_lines: >-
               {{ _conn.stdout_lines | select('search', 'level=(warn|error)')
-                 | reject('search', 'CONFIG_INET_UDP_DIAG|BIG TCP for UDP tunnels') | list }}
+                 | reject('search', 'CONFIG_INET_UDP_DIAG|BIG TCP for UDP tunnels|Envoy: Version check failed|name=version-check')
+                 | list }}
 
         - name: "Status | Did the test really fail"
           ansible.builtin.set_fact:
@@ -355,8 +364,9 @@
         - name: "Status | Only the known Pi kernel warnings"
           ansible.builtin.debug:
             msg: >-
-              check-log-errors failed only on the Pi kernel warnings (CONFIG_INET_UDP_DIAG,
-              GENEVE BIG TCP probe), which are harmless; counting the run as passed.
+              check-log-errors failed only on the known Pi lines (CONFIG_INET_UDP_DIAG,
+              GENEVE BIG TCP probe, Envoy version checks on the Pi 4 agents), which are
+              expected; counting the run as passed.
           when: _conn.rc != 0 and not (_conn_failed | bool)
 
         # Before the always: cleanup deletes the namespaces.

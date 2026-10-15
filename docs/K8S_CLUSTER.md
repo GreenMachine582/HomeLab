@@ -74,7 +74,9 @@ ansible-playbook playbooks/cluster.yml     # re-run: no changes
   (what homelab-cluster's HelmRelease must match).
 
 With `connectivity_test=true` it also runs `cilium connectivity test` and removes the test namespaces afterwards.
-With the control plane tainted and one worker, the test runs in single-node mode. Add
+Its pods only go to nodes labelled `homelab/l7-proxy=supported` (see "Envoy and the Pi 4s" below), and with the
+control plane tainted that leaves rpi-03, so it runs in single-node mode. `-e connectivity_test_all_nodes=true`
+spreads it over every node to exercise cross-node traffic; L7/FQDN/TLS tests then fail on the Pi 4s. Add
 `-e connectivity_test_only=<name>` (a substring of a test name, e.g. `echo-ingress-l7`) to run only matching tests,
 which takes a minute or two instead of ~30. When tests fail it prints the Cilium agent and Envoy state, Hubble flows
 for the test namespace, and the host's proxy path (TPROXY rule hits, proxy listeners and their socket options,
@@ -85,6 +87,22 @@ Cilium settings live in `roles/cilium_install/vars/main.yml`. `cluster.yml` reco
 `rollOutCiliumPods`/`rollOutPods` options are on, so the agent, operator and Envoy pods restart to pick up the
 change. If the agent logs `Mismatch found … config-drift-checker`, the running agent doesn't match `cilium-config`;
 `kubectl -n kube-system rollout restart ds/cilium` fixes it.
+
+### Envoy and the Pi 4s
+
+Cilium's Envoy (L7, FQDN and TLS policy, and the Gateway) can't run on rpi-01/02. Envoy's tcmalloc needs a 48-bit
+virtual address space, and the Raspberry Pi kernel for the Pi 4 (`bcm2711_defconfig`) is built 39-bit, so it aborts
+at start (`TCMalloc assumes a 48-bit virtual address space`). The Pi 5 kernel is 47-bit, and laptop-01 is 48-bit.
+
+- `host_vars` sets `cilium_l7_proxy: false` on the Pi 4s; `k8s_node_config` labels every node
+  `homelab/l7-proxy=supported|unsupported`.
+- The `cilium-envoy` DaemonSet only runs on `supported` nodes (`envoy.nodeSelector` in
+  `roles/cilium_install/vars/main.yml` and homelab-cluster's HelmRelease).
+- **Anything that needs L7/FQDN/TLS policy, or serves through the Gateway, must have
+  `nodeSelector: {homelab/l7-proxy: supported}`.** On a Pi 4 such a pod's policy can't be enforced by a proxy:
+  endpoint updates stall and FQDN rules can let traffic through.
+- The Pi 4 agents log `Envoy: Version check failed` periodically; `cluster_status.yml` expects that.
+- `cluster_status.yml` prints each node's `virtual address bits` among its kernel features.
 
 Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next PR).
 

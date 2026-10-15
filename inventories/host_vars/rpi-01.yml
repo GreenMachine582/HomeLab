@@ -16,3 +16,9 @@
 
 # ── Storage (roles/nvme_storage) ──────────────────────────────────────────────
 nvme_enabled: false
+
+# ── Cilium L7 proxy (roles/k8s_node_config) ───────────────────────────────────
+# The Pi 4 kernel (bcm2711_defconfig) has a 39-bit virtual address space and
+# Envoy's tcmalloc needs 48-bit, so Envoy can't run here. Labelled
+# homelab/l7-proxy=unsupported: no L7/FQDN/TLS-policed pods or Gateway here.
+cilium_l7_proxy: false
