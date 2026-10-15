@@ -38,6 +38,35 @@
     - net.bridge.bridge-nf-call-ip6tables
   tags: [k8s, prereqs]
 
+# Cilium's L7 and DNS proxies get redirected traffic marked 0x200, which
+# rule 9 routes via table 2004 ("local default"). Something on these nodes
+# sets net.ipv4.conf.all.src_valid_mark=1 at runtime (no sysctl file does),
+# so the kernel's source check uses that mark too, sees every source as
+# local, and drops the packet (IP_LOCAL_SOURCE) unless accept_local=1 on
+# the arrival interface. Cilium sets that on cilium_*, but proxied packets
+# arrive on the pod's lxc* veth. systemd-sysctl applies the glob to each new
+# lxc interface (via udev). Cilium's BPF already rejects spoofed pod sources.
+- name: "K8s prereqs | Accept proxied traffic on Cilium pod interfaces"
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-zzz-homelab-cilium-proxy.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/k8s_prereqs). See the task comment there.
+      -net.ipv4.conf.lxc*.accept_local = 1
+  tags: [k8s, prereqs]
+
+- name: "K8s prereqs | Apply it to the pod interfaces that already exist"
+  ansible.builtin.shell: |
+    for f in /proc/sys/net/ipv4/conf/lxc*/accept_local; do
+      [ -e "$f" ] || continue
+      if [ "$(cat "$f")" != 1 ]; then echo 1 > "$f"; echo "set $f"; fi
+    done
+  register: _accept_local
+  changed_when: _accept_local.stdout | length > 0
+  tags: [k8s, prereqs]
+
 - name: "K8s prereqs | API endpoint name"
   ansible.builtin.include_tasks: hosts.yml
   tags: [k8s, prereqs]

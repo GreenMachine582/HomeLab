@@ -12,7 +12,7 @@ Runs from **WSL on the main PC**, in `~/homelab`, like the bootstrap.
 |-------------------|------------------------------------------------------------------------|---------------------------|
 | Kubernetes        | v1.36.5, packages held                                                 | `group_vars/k8s.yml`      |
 | Container runtime | containerd 2.4 (`containerd.io`, Docker's apt repo), systemd cgroups   | `roles/containerd`        |
-| CNI               | Cilium 1.20.1 (held: 1.20.2 needs kernel BTF, absent on Pi kernels), kube-proxy replacement, IPAM `kubernetes`, eBPF TPROXY | `group_vars/k8s.yml`, `roles/cilium_install/vars` |
+| CNI               | Cilium 1.20.1 (held: 1.20.2 needs kernel BTF, absent on Pi kernels), kube-proxy replacement, IPAM `kubernetes` | `group_vars/k8s.yml`, `roles/cilium_install/vars` |
 | Pod / Service     | 10.244.0.0/16 / 10.96.0.0/12                                           | `group_vars/k8s.yml`      |
 | API endpoint      | `k8s-api:6443` (every node's `/etc/hosts` → control plane `node_ip`)   | `roles/k8s_prereqs`       |
 | Control plane     | `laptop-01`, keeps its `NoSchedule` taint                              | `inventories/k8s.yml`     |
@@ -99,9 +99,11 @@ Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next P
   `/etc/hosts` and kubelet. If it was laptop-01, that re-run also upgrades Cilium with the new `k8sServiceHost`. The
   API certificate includes the old IP but also `k8s-api`, so clients keep working by name.
 - **L7, FQDN or TLS-SNI connectivity tests time out (curl exit 28), everything else passes**: traffic redirected to
-  Envoy or the DNS proxy isn't reaching it. On the Raspberry Pi OS kernel the iptables TPROXY rule matched and
-  Envoy's sockets had `IP_TRANSPARENT`, yet nothing reached the proxy, so Cilium uses eBPF TPROXY
-  (`bpf.tproxy=true`) instead. If it recurs, run `cluster_status.yml -e connectivity_test=true -e
-  connectivity_test_only=echo-ingress-l7` and read the proxy path report.
+  Envoy or the DNS proxy isn't reaching it. The cause here was `net.ipv4.conf.all.src_valid_mark=1` (set at runtime,
+  not by a sysctl file): the source check then follows the proxy mark to table 2004's `local default`, and the
+  kernel drops the SYN as `IP_LOCAL_SOURCE`. `k8s_prereqs` sets `accept_local=1` on the pod `lxc*` interfaces
+  (`/etc/sysctl.d/99-zzz-homelab-cilium-proxy.conf`), as Cilium already does for `cilium_*`. If it recurs, run
+  `cluster_status.yml -e connectivity_test=true -e connectivity_test_only=echo-ingress-l7`. The proxy path report
+  shows `src_valid_mark`/`accept_local` and the kernel's drop reasons during the test.
 - **`check-log-errors` fails on the Pi** with `CONFIG_INET_UDP_DIAG` and GENEVE BIG TCP warnings: the Raspberry Pi
   OS kernel lacks those options. Both are harmless.

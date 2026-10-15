@@ -15,13 +15,6 @@ _cilium_settings:
   - rollOutCiliumPods=true
   - operator.rollOutPods=true
   - envoy.rollOutPods=true
-  # L7 and FQDN policy (and Gateway API) send traffic to Envoy or the DNS
-  # proxy. On the Raspberry Pi OS kernel the iptables TPROXY rule matches
-  # and Envoy's socket is transparent, yet the kernel drops the packet
-  # before delivery, so those connections time out. eBPF TPROXY hands the
-  # packet to the socket from Cilium's own programs instead. Beta in
-  # Cilium; incompatible with the netkit datapath (we use veth).
-  - bpf.tproxy=true
 
 _cilium_set_args: "{{ _cilium_settings | map('regex_replace', '^', '--set=') | list }}"
 
