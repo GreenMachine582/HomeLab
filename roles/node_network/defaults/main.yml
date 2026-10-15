@@ -1,0 +1,13 @@
+---
+# roles/node_network/defaults/main.yml
+
+# Static LAN address = node_ip. Off by default; turn on in overrides.yml once
+# lan_subnet/lan_gateway and the ip_* values describe the site (static IPs
+# outside the router's DHCP pool, since the site router can't reserve).
+node_network_static: false
+lan_gateway: EDIT_BEFORE_USE
+lan_dns: ["{{ lan_gateway }}", "1.1.1.1"]
+
+# Block Wi-Fi (rfkill, persists across reboots) so cluster traffic can only
+# use the wired node_ip. For laptop-01.
+node_disable_wifi: false

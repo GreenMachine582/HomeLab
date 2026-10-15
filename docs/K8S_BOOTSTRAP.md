@@ -1,7 +1,9 @@
 # Bootstrapping Kubernetes nodes
 
 Runbook for `playbooks/bootstrap.yml`: takes a freshly installed node to a hardened, key-only host on the tailnet. Part
-of milestone M1 in the Kubernetes migration; containerd and kubeadm follow in M2.
+of milestone M1 in the Kubernetes migration. Next, [K8S_CLUSTER.md](./K8S_CLUSTER.md) (`playbooks/cluster.yml`)
+builds the cluster on these nodes (M2), and [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md) covers running them at the
+remote site.
 
 Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the only Ansible controller.
 
@@ -11,17 +13,19 @@ Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the 
 |----------------|-------------------------|---------------------------------|--------------|----------------------|
 | `laptop-01`    | Control plane (amd64)   | Debian 13                       | `root`       | Bootstrapped 13 Oct  |
 | `rpi-03`       | Data node, Pi 5 + NVMe  | Raspberry Pi OS Lite (trixie)   | `admin`      | Bootstrapped 13 Oct  |
+| `rpi-01`       | Worker, Pi 4 2 GB, no case | Raspberry Pi OS Lite (trixie) | `admin`      | Joined 15 Oct        |
+| `rpi-02`       | Worker, Pi 4 8 GB, Argon ONE V2 | Raspberry Pi OS Lite (trixie) | `admin` | Joined 15 Oct        |
 
 Groups in [`inventories/k8s.yml`](../inventories/k8s.yml): `k8s` → `k8s_control_plane`, `k8s_workers`, plus
 `k8s_data` for the database node. They're deliberately not called `data`/`svc`, so the legacy group vars never apply.
 
 ## Before the first run
 
-1. **Branch and collections**
+1. **Controller tooling**: `sshpass` (for the first, password-based login), the Ansible collections, kubectl and
+   cilium-cli:
    ```bash
-   cd ~/homelab && git fetch && git switch k8s/bootstrap-nodes
-   ansible-galaxy collection install -r requirements.yml
-   sudo apt install sshpass          # needed for the first, password-based login
+   cd ~/homelab && git pull
+   ansible-playbook playbooks/controller.yml -K
    ```
 2. **Node IPs**: add these to `inventories/group_vars/all/overrides.yml` (gitignored), and pin them with router DHCP
    reservations:
@@ -88,9 +92,25 @@ It prompts once, hidden, for the install user's password, if any targeted node i
    moves sshd to `ssh_port` and switches it to **key-only with no root login** and asserts the effective `sshd -T` matches. The play then
    reconnects as `homelab` with the key.
 5. **`nvme_storage`**: `k8s_data` nodes, only when `nvme_enabled: true`.
-6. **`laptop_power`**: laptop-01 only. The lid switch is ignored, and the battery charge is capped at 80% if the
-   firmware allows it.
-7. **`tailscale`**: installs it from the Debian repo, then joins the tailnet with a freshly minted, tagged auth key.
+   **`argon_case`**: Pis with `argon_case: v2|v3`. Runs Argon's pinned installer once (power button and fan daemon,
+   i2c, Pi 5 NVMe/PCIe settings), sets the fan curve, and reboots if `config.txt` changed.
+6. **`laptop_power`** (tag `laptop`): laptop-01 only. The lid switch is ignored, the sleep targets are masked so it
+   can never suspend, and the battery charge is capped at 80% if the firmware allows it. A power monitor posts site power loss and restore to Discord, and shuts down
+   cleanly at 15% battery.
+   **`wake_on_lan`** (tag `wol`): arms Wake-on-LAN on nodes with `wol_mac` (laptop-01, which has no AC power-on), and
+   has the Pis wake them after every boot. `playbooks/wake.yml` wakes them on demand and waits for SSH. See
+   [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md).
+7. **`tailscale`**: installs it from the Debian repo, then joins the tailnet with a freshly minted, single-use,
+   tagged auth key. It also applies `tailscale_advertise_routes` (laptop-01's site subnet route).
+   > **Subnet route approval.** Advertising the route doesn't enable it: it shows as *Awaiting Approval* under the
+   > machine's **Subnets** in the Tailscale admin console until someone approves it. It's left unapproved on
+   > purpose while nothing needs it. Everything here reaches the nodes by MagicDNS name, and an unapproved route
+   > exposes less of the site LAN. Approve it only when a tailnet device at home has to reach site LAN IPs
+   > (`192.168.50.x`) directly, and check that no Tailscale client *on the site LAN* accepts routes (Windows and
+   > macOS do by default), or it would send local LAN traffic via laptop-01. The k8s nodes don't accept routes
+   > (`tailscale_accept_routes: false`), so approving it doesn't change cluster traffic.
+   **`node_network`**: Wi-Fi off where `node_disable_wifi`, and a static `node_ip` when `node_network_static`
+   (remote site, [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md)). Reboots the node once if its address changes.
 8. **`firewall`**: UFW default-deny inbound; SSH allowed from the LAN and the tailnet. A 5-minute auto-rollback guards
    against lockout.
 
@@ -102,6 +122,34 @@ ssh -p <ssh_port> -o PubkeyAuthentication=no admin@<laptop-01 IP>    # → Permi
 ssh -p <ssh_port> -i .ssh/homelab homelab@<laptop-01 IP> ping -c2 <rpi-03 IP>   # nodes reach each other (M1 exit)
 ansible-playbook playbooks/bootstrap.yml --limit laptop-01        # re-run: probe says "hardened", no prompt
 ```
+
+## Adding a fresh node at the site
+
+A newly imaged node at the site is on a DHCP address and not on Tailscale yet, so the controller at home can only
+reach it through laptop-01's subnet route.
+
+1. **Open the route**: in the Tailscale admin console, approve `lan_subnet` under laptop-01's **Subnets**. From WSL,
+   `ping` a site LAN address to check.
+2. **Find and identify it**:
+   ```bash
+   ansible-playbook playbooks/identify_nodes.yml                                 # SSH hosts on the site LAN, Pi MACs marked
+   ansible-playbook playbooks/identify_nodes.yml -e identify_ips=<ip1>,<ip2>     # model, hostname, disks, Argon case
+   ansible-playbook playbooks/identify_nodes.yml -e identify_ips=<ip1> -e blink=<ip1>   # flash its LED to find the box
+   ```
+   The imaged hostname doesn't matter: the bootstrap renames the node to its inventory name. Which address you give
+   which name is the mapping.
+3. **Inventory**: uncomment or add the node in `inventories/k8s.yml` and create `host_vars/<node>.yml` (`argon_case`
+   only where the identify run found the case, `bootstrap_address: "{{ dhcp_<node> | default('') }}"`).
+4. **`overrides.yml`**: a static `ip_<node>` outside the site DHCP pool, and `dhcp_<node>` set to its current address.
+   If the router already reserves the node's address, set `ip_<node>` to that and skip `dhcp_<node>` and
+   `bootstrap_address`: the probe reaches it on `node_ip` directly.
+5. **Bootstrap, then join**:
+   ```bash
+   ansible-playbook playbooks/bootstrap.yml --limit <node>   # reached on dhcp_<node>, moved to ip_<node>, then via Tailscale
+   ansible-playbook playbooks/cluster.yml                    # no --limit: the other nodes' UFW must trust the new IP
+   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true
+   ```
+6. **Close up**: un-approve the subnet route and delete the `dhcp_<node>` lines.
 
 ## Troubleshooting
 

@@ -1,0 +1,10 @@
+# Managed by Ansible (roles/node_network) — static node_ip for Kubernetes.
+source /etc/network/interfaces.d/*
+
+auto lo
+iface lo inet loopback
+
+allow-hotplug {{ _net_iface }}
+iface {{ _net_iface }} inet static
+    address {{ node_ip }}/{{ _net_prefix }}
+    gateway {{ lan_gateway }}

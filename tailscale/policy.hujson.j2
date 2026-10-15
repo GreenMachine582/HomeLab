@@ -1,0 +1,48 @@
+// Tailscale policy file for the homelab tailnet.
+// Rendered and pushed by playbooks/tailscale_admin.yml — edit here, not in
+// the admin console (console edits are overwritten on the next push).
+{
+	// Only admins can tag devices as homelab nodes (the nodes' OAuth-minted
+	// auth keys carry this tag).
+	"tagOwners": {
+		"tag:homelab": ["autogroup:admin"],
+	},
+
+	"acls": [
+		// Everyone's own devices (PC, laptop, phone) can reach each other.
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
+
+		// Admins manage the homelab nodes: SSH (hardened ssh_port, and 22 for
+		// fresh nodes) and the Kubernetes API.
+		{"action": "accept", "src": ["autogroup:admin"], "dst": ["tag:homelab:{{ ssh_port }},22,6443"]},
+{% if tailscale_site_route %}
+
+		// Admins reach the site LAN through laptop-01's subnet route (router
+		// UI, nodes not yet on the tailnet).
+		{"action": "accept", "src": ["autogroup:admin"], "dst": ["{{ tailscale_site_route }}:*"]},
+{% endif %}
+		// Nothing else: homelab nodes can't initiate connections to your devices.
+	],
+{% if tailscale_site_route %}
+
+	"autoApprovers": {
+		"routes": {
+			"{{ tailscale_site_route }}": ["tag:homelab"],
+		},
+	},
+{% endif %}
+{% if tailscale_admin_login | default('') | length > 0 %}
+
+	"tests": [
+		{
+			"src": "{{ tailscale_admin_login }}",
+			"accept": ["tag:homelab:{{ ssh_port }}", "tag:homelab:6443"],
+			"deny": ["tag:homelab:80"],
+		},
+		{
+			"src": "tag:homelab",
+			"deny": ["{{ tailscale_admin_login }}:22"],
+		},
+	],
+{% endif %}
+}

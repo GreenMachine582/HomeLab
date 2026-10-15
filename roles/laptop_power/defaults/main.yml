@@ -8,3 +8,10 @@ laptop_lid_switch_action: ignore
 # Stop charging at this percentage to spare a battery that sits on AC 24/7.
 # Only applied if the firmware exposes charge_control_end_threshold.
 laptop_battery_charge_limit: 80
+
+# Power monitor: Discord alerts when mains power is lost/restored (the Pis
+# can't report it, they die instantly), and a clean shutdown at this battery
+# percentage so Wake-on-LAN stays armed (roles/wake_on_lan).
+laptop_power_monitor: true
+laptop_power_poll_seconds: 10
+laptop_shutdown_battery_percent: 15

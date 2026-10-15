@@ -1,0 +1,49 @@
+---
+# roles/kubeadm/tasks/packages.yml (all nodes)
+# kubelet, kubeadm and kubectl from pkgs.k8s.io, pinned to k8s_version and
+# held so unattended upgrades never move the cluster (decision 27).
+
+- name: "kubeadm | Kubernetes apt repository"
+  ansible.builtin.include_tasks: repo.yml
+  tags: [k8s, kubeadm]
+
+- name: "kubeadm | Install kubelet, kubeadm, kubectl {{ k8s_version }}"
+  ansible.builtin.apt:
+    name:
+      - "kubelet={{ k8s_version }}-*"
+      - "kubeadm={{ k8s_version }}-*"
+      - "kubectl={{ k8s_version }}-*"
+    state: present
+    update_cache: true
+    allow_change_held_packages: true
+  tags: [k8s, kubeadm]
+
+- name: "kubeadm | Hold Kubernetes packages"
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+  tags: [k8s, kubeadm]
+
+# Nodes also have tailscale0 (and Wi-Fi on the laptop); pin kubelet to the
+# LAN address. Read by the Debian kubelet unit for both init and join.
+- name: "kubeadm | Pin kubelet to the node's LAN IP"
+  ansible.builtin.copy:
+    dest: /etc/default/kubelet
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/kubeadm)
+      KUBELET_EXTRA_ARGS=--node-ip={{ node_ip }}
+  notify: Restart kubelet
+  tags: [k8s, kubeadm]
+
+- name: "kubeadm | Enable kubelet"
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+  tags: [k8s, kubeadm]

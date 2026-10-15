@@ -1,0 +1,104 @@
+---
+# playbooks/cluster_reset.yml
+#
+# DESTROYS the Kubernetes cluster so cluster.yml can build it again, e.g.
+# after node IPs change (site move). Keeps packages, containerd, the firewall
+# and everything bootstrap.yml set up. Asks you to type "reset" first.
+#
+#   ansible-playbook playbooks/cluster_reset.yml
+#   ansible-playbook playbooks/cluster.yml
+#
+# Take an etcd snapshot first if the cluster holds anything you need.
+
+- name: "Reset | Confirm"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: "Reset | Ask for confirmation"
+      ansible.builtin.pause:
+        prompt: >-
+          This wipes the Kubernetes cluster on {{ groups['k8s'] | join(', ') }}
+          (kubeadm reset, CNI and Cilium state, etcd data). Type "reset" to continue
+      register: _confirm
+
+    - name: "Reset | Stop unless confirmed"
+      ansible.builtin.assert:
+        that: _confirm.user_input | trim == 'reset'
+        fail_msg: Not confirmed; nothing changed.
+
+- name: "Probe | Discover each node's SSH endpoint"
+  hosts: k8s
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        # Always, so --tags runs still connect on the probed endpoint.
+        apply:
+          tags: [always]
+      tags: [always]
+      vars:
+        probe_allow_fresh: false
+
+- name: "Reset | Tear down Kubernetes on every node"
+  hosts: k8s
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Reset | kubeadm reset"
+      ansible.builtin.command: kubeadm reset -f
+      register: _reset
+      changed_when: true
+
+    - name: "Reset | Remove CNI, etcd and kubeconfig leftovers"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/cni/net.d
+        - /var/lib/cni
+        - /var/lib/etcd
+        - /etc/kubernetes/kubeadm-config.yaml
+        - /home/homelab/.kube/config
+
+    - name: "Reset | Remove Cilium network links"
+      ansible.builtin.command: "ip link delete {{ item }}"
+      loop:
+        - cilium_host
+        - cilium_vxlan
+      register: _links
+      changed_when: _links.rc == 0
+      failed_when: false
+
+    # Cilium's iptables chains (CILIUM_*); UFW's own rules are kept.
+    - name: "Reset | Remove Cilium iptables rules"
+      ansible.builtin.shell: |
+        set -o pipefail
+        for t in iptables ip6tables; do
+          $t-save | grep -v -i cilium | $t-restore
+        done
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: "Reset | Restart containerd with a clean slate"
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted
+
+- name: "Reset | Forget the cluster on the controller"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: "Reset | Remove the fetched kubeconfig"
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'HOME') }}/.kube/homelab.conf"
+        state: absent

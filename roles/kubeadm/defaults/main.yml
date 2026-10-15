@@ -1,0 +1,6 @@
+---
+# roles/kubeadm/defaults/main.yml
+
+# Where the admin kubeconfig lands on the controller (WSL). Use it with
+# KUBECONFIG=~/.kube/homelab.conf kubectl ...
+k8s_controller_kubeconfig: "{{ lookup('env', 'HOME') }}/.kube/homelab.conf"

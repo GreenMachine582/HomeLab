@@ -1,0 +1,62 @@
+---
+# playbooks/wake.yml
+#
+# Wakes powered-off nodes (wol_mac in host_vars, e.g. laptop-01) from a Pi
+# at the site, then waits until each answers SSH. Boot takes a couple of
+# minutes; the poll covers that.
+#
+#   ansible-playbook playbooks/wake.yml                       # all targets
+#   ansible-playbook playbooks/wake.yml -e target=laptop-01
+#   ansible-playbook playbooks/wake.yml -e wait_minutes=15
+#
+# The Pis do the same by themselves after a power cut (roles/wake_on_lan).
+# See docs/K8S_SITE_MOVE.md.
+
+- name: "Probe | Discover the wakers' SSH endpoints"
+  hosts: k8s_workers
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        # Always, so --tags runs still connect on the probed endpoint.
+        apply:
+          tags: [always]
+      tags: [always]
+      vars:
+        probe_allow_fresh: false
+
+# run_once: the first worker that answered the probe sends the packets.
+- name: "Wake | Magic packets, then wait for SSH"
+  hosts: k8s_workers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Wake | Send and poll (up to {{ wait_minutes | default(10) }} min)"
+      ansible.builtin.command:
+        argv: >-
+          {{ [wol_script_dir | default('/usr/local/lib/homelab/wol') ~ '/wake-targets.sh', wait_minutes | default(10) | string]
+             + ([target] if target is defined else []) }}
+      environment:
+        WOL_NOTIFY: "false"
+      register: _wake
+      changed_when: "'SSH up after' in _wake.stdout"
+      failed_when: false
+      run_once: true
+
+    - name: "Wake | Result"
+      ansible.builtin.debug:
+        msg: "{{ _wake.stdout_lines + _wake.stderr_lines }}"
+      run_once: true
+
+    - name: "Wake | Fail if a target didn't come up"
+      ansible.builtin.fail:
+        msg: >-
+          Not every target answered (rc={{ _wake.rc }}). If the script is
+          missing, run bootstrap.yml --tags wol first.
+      when: _wake.rc != 0
+      run_once: true

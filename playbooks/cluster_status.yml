@@ -1,0 +1,578 @@
+---
+# playbooks/cluster_status.yml
+#
+# Read-only health report for the cluster and its nodes. Safe any time.
+#
+#   ansible-playbook playbooks/cluster_status.yml
+#   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true
+#   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true \
+#     -e connectivity_test_only=echo-ingress-l7
+#
+# Per node: addresses, routes to the other nodes, UFW status; warns when a
+# node has more than one address on the LAN (it may send cluster traffic
+# from one the others don't trust). From the control plane: nodes, Cilium
+# nodes, pods, cilium status. connectivity_test=true also runs
+# `cilium connectivity test` (it deploys test pods, then removes them);
+# connectivity_test_only passes a --test filter (regex) to run just those.
+# See docs/K8S_CLUSTER.md.
+
+- name: "Probe | Discover each node's SSH endpoint"
+  hosts: k8s
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        # Always, so --tags runs still connect on the probed endpoint.
+        apply:
+          tags: [always]
+      tags: [always]
+      vars:
+        probe_allow_fresh: false
+
+- name: "Status | Node networking"
+  hosts: k8s
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: "Status | Addresses on the LAN"
+      ansible.builtin.shell: "ip -4 -o addr show to {{ lan_subnet }} | awk '{print $2\" \"$4}'"
+      register: _lan
+      changed_when: false
+
+    - name: "Status | Collect LAN addresses"
+      ansible.builtin.set_fact:
+        _lan_addresses: "{{ _lan.stdout_lines }}"
+
+    - name: "Status | Routes to the other nodes"
+      ansible.builtin.command: "ip route get {{ hostvars[item].node_ip }}"
+      loop: "{{ groups['k8s'] | difference([inventory_hostname]) }}"
+      register: _routes
+      changed_when: false
+
+    - name: "Status | UFW"
+      ansible.builtin.command: ufw status verbose
+      register: _ufw
+      changed_when: false
+
+    # Kernel options Cilium uses, from
+    # https://docs.cilium.io/en/stable/operations/system_requirements/
+    # Raspberry Pi OS kernels lack some that Debian's have.
+    - name: "Status | Kernel features for Cilium"
+      ansible.builtin.shell: |
+        modprobe configs 2>/dev/null
+        if [ -r /proc/config.gz ]; then cfg="$(zcat /proc/config.gz)"
+        elif [ -r "/boot/config-$(uname -r)" ]; then cfg="$(cat "/boot/config-$(uname -r)")"
+        else echo "no kernel config found"; exit 0; fi
+        check() {
+          for o in "$@"; do
+            printf '%s\n' "$cfg" | grep -Eq "^CONFIG_$o=(y|m)$" || missing="$missing $o"
+          done
+        }
+        missing=""
+        check BPF BPF_SYSCALL BPF_JIT CGROUP_BPF NET_CLS_BPF NET_CLS_ACT NET_SCH_INGRESS \
+              CRYPTO_SHA1 CRYPTO_USER_API_HASH PERF_EVENTS SCHEDSTATS VXLAN
+        echo "core:${missing:- ok}"
+        missing=""
+        check NETFILTER_XT_TARGET_TPROXY NETFILTER_XT_TARGET_MARK NETFILTER_XT_TARGET_CT \
+              NETFILTER_XT_MATCH_MARK NETFILTER_XT_MATCH_SOCKET
+        echo "L7 proxy and FQDN policy:${missing:- ok}"
+        missing=""
+        check NETFILTER_XT_SET IP_SET IP_SET_HASH_IP NETFILTER_XT_MATCH_COMMENT
+        echo "iptables masquerading:${missing:- ok}"
+        missing=""
+        check DEBUG_INFO_BTF INET_UDP_DIAG GENEVE
+        echo "optional (BTF, UDP socket termination, GENEVE):${missing:- ok}"
+        # Envoy (tcmalloc) needs a 48-bit virtual address space; kernels
+        # built with 39-bit VA make it crash at start.
+        va="$(printf '%s\n' "$cfg" | sed -n 's/^CONFIG_ARM64_VA_BITS=//p')"
+        echo "virtual address bits: ${va:-n/a (not arm64)}, page size: $(getconf PAGESIZE)"
+        for m in xt_TPROXY xt_socket nf_tproxy_ipv4; do
+          modprobe -n "$m" 2>/dev/null && s=loadable || s="not available"
+          lsmod | grep -q "^$m " && s=loaded
+          echo "module $m: $s"
+        done
+      register: _kernel
+      changed_when: false
+
+    # tailscaled sets src_valid_mark=1 on start; Cilium's L7 and DNS proxies
+    # need 0, which roles/k8s_prereqs keeps with a service and timer.
+    - name: "Status | src_valid_mark and its keeper"
+      ansible.builtin.shell: |
+        echo "src_valid_mark: $(cat /proc/sys/net/ipv4/conf/all/src_valid_mark)"
+        echo "keeper timer: $(systemctl is-active homelab-src-valid-mark.timer 2>&1)"
+        echo "last reset: $(journalctl -u homelab-src-valid-mark --no-pager -o short-iso -g 'reset src_valid_mark' 2>/dev/null | tail -1 | cut -c1-25)"
+      register: _svm
+      changed_when: false
+
+    - name: "Status | Report"
+      ansible.builtin.debug:
+        msg:
+          kernel: "{{ ansible_kernel }}"
+          kernel_features: "{{ _kernel.stdout_lines }}"
+          cilium_proxy_sysctl: "{{ _svm.stdout_lines }}"
+          node_ip: "{{ node_ip }}"
+          interfaces: "{{ ansible_interfaces | sort }}"
+          lan_addresses: "{{ _lan_addresses }}"
+          routes: "{{ _routes.results | map(attribute='stdout') | list }}"
+          ufw: "{{ _ufw.stdout_lines }}"
+
+    - name: "Status | Warn about extra LAN addresses"
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: {{ inventory_hostname }} has {{ _lan_addresses | length }}
+          addresses on {{ lan_subnet }} ({{ _lan_addresses | join(', ') }}).
+          Traffic to other nodes may leave from one that isn't node_ip
+          ({{ node_ip }}); check the routes above.
+      when: _lan_addresses | length > 1
+
+    - name: "Status | Warn about src_valid_mark"
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: {{ inventory_hostname }} has src_valid_mark=1 or its keeper
+          timer isn't active ({{ _svm.stdout_lines | join('; ') }}). Cilium's L7
+          and DNS proxies drop traffic as IP_LOCAL_SOURCE while it's 1. Run
+          cluster.yml --tags prereqs.
+      when: >-
+        'src_valid_mark: 1' in _svm.stdout_lines
+        or 'keeper timer: active' not in _svm.stdout_lines
+
+# laptop-01 runs closed at the site: lid ignored, never sleeps, battery
+# capped, power monitor and Wake-on-LAN running, Wi-Fi off.
+- name: "Status | Laptop power"
+  hosts: k8s
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Status | Laptop power settings"
+      when: laptop_power_enabled | default(false) | bool
+      block:
+        - name: "Status | Read lid, sleep, battery, services, Wake-on-LAN, Wi-Fi"
+          ansible.builtin.shell: |
+            warn() { echo "WARN: $*"; }
+            logind="$(systemd-analyze cat-config systemd/logind.conf 2>/dev/null)"
+            for k in HandleLidSwitch HandleLidSwitchExternalPower HandleLidSwitchDocked; do
+                v="$(printf '%s\n' "$logind" | grep -E "^$k=" | tail -1 | cut -d= -f2)"
+                echo "lid $k: ${v:-default}"
+                [ "$v" = ignore ] || warn "$k is '${v:-default}', not ignore"
+            done
+            for t in sleep suspend hibernate hybrid-sleep; do
+                s="$(systemctl is-enabled "$t.target" 2>/dev/null)"
+                echo "target $t: $s"
+                [ "$s" = masked ] || warn "$t.target is '$s', not masked"
+            done
+            for b in /sys/class/power_supply/BAT*; do
+                [ -e "$b" ] || continue
+                echo "battery ${b##*/}: $(cat "$b/capacity")% $(cat "$b/status"), limit $(cat "$b/charge_control_end_threshold" 2>/dev/null || echo none)"
+            done
+            for p in /sys/class/power_supply/*; do
+                [ "$(cat "$p/type" 2>/dev/null)" = Mains ] && echo "ac online: $(cat "$p/online")"
+            done
+            units="homelab-power-monitor"
+            {% if wol_mac | default('') | length > 0 %}
+            units="$units homelab-wol"
+            iface="$(ip route show default | awk '{print $5; exit}')"
+            w="$(ethtool "$iface" 2>/dev/null | awk '$1 == "Wake-on:" {print $2}')"
+            echo "wake-on-lan $iface: $w"
+            [ "$w" = g ] || warn "Wake-on-LAN on $iface is '$w', not g"
+            {% endif %}
+            for u in $units; do
+                s="$(systemctl is-active "$u")"
+                echo "service $u: $s"
+                [ "$s" = active ] || warn "$u is $s"
+            done
+            {% if node_disable_wifi | default(false) | bool %}
+            wifi="$(rfkill list wifi 2>/dev/null | awk -F': ' '/Soft blocked/ {print $2}' | sort -u | tr '\n' ' ')"
+            echo "wifi soft blocked: ${wifi:-no device}"
+            case "$wifi" in *no*) warn "Wi-Fi isn't blocked";; esac
+            {% endif %}
+            true
+          register: _laptop
+          changed_when: false
+
+        - name: "Status | Laptop report"
+          ansible.builtin.debug:
+            msg: "{{ _laptop.stdout_lines | reject('match', '^WARN: ') | list }}"
+
+        - name: "Status | Laptop warnings"
+          ansible.builtin.debug:
+            msg: "WARNING: {{ _laptop.stdout_lines | select('match', '^WARN: ') | map('regex_replace', '^WARN: ', '') | join('; ') }}"
+          when: "_laptop.stdout_lines | select('match', '^WARN: ') | list | length > 0"
+
+- name: "Status | Cluster"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+  tasks:
+    - name: "Status | kubectl and cilium"
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - kubectl get nodes -o wide
+        - kubectl get ciliumnodes -o wide
+        - kubectl get pods -A -o wide
+        - cilium status
+      register: _cluster
+      changed_when: false
+      failed_when: false
+
+    - name: "Status | Report"
+      ansible.builtin.debug:
+        msg: "{{ _cluster.results | map(attribute='stdout_lines') | list }}"
+
+    # The deployed Helm values, decoded from the release Secret (no helm
+    # binary needed). homelab-cluster's Cilium HelmRelease
+    # (infrastructure/controllers/cilium/helmrelease.yaml) must match them.
+    # Crash-looping Cilium or Envoy pods: node, restarts, last exit, and the
+    # end of the log from before the last restart.
+    - name: "Status | Restarting Cilium pods"
+      ansible.builtin.shell: |
+        kubectl -n kube-system get pods -l 'k8s-app in (cilium, cilium-envoy)' \
+          -o jsonpath='{range .items[*]}{.metadata.name} {.spec.nodeName} {.status.containerStatuses[0].restartCount} {.status.containerStatuses[0].lastState.terminated.reason} {.status.containerStatuses[0].lastState.terminated.exitCode}{"\n"}{end}' \
+          | while read -r pod node restarts reason code; do
+              [ "${restarts:-0}" -gt 0 ] || continue
+              echo "== $pod on $node: $restarts restarts, last exit ${reason:-?} ($code)"
+              kubectl -n kube-system logs "$pod" --previous --tail=15 2>&1
+            done
+      register: _cilium_restarts
+      changed_when: false
+      failed_when: false
+
+    - name: "Status | Restarting Cilium pods report"
+      ansible.builtin.debug:
+        msg: "{{ _cilium_restarts.stdout_lines if _cilium_restarts.stdout_lines else ['none restarting'] }}"
+
+    - name: "Status | Cilium Helm release values"
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl -n kube-system get secret -l owner=helm,name=cilium,status=deployed \
+          -o jsonpath='{.items[0].data.release}' | base64 -d | base64 -d | gunzip \
+          | python3 -c 'import json, sys
+        r = json.load(sys.stdin)
+        print("chart:", r["chart"]["metadata"]["version"], "revision:", r["version"])
+        print(json.dumps(r.get("config") or {}, indent=2, sort_keys=True))'
+      args:
+        executable: /bin/bash
+      register: _cilium_values
+      changed_when: false
+      failed_when: false
+
+    - name: "Status | Cilium Helm release values report"
+      ansible.builtin.debug:
+        msg: "{{ _cilium_values.stdout_lines + _cilium_values.stderr_lines }}"
+
+    - name: "Status | Connectivity test"
+      when: connectivity_test | default(false) | bool
+      block:
+        - name: "Status | Remove leftovers from earlier tests"
+          ansible.builtin.shell: >-
+            kubectl get ns -o name | grep '^namespace/cilium-test' |
+            xargs -r kubectl delete --wait=true
+          changed_when: false
+
+        # Proxy listeners exist only while a test policy does, so sample
+        # them on every node during the test; the host checks read it back.
+        - name: "Status | Watch proxy listeners during the test"
+          ansible.builtin.shell: |
+            rm -f /tmp/cilium-proxy-listeners.stop /tmp/cilium-envoy-listeners.json \
+              /tmp/cilium-envoy-sockopts /tmp/cilium-envoy-sockopts.py
+            : > /tmp/cilium-proxy-listeners
+            # Kernel drop reasons for IPv4 packets during the test (the
+            # skb:kfree_skb tracepoint names the reason and the function).
+            T=/sys/kernel/tracing
+            [ -d "$T/events" ] || T=/sys/kernel/debug/tracing
+            if [ -w "$T/events/skb/kfree_skb/enable" ]; then
+              echo 0 > "$T/events/skb/kfree_skb/enable"
+              : > "$T/trace"
+              echo 'protocol == 2048' > "$T/events/skb/kfree_skb/filter"
+              echo 1 > "$T/events/skb/kfree_skb/enable"
+            fi
+            end=$(( $(date +%s) + 2400 ))
+            while [ "$(date +%s)" -lt "$end" ] && [ ! -e /tmp/cilium-proxy-listeners.stop ]; do
+              ss -Hltnup | awk '{print $1, $5, $7}' | grep -E ':(1[0-9]{4}|20000) ' \
+                >> /tmp/cilium-proxy-listeners
+              sleep 2
+            done
+            if [ -w "$T/events/skb/kfree_skb/enable" ]; then
+              echo 0 > "$T/events/skb/kfree_skb/enable"
+              echo 0 > "$T/events/skb/kfree_skb/filter"
+            fi
+          async: 2500
+          poll: 0
+          delegate_to: "{{ item }}"
+          loop: "{{ groups['k8s'] }}"
+          changed_when: false
+
+        # Test pods go only to nodes that can run Envoy (homelab/l7-proxy,
+        # roles/k8s_node_config): on the Pi 4s every L7/FQDN/TLS test would
+        # fail. With the control plane tainted that is rpi-03 alone, so
+        # --single-node: otherwise the multi-node clients (client3,
+        # other-node) can't be scheduled and the test times out.
+        # connectivity_test_all_nodes=true drops both to test the datapath
+        # across all nodes; expect proxy tests to fail on the Pi 4s.
+        - name: "Status | cilium connectivity test"
+          ansible.builtin.command:
+            argv: "{{ ['cilium', 'connectivity', 'test']
+                      + ([] if connectivity_test_all_nodes | default(false) | bool
+                         else ['--node-selector', 'homelab/l7-proxy=supported', '--single-node'])
+                      + (['--test', connectivity_test_only] if connectivity_test_only | default('') | length > 0 else []) }}"
+          register: _conn
+          changed_when: false
+          failed_when: false
+
+        # The tail shows the last few failures in full; the summary names
+        # every failed test.
+        - name: "Status | Connectivity test result"
+          ansible.builtin.debug:
+            msg: "{{ _conn.stdout_lines[-25:] + _conn.stderr_lines[-15:] }}"
+
+        - name: "Status | Connectivity test summary"
+          ansible.builtin.debug:
+            msg: >-
+              {{ (_conn.stdout_lines + _conn.stderr_lines)
+                 | select('search', '^Test \[|tests? failed|tests? skipped|All .* tests')
+                 | unique | list }}
+
+        # check-log-errors always fails on the Raspberry Pi OS kernel: it lacks
+        # CONFIG_INET_UDP_DIAG and GENEVE, and the agent logs both once at
+        # start. The Pi 4 agents also log failed Envoy version checks, because
+        # Envoy is pinned off those nodes. Treat a run whose only failure is
+        # exactly those lines as passed; anything else still fails. (An Envoy
+        # outage on a supported node fails the L7 tests, which run there.)
+        - name: "Status | Separate the known Pi kernel log lines"
+          ansible.builtin.set_fact:
+            _conn_failed_tests: >-
+              {{ (_conn.stdout_lines + _conn.stderr_lines)
+                 | select('match', '^Test .[a-z0-9-]+.:') | map('replace', 'Test [', '') | map('replace', ']:', '')
+                 | map('trim') | unique | list }}
+            _conn_unknown_log_lines: >-
+              {{ _conn.stdout_lines | select('search', 'level=(warn|error)')
+                 | reject('search', 'CONFIG_INET_UDP_DIAG|BIG TCP for UDP tunnels|Envoy: Version check failed|name=version-check')
+                 | list }}
+
+        - name: "Status | Did the test really fail"
+          ansible.builtin.set_fact:
+            _conn_failed: >-
+              {{ _conn.rc != 0 and not (_conn_failed_tests == ['check-log-errors']
+                                        and _conn_unknown_log_lines | length == 0) }}
+
+        - name: "Status | Only the known Pi kernel warnings"
+          ansible.builtin.debug:
+            msg: >-
+              check-log-errors failed only on the known Pi lines (CONFIG_INET_UDP_DIAG,
+              GENEVE BIG TCP probe, Envoy version checks on the Pi 4 agents), which are
+              expected; counting the run as passed.
+          when: _conn.rc != 0 and not (_conn_failed | bool)
+
+        # Before the always: cleanup deletes the namespaces.
+        - name: "Status | Why the tests failed"
+          ansible.builtin.shell: |
+            for ns in $(kubectl get ns -o name | grep '^namespace/cilium-test' | cut -d/ -f2); do
+              echo "== $ns"
+              kubectl -n "$ns" get pods -o wide
+              kubectl -n "$ns" get events --sort-by=.lastTimestamp | tail -20
+            done
+            # The CNI errors only say the agent refused or failed; its own
+            # status and log say why. Covers nodes with Pending pods and the
+            # nodes the test pods ran on (L7/FQDN failures with running pods
+            # mean the proxy path there: Envoy, or the TPROXY redirect).
+            nodes="$( {
+              kubectl get pods -A --field-selector=status.phase=Pending \
+                -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}'
+              for ns in $(kubectl get ns -o name | grep '^namespace/cilium-test' | cut -d/ -f2); do
+                kubectl -n "$ns" get pods -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}'
+              done
+            } | grep . | sort -u )"
+            for node in $nodes; do
+              agent="$(kubectl -n kube-system get pods -l k8s-app=cilium \
+                         --field-selector=spec.nodeName="$node" -o name | head -1)"
+              [ -n "$agent" ] || continue
+              echo "== cilium agent on $node ($agent)"
+              kubectl -n kube-system exec "$agent" -c cilium-agent -- cilium-dbg status 2>&1 | head -40
+              echo "-- endpoints"
+              kubectl -n kube-system exec "$agent" -c cilium-agent -- cilium-dbg endpoint list 2>&1 | head -20
+              echo "-- warnings and errors (last 30)"
+              kubectl -n kube-system logs "$agent" -c cilium-agent --since=30m 2>&1 \
+                | grep -E 'level=(warn|error)|"level":"(warn|error)"' | tail -30
+              echo "-- proxy, envoy and tproxy log lines (last 20)"
+              kubectl -n kube-system logs "$agent" -c cilium-agent --since=30m 2>&1 \
+                | grep -iE 'envoy|tproxy|proxy|dnsproxy' | tail -20
+              echo "-- TPROXY rules in the agent's iptables"
+              kubectl -n kube-system exec "$agent" -c cilium-agent -- \
+                sh -c 'iptables-save -t mangle 2>&1 | grep -iE "tproxy|CILIUM_PRE_mangle" | head -10' 2>&1
+              # How far proxied requests got: no to-proxy means the BPF
+              # redirect; to-proxy without L7 events means the host between
+              # TPROXY and the proxy; an L7 request without a response means
+              # the upstream side of the proxy. The buffer holds a few minutes, so
+              # use connectivity_test_only for this to cover the failures.
+              echo "-- hubble: test-namespace drops, proxy hops and L7 events (last 40)"
+              kubectl -n kube-system exec "$agent" -c cilium-agent -- \
+                hubble observe --last 4000 --namespace cilium-test-1 -o compact 2>&1 \
+                | grep -E 'DROPPED|to-proxy|from-proxy|http-|dns-|L7|ERROR' | tail -40
+              envoy="$(kubectl -n kube-system get pods -l k8s-app=cilium-envoy \
+                         --field-selector=spec.nodeName="$node" -o name | head -1)"
+              if [ -n "$envoy" ]; then
+                echo "== cilium-envoy on $node ($envoy)"
+                kubectl -n kube-system get "$envoy" -o wide 2>&1
+                kubectl -n kube-system get "$envoy" \
+                  -o jsonpath='{range .status.containerStatuses[*]}restarts={.restartCount} last={.lastState.terminated.reason} exit={.lastState.terminated.exitCode}{"\n"}{end}' 2>&1
+                echo "-- envoy log (last 30, previous run first if it crashed)"
+                kubectl -n kube-system logs "$envoy" --previous --tail=30 2>/dev/null
+                kubectl -n kube-system logs "$envoy" --tail=30 2>&1
+              else
+                echo "== no cilium-envoy pod on $node (Envoy embedded in the agent, or DaemonSet not scheduled)"
+              fi
+            done
+          register: _conn_diag
+          changed_when: false
+          when: _conn_failed | bool
+
+        - name: "Status | Test pod diagnostics"
+          ansible.builtin.debug:
+            msg: "{{ _conn_diag.stdout_lines }}"
+          when: _conn_failed | bool
+
+        # Proxied traffic is TPROXY'd to 127.0.0.1 and delivered locally, so
+        # the host stack can drop it where Cilium can't see: the source check
+        # (src_valid_mark/accept_local, rp_filter), the proxy routing rules
+        # and table 2004, and UFW's INPUT chain. The kernel drop reasons
+        # recorded during the test name the step.
+        - name: "Status | Nodes the test pods ran on"
+          ansible.builtin.shell: |
+            for ns in $(kubectl get ns -o name | grep '^namespace/cilium-test' | cut -d/ -f2); do
+              kubectl -n "$ns" get pods -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}'
+            done | grep . | sort -u
+          register: _test_nodes
+          changed_when: false
+          when: _conn_failed | bool
+
+        - name: "Status | Host checks for the proxy path"
+          ansible.builtin.shell: |
+            echo "-- rp_filter (kernel uses max(all, iface); Cilium needs 0)"
+            for f in /proc/sys/net/ipv4/conf/all/rp_filter /proc/sys/net/ipv4/conf/default/rp_filter \
+                     /proc/sys/net/ipv4/conf/cilium_*/rp_filter; do
+              [ -e "$f" ] && echo "$(echo "$f" | cut -d/ -f7) $(cat "$f")"
+            done
+            cat /proc/sys/net/ipv4/conf/lxc*/rp_filter 2>/dev/null | sort | uniq -c \
+              | awk '{print "lxc* =" $2 " on " $1 " interfaces"}'
+            grep -rHs 'rp_filter' /etc/sysctl.conf /etc/sysctl.d /usr/lib/sysctl.d /run/sysctl.d
+            # With src_valid_mark=1 the source check routes by the packet mark,
+            # so a proxied packet (mark 0x200 -> table 2004 local default)
+            # looks locally sourced and is dropped as IP_LOCAL_SOURCE unless
+            # accept_local=1. Both are OR-ed: all, then the interface.
+            echo "-- src_valid_mark and accept_local (non-zero only; proxied traffic needs src_valid_mark=0 or accept_local=1)"
+            for k in src_valid_mark accept_local; do
+              for f in /proc/sys/net/ipv4/conf/*/$k; do
+                v="$(cat "$f")"
+                [ "$v" != 0 ] && echo "$k $(echo "$f" | cut -d/ -f7)=$v"
+              done
+            done
+            echo "(end)"
+            grep -rHs -E 'src_valid_mark|accept_local' /etc/sysctl.conf /etc/sysctl.d /usr/lib/sysctl.d /run/sysctl.d
+            echo "-- kernel drop counters"
+            awk '/^TcpExt:/ { if (!h) { split($0, k); h = 1 } else { split($0, v);
+                   for (i = 2; i in k; i++) if (k[i] ~ /IPReversePathFilter/) print k[i], v[i] } }' /proc/net/netstat
+            echo "-- ip rules"
+            ip rule show
+            echo "-- proxy route tables 2004 and 2005"
+            ip route show table 2004
+            ip route show table 2005
+            echo "-- UFW blocks in the last 40 minutes, multicast left out (last 15)"
+            journalctl -k --since=-40min --no-pager 2>/dev/null | grep 'UFW BLOCK' \
+              | grep -v 'DST=224[.]' | tail -15
+            echo "-- INPUT chain head (Cilium's chain should come before UFW's)"
+            iptables -L INPUT -v -n --line-numbers | head -12
+            echo "-- Cilium's proxy accept rules (packet counts)"
+            iptables -L CILIUM_INPUT -v -n 2>&1 | head -8
+            iptables -L CILIUM_OUTPUT -v -n 2>&1 | head -10
+            # TPROXY drops the packet silently when no socket listens on its
+            # --on-port, so compare the rule hit counts with the listeners.
+            echo "-- TPROXY rule hit counts (mangle PREROUTING, all chains in order)"
+            iptables -t mangle -L PREROUTING -v -n | head -8
+            iptables -t mangle -L CILIUM_PRE_mangle -v -n 2>&1 | head -12
+            echo "-- proxy listeners (ports in TPROXY rules, and Envoy/agent sockets)"
+            ports="$(iptables -t mangle -S CILIUM_PRE_mangle 2>/dev/null \
+                     | grep -o 'on-port [0-9]*' | awk '{print $2}' | sort -u | tr '\n' ' ')"
+            echo "TPROXY ports: ${ports:-none}"
+            for p in $ports; do
+              ss -Hltnup "sport = :$p" | sed "s/^/port $p: /" | grep . || echo "port $p: nothing listening"
+            done
+            ss -Hltnp | grep -E '"(cilium-envoy|envoy|cilium-agent)"' | head -10
+            echo "-- proxy-range listeners seen during the test (2s samples: count, proto, address, process)"
+            if [ -s /tmp/cilium-proxy-listeners ]; then
+              sort /tmp/cilium-proxy-listeners | uniq -c | head -20
+            else
+              echo "none seen"
+            fi
+            # Envoy counts listeners it could not create, and connections it took.
+            echo "-- Envoy listener counters (admin socket)"
+            sock=/var/run/cilium/envoy/sockets/admin.sock
+            if [ -S "$sock" ]; then
+              curl -s --max-time 5 --unix-socket "$sock" 'http://localhost/stats' \
+                | grep -E '^listener_manager\.(listener_(added|create_failure|create_success|removed|in_place_updated)|lds\.update_(rejected|success|failure)|total_filter_chains_draining)|^listener.127.0.0.1_[0-9]+.(downstream_cx_total|downstream_cx_transport_socket_connect_timeout|no_filter_chain_match)' \
+                | head -20
+            else
+              echo "no admin socket at $sock"
+            fi
+            echo "-- kernel IPv4 drops during the test (count, function, reason; skb:kfree_skb)"
+            T=/sys/kernel/tracing
+            [ -d "$T/events" ] || T=/sys/kernel/debug/tracing
+            if [ -r "$T/trace" ]; then
+              grep 'kfree_skb:' "$T/trace" \
+                | sed -E 's/.*location=([^+ ]+).*reason: ([A-Z_0-9]+).*/\1 \2/' \
+                | sort | uniq -c | sort -rn | head -15
+              echo "$(grep -c 'kfree_skb:' "$T/trace") drops recorded"
+            else
+              echo "tracefs not readable"
+            fi
+          delegate_to: "{{ item }}"
+          loop: "{{ _test_nodes.stdout_lines | default([]) | select('in', groups['k8s']) | list }}"
+          register: _proxy_host
+          changed_when: false
+          when: _conn_failed | bool
+
+        - name: "Status | Proxy path report"
+          ansible.builtin.debug:
+            msg: "{{ ['== ' ~ item.item] + item.stdout_lines }}"
+          loop: "{{ _proxy_host.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item | default('') }}"
+          when: _conn_failed | bool and item.stdout_lines is defined
+
+        - name: "Status | Fail if the test filter matched nothing"
+          ansible.builtin.fail:
+            msg: >-
+              connectivity_test_only='{{ connectivity_test_only }}' matched no
+              tests; use a plain substring of a test name (no $ anchor).
+          when:
+            - connectivity_test_only | default('') | length > 0
+            - _conn.stdout is search('All 0 tests')
+
+        - name: "Status | Fail if the connectivity test failed"
+          ansible.builtin.fail:
+            msg: "cilium connectivity test failed (rc={{ _conn.rc }}); see the output above."
+          when: _conn_failed | bool
+      always:
+        - name: "Status | Stop the proxy listener watch"
+          ansible.builtin.file:
+            path: /tmp/cilium-proxy-listeners.stop
+            state: touch
+            mode: "0644"
+          delegate_to: "{{ item }}"
+          loop: "{{ groups['k8s'] }}"
+          changed_when: false
+          failed_when: false
+
+        - name: "Status | Remove the test namespaces"
+          ansible.builtin.shell: >-
+            kubectl get ns -o name | grep '^namespace/cilium-test' |
+            xargs -r kubectl delete --wait=false
+          changed_when: false

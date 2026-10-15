@@ -33,8 +33,26 @@ tailscale_ip_svc_03:  "EDIT_BEFORE_USE"   # homelab-svc-03 Tailscale IP
 tailscale_tailnet: "EDIT_BEFORE_USE"   # e.g. mango-beaver — find it under DNS in the Tailscale admin console
 
 # ── Kubernetes nodes (inventories/k8s.yml) ────────────────────────────────────
-# Pin each with a router DHCP reservation.
+# Static via roles/node_network at the site (see below).
 ip_laptop_01: "EDIT_BEFORE_USE"   # control plane
+mac_laptop_01: "EDIT_BEFORE_USE"  # wired NIC, for Wake-on-LAN (ip -br link)
+ip_rpi_01:    "EDIT_BEFORE_USE"   # node (Pi 4)
+ip_rpi_02:    "EDIT_BEFORE_USE"   # node (Pi 4)
 ip_rpi_03:    "EDIT_BEFORE_USE"   # data node (Pi 5 + NVMe)
-# ip_rpi_01:  "EDIT_BEFORE_USE"
-# ip_rpi_02:  "EDIT_BEFORE_USE"
+# First boot of a fresh node only: the DHCP address it has now (from
+# playbooks/identify_nodes.yml). The bootstrap reaches it there, then
+# node_network moves it to its static ip_*. Delete once bootstrapped.
+# dhcp_rpi_01: "192.168.20.x"
+# dhcp_rpi_02: "192.168.20.x"
+
+# ── Site network (roles/node_network, docs/K8S_SITE_MOVE.md) ───────────────────
+# The site router can't reserve addresses, so nodes get static IPs: pick
+# ip_* outside its DHCP pool, set these, then node_network_static: true.
+node_network_static: false
+lan_gateway: "EDIT_BEFORE_USE"           # site router, e.g. 192.168.20.1
+# lan_dns: ["192.168.20.1", "1.1.1.1"]  # default: [lan_gateway, 1.1.1.1]
+home_lan_subnet: "EDIT_BEFORE_USE"       # home LAN; must never be advertised from the site
+tailscale_subnet_router: false           # true: laptop-01 advertises lan_subnet
+# k8s-api on the controller: laptop-01's Tailscale IP. Required (controller.yml
+# checks) once node_network_static is true.
+# k8s_api_client_ip: "100.x.y.z"

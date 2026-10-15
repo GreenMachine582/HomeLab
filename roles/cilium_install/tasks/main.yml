@@ -1,0 +1,127 @@
+---
+# roles/cilium_install/tasks/main.yml (control plane)
+# Initial Cilium install with cilium-cli, as the Helm release "cilium" in
+# kube-system so Flux can adopt it later (M3/M4). Kube-proxy replacement is
+# on, so Cilium reaches the API server directly by IP: its agent containers
+# don't see the node's /etc/hosts entry for k8s-api.
+
+- name: "Cilium | Install cilium-cli"
+  ansible.builtin.include_tasks: cli.yml
+  tags: [k8s, cilium]
+
+- name: "Cilium | Check for an existing install"
+  ansible.builtin.command: kubectl -n kube-system get daemonset cilium
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: _cilium_ds
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [k8s, cilium]
+
+# One operator replica: with a single schedulable worker the default two
+# (with anti-affinity) would leave one Pending forever. The same settings go
+# to install and upgrade, so an upgrade can reset the release's values.
+- name: "Cilium | Install Cilium {{ cilium_version }}"
+  ansible.builtin.command:
+    argv: "{{ ['cilium', 'install', '--version', cilium_version] + _cilium_set_args }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: _cilium_ds.rc != 0
+  tags: [k8s, cilium]
+
+# Existing installs: move to cilium_version, or apply changed settings, with
+# a Helm upgrade (so the release stays right for Flux to adopt). Downgrades
+# work the same way. --reset-values, not --reuse-values: the stored values
+# pin the old image tags, so reusing them changes the chart but not the
+# running version.
+- name: "Cilium | Read the running version"
+  ansible.builtin.command: >-
+    kubectl -n kube-system get daemonset cilium
+    -o jsonpath={.spec.template.spec.containers[0].image}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: _cilium_image
+  changed_when: false
+  check_mode: false
+  when: _cilium_ds.rc == 0
+  tags: [k8s, cilium]
+
+# Empty when the ConfigMap is missing (installs from before it existed), so
+# those get one upgrade that records it.
+- name: "Cilium | Read the settings last applied"
+  ansible.builtin.command: >-
+    kubectl -n kube-system get configmap {{ _cilium_settings_configmap }}
+    -o jsonpath={.data.settings}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: _cilium_applied
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: _cilium_ds.rc == 0
+  tags: [k8s, cilium]
+
+- name: "Cilium | Upgrade to {{ cilium_version }} with the current settings"
+  when:
+    - _cilium_ds.rc == 0
+    - (':v' ~ cilium_version ~ '@') not in _cilium_image.stdout
+      or _cilium_applied.stdout != _cilium_settings_record
+  tags: [k8s, cilium]
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  block:
+    - name: "Cilium | What changes"
+      ansible.builtin.debug:
+        msg:
+          image: "{{ _cilium_image.stdout }} → {{ cilium_version }}"
+          settings_before: "{{ _cilium_applied.stdout_lines[1:] if _cilium_applied.stdout else 'not recorded' }}"
+          settings_after: "{{ _cilium_settings }}"
+
+    - name: "Cilium | Upgrade to {{ cilium_version }}"
+      ansible.builtin.command:
+        argv: "{{ ['cilium', 'upgrade', '--version', cilium_version, '--reset-values'] + _cilium_set_args }}"
+
+    - name: "Cilium | Wait for the agents"
+      ansible.builtin.command: kubectl -n kube-system rollout status daemonset/cilium --timeout=10m
+      changed_when: false
+
+# --wait redraws its status every few seconds; only the last one matters.
+- name: "Cilium | Wait until healthy"
+  ansible.builtin.shell: |
+    cilium status --wait --wait-duration 10m >/dev/null 2>&1
+    rc=$?
+    cilium status 2>&1 | sed 's/\x1b\[[0-9;]*[A-Za-z]//g'
+    exit $rc
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: _cilium_status
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [k8s, cilium]
+
+- name: "Cilium | Status"
+  ansible.builtin.debug:
+    msg: "{{ _cilium_status.stdout_lines }}"
+  tags: [k8s, cilium]
+
+- name: "Cilium | Fail if unhealthy"
+  ansible.builtin.fail:
+    msg: "Cilium isn't healthy after 10 minutes; see the status above."
+  when: _cilium_status.rc != 0
+  tags: [k8s, cilium]
+
+# Only once healthy, so a failed upgrade is retried on the next run.
+- name: "Cilium | Record the applied settings"
+  ansible.builtin.shell: |
+    kubectl -n kube-system create configmap {{ _cilium_settings_configmap }} \
+      --from-file=settings=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -
+  args:
+    stdin: "{{ _cilium_settings_record }}"
+    stdin_add_newline: false
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: _cilium_record
+  changed_when: "'unchanged' not in _cilium_record.stdout"
+  tags: [k8s, cilium]

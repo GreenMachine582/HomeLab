@@ -1,0 +1,39 @@
+# Rendered by Ansible (roles/kubeadm) — used once, by kubeadm init.
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: {{ node_ip }}
+  bindPort: {{ k8s_api_port }}
+nodeRegistration:
+  name: {{ inventory_hostname }}
+  criSocket: unix:///run/containerd/containerd.sock
+# Cilium runs as the kube-proxy replacement.
+skipPhases:
+  - addon/kube-proxy
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+clusterName: homelab
+kubernetesVersion: v{{ k8s_version }}
+controlPlaneEndpoint: {{ k8s_api_name }}:{{ k8s_api_port }}
+networking:
+  podSubnet: {{ k8s_pod_cidr }}
+  serviceSubnet: {{ k8s_service_cidr }}
+apiServer:
+  certSANs:
+    - {{ k8s_api_name }}
+    - {{ inventory_hostname }}
+    - {{ node_ip }}
+{% if tailscale_tailnet | default('EDIT_BEFORE_USE') != 'EDIT_BEFORE_USE' %}
+    - {{ inventory_hostname }}.{{ tailscale_tailnet }}.ts.net
+{% endif %}
+---
+# Cluster-wide kubelet config (stored in the kubelet-config ConfigMap, so
+# joining workers get it too).
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+# Swap stays on for the OS; pods never use it.
+failSwapOn: false
+memorySwap:
+  swapBehavior: NoSwap

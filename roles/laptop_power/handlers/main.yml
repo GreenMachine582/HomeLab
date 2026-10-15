@@ -6,3 +6,9 @@
   ansible.builtin.systemd:
     name: systemd-logind
     state: restarted
+
+- name: Restart power monitor
+  ansible.builtin.systemd:
+    name: homelab-power-monitor.service
+    state: restarted
+    daemon_reload: true

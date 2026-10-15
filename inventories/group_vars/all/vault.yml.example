@@ -74,6 +74,10 @@ vault_deploy_ssh_pubkey: "ssh-ed25519 AAAA... deploy"
 # See BOOTSTRAP.md § 1.8 for setup steps (ACL tag + OAuth client creation).
 vault_tailscale_oauth_client_id: "..."
 vault_tailscale_oauth_client_secret: "tskey-client-..."
+# Admin client for playbooks/tailscale_admin.yml only (policy file + devices,
+# write). Controller-only, not seeded anywhere. See docs/K8S_SITE_MOVE.md.
+vault_tailscale_admin_oauth_client_id: "..."
+vault_tailscale_admin_oauth_client_secret: "tskey-client-..."
 
 # ── Infisical ─────────────────────────────────────────────────────────────────
 vault_infisical_admin_email: "admin@example.com"

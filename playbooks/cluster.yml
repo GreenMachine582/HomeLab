@@ -1,0 +1,106 @@
+---
+# playbooks/cluster.yml
+#
+# Builds the Kubernetes cluster on nodes already prepared by bootstrap.yml:
+# containerd, kubeadm (init on k8s_control_plane, join for k8s_workers),
+# Cilium as the CNI and kube-proxy replacement, and node labels/taints.
+#
+#   ansible-playbook playbooks/cluster.yml
+#
+# Safe to re-run: init and join are skipped once done, Cilium once installed.
+# Versions and CIDRs live in inventories/group_vars/k8s.yml.
+# The admin kubeconfig is fetched to ~/.kube/homelab.conf on the controller.
+# See docs/K8S_CLUSTER.md.
+
+# ── Probe play ─────────────────────────────────────────────────────────────────
+- name: "Probe | Discover each node's SSH endpoint"
+  hosts: k8s
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        # Always, so --tags runs still connect on the probed endpoint.
+        apply:
+          tags: [always]
+      tags: [always]
+      vars:
+        probe_allow_fresh: false
+
+# ── Every node: host prerequisites, runtime, packages, firewall ───────────────
+- name: "Cluster | Node prerequisites, containerd, Kubernetes packages"
+  hosts: k8s
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: "Roles | Kubernetes prerequisites"
+      ansible.builtin.include_role:
+        name: k8s_prereqs
+      tags: [k8s, prereqs]
+
+    - name: "Roles | containerd"
+      ansible.builtin.include_role:
+        name: containerd
+      tags: [k8s, containerd]
+
+    - name: "Roles | Kubernetes packages"
+      ansible.builtin.include_role:
+        name: kubeadm
+        tasks_from: packages
+      tags: [k8s, kubeadm]
+
+    # Re-applies ufw_rules plus the node-to-node and pod-network rules and
+    # the routed policy from group_vars/k8s.yml.
+    - name: "Roles | Firewall"
+      ansible.builtin.include_role:
+        name: firewall
+      vars:
+        firewall_rules: "{{ ufw_rules }}"
+      tags: [firewall]
+
+# ── Control plane: kubeadm init, Cilium ───────────────────────────────────────
+- name: "Cluster | Control plane"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Roles | kubeadm init"
+      ansible.builtin.include_role:
+        name: kubeadm
+        tasks_from: init
+      tags: [k8s, kubeadm, init]
+
+    - name: "Roles | Cilium"
+      ansible.builtin.include_role:
+        name: cilium_install
+      tags: [k8s, cilium]
+
+# ── Workers: kubeadm join ─────────────────────────────────────────────────────
+- name: "Cluster | Join workers"
+  hosts: k8s_workers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Roles | kubeadm join"
+      ansible.builtin.include_role:
+        name: kubeadm
+        tasks_from: join
+      tags: [k8s, kubeadm, join]
+
+# ── Labels and taints ─────────────────────────────────────────────────────────
+- name: "Cluster | Node labels and taints"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Roles | Node config"
+      ansible.builtin.include_role:
+        name: k8s_node_config
+      tags: [k8s, nodes]

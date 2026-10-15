@@ -1,0 +1,60 @@
+---
+# roles/k8s_client/tasks/main.yml
+# Cluster tooling for the Ansible controller (WSL on the main PC): kubectl
+# and cilium-cli at the cluster's versions, k8s-api resolution, KUBECONFIG.
+# Reuses the node roles' task files so versions and repos never drift.
+
+- name: "Client | Kubernetes apt repository"
+  ansible.builtin.include_role:
+    name: kubeadm
+    tasks_from: repo
+  tags: [client, kubectl]
+
+- name: "Client | Install kubectl {{ k8s_version }}"
+  ansible.builtin.apt:
+    name: "kubectl={{ k8s_version }}-*"
+    state: present
+    update_cache: true
+    allow_change_held_packages: true
+  tags: [client, kubectl]
+
+- name: "Client | Hold kubectl"
+  ansible.builtin.dpkg_selections:
+    name: kubectl
+    selection: hold
+  tags: [client, kubectl]
+
+- name: "Client | cilium-cli"
+  ansible.builtin.include_role:
+    name: cilium_install
+    tasks_from: cli
+  tags: [client, cilium]
+
+# WSL regenerates /etc/hosts from Windows on every start, which would drop
+# the k8s-api line. Keep the current file instead.
+- name: "Client | Stop WSL regenerating /etc/hosts"
+  community.general.ini_file:
+    path: /etc/wsl.conf
+    section: network
+    option: generateHosts
+    value: "false"
+    owner: root
+    group: root
+    mode: "0644"
+  when: "'microsoft' in ansible_kernel | lower"
+  tags: [client, hosts]
+
+- name: "Client | Resolve the API endpoint"
+  ansible.builtin.include_role:
+    name: k8s_prereqs
+    tasks_from: hosts
+  tags: [client, hosts]
+
+- name: "Client | Point kubectl at the homelab cluster"
+  ansible.builtin.blockinfile:
+    path: "{{ lookup('env', 'HOME') }}/.bashrc"
+    marker: "# {mark} homelab k8s (managed by Ansible, roles/k8s_client)"
+    block: |
+      export KUBECONFIG="$HOME/.kube/homelab.conf"
+  become: false
+  tags: [client, kubeconfig]

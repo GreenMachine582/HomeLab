@@ -1,0 +1,175 @@
+---
+# playbooks/tasks/probe_ssh.yml
+#
+# Works out how to reach each node, per host. Include from a play with
+# `connection: local`, `gather_facts: false`, before any play that connects.
+#
+#   where: the first reachable SSH endpoint, tried in this order
+#          (same as bootstrap_edge.yml; tailnet entries need tailscale_tailnet):
+#            1. Tailscale MagicDNS name : ssh_port
+#            2. LAN IP (node_ip)        : ssh_port
+#            3. Tailscale MagicDNS name : fallback_ssh_port  (only if different)
+#            4. LAN IP (node_ip)        : fallback_ssh_port  (only if different)
+#            5. bootstrap_address       : ssh_port, then fallback_ssh_port
+#               (only when set: a fresh node still on its DHCP address before
+#               node_network moves it to the static node_ip)
+#   who:   hardened if the homelab key works there -> connect as homelab;
+#          otherwise fresh -> bootstrap_user with a password, asked for once.
+#
+# Set probe_allow_fresh: false to fail on fresh nodes instead (cluster.yml).
+
+- name: "Probe | Assert the node's IP is set"
+  ansible.builtin.assert:
+    that:
+      - node_ip is defined
+      - node_ip | length > 0
+      - node_ip != 'EDIT_BEFORE_USE'
+    fail_msg: >-
+      No IP for {{ inventory_hostname }}. Set ip_{{ inventory_hostname | replace('-', '_') }}
+      in inventories/group_vars/all/overrides.yml.
+
+- name: "Probe | Build SSH endpoint candidates"
+  ansible.builtin.set_fact:
+    _ssh_candidates: >-
+      {{
+        ([{'host': _ts_name, 'port': ssh_port | int,
+           'label': 'Tailscale ' ~ _ts_name ~ ':' ~ ssh_port}]
+         if _ts_available else [])
+        + [{'host': node_ip, 'port': ssh_port | int,
+            'label': 'LAN ' ~ node_ip ~ ':' ~ ssh_port}]
+        + ([{'host': _ts_name, 'port': fallback_ssh_port | int,
+             'label': 'Tailscale ' ~ _ts_name ~ ':' ~ fallback_ssh_port}]
+           if _ts_available and _has_custom_port else [])
+        + ([{'host': node_ip, 'port': fallback_ssh_port | int,
+             'label': 'LAN ' ~ node_ip ~ ':' ~ fallback_ssh_port}]
+           if _has_custom_port else [])
+        + ([{'host': _boot_addr, 'port': ssh_port | int,
+             'label': 'DHCP ' ~ _boot_addr ~ ':' ~ ssh_port}]
+           + ([{'host': _boot_addr, 'port': fallback_ssh_port | int,
+                'label': 'DHCP ' ~ _boot_addr ~ ':' ~ fallback_ssh_port}]
+              if _has_custom_port else [])
+           if _boot_addr | length > 0 and _boot_addr != node_ip else [])
+      }}
+  vars:
+    _boot_addr: "{{ bootstrap_address | default('') }}"
+    _ts_name: "{{ inventory_hostname }}.{{ tailscale_tailnet }}.ts.net"
+    _ts_available: "{{ tailscale_tailnet | default('EDIT_BEFORE_USE') != 'EDIT_BEFORE_USE' }}"
+    _has_custom_port: "{{ ssh_port | int != fallback_ssh_port | int }}"
+
+- name: "Probe | Show candidates"
+  ansible.builtin.debug:
+    msg: "Probing {{ inventory_hostname }}: {{ _ssh_candidates | map(attribute='label') | join(' → ') }}"
+
+- name: "Probe | Test TCP reachability"
+  ansible.builtin.wait_for:
+    host: "{{ item.host }}"
+    port: "{{ item.port }}"
+    state: started
+    timeout: 3
+  register: _probe_tcp
+  ignore_errors: true
+  changed_when: false
+  loop: "{{ _ssh_candidates }}"
+  loop_control:
+    label: "{{ item.label }}"
+
+- name: "Probe | Pick the first reachable endpoint"
+  ansible.builtin.set_fact:
+    _endpoint: "{{ (_probe_tcp.results | selectattr('failed', 'equalto', false) | map(attribute='item') | list + [{}]) | first }}"
+
+- name: "Probe | Fail if nothing reachable"
+  ansible.builtin.fail:
+    msg: >-
+      No SSH endpoint reachable for {{ inventory_hostname }}.
+      Tried: {{ _ssh_candidates | map(attribute='label') | join(', ') }}.
+      Check the node is powered on and its IP in overrides.yml is right.
+  when: _endpoint | length == 0
+
+# Also records the host key (accept-new) when the key works.
+- name: "Probe | Try the homelab key on the discovered endpoint"
+  ansible.builtin.command:
+    argv:
+      - ssh
+      - -o
+      - BatchMode=yes
+      - -o
+      - ConnectTimeout=5
+      - -o
+      - StrictHostKeyChecking=accept-new
+      - -o
+      - IdentitiesOnly=yes
+      - -i
+      - "{{ ansible_ssh_private_key_file | expanduser }}"
+      - -p
+      - "{{ _endpoint.port }}"
+      - "homelab@{{ _endpoint.host }}"
+      - "true"
+  register: _probe_key
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: "Probe | Record result"
+  ansible.builtin.set_fact:
+    _hardened: "{{ _probe_key.rc == 0 }}"
+
+- name: "Probe | Require an already-bootstrapped node"
+  ansible.builtin.fail:
+    msg: >-
+      {{ inventory_hostname }} isn't bootstrapped yet (the homelab key doesn't
+      work on {{ _endpoint.label }}). Run playbooks/bootstrap.yml first.
+  when:
+    - not _hardened
+    - not (probe_allow_fresh | default(true))
+
+# Ansible refuses a password login to a host it has no key for.
+- name: "Probe | Scan host key (fresh nodes)"
+  ansible.builtin.command: "ssh-keyscan -p {{ _endpoint.port }} {{ _endpoint.host }}"
+  register: _probe_host_keys
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: not _hardened
+
+- name: "Probe | Trust host key (fresh nodes)"
+  ansible.builtin.known_hosts:
+    name: "{{ _endpoint.host if _endpoint.port | int == 22 else '[' ~ _endpoint.host ~ ']:' ~ _endpoint.port }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ _probe_host_keys.stdout_lines | default([]) | select('match', '^[^#]') | list }}"
+  no_log: true
+  when: not _hardened
+
+- name: "Probe | Show result"
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}:
+      {{ 'hardened via ' ~ _endpoint.label ~ ', connecting as homelab with the key'
+         if _hardened else
+         'fresh via ' ~ _endpoint.label ~ ', connecting as ' ~ bootstrap_user ~ ' with a password' }}
+
+- name: "Probe | Ask for the bootstrap password"
+  ansible.builtin.pause:
+    prompt: >-
+      Password for the install user on the fresh node(s)
+      {{ ansible_play_hosts | map('extract', hostvars) | rejectattr('_hardened') | map(attribute='inventory_hostname') | join(', ') }}
+    echo: false
+  register: _bootstrap_pw
+  run_once: true
+  when: ansible_play_hosts | map('extract', hostvars) | rejectattr('_hardened') | list | length > 0
+
+- name: "Probe | Connect via the discovered endpoint"
+  ansible.builtin.set_fact:
+    ansible_host: "{{ _endpoint.host }}"
+    ansible_port: "{{ _endpoint.port }}"
+
+- name: "Probe | Use the install user and password on fresh nodes"
+  ansible.builtin.set_fact:
+    ansible_user: "{{ bootstrap_user }}"
+    ansible_password: "{{ _bootstrap_pw.user_input }}"
+    ansible_become_password: "{{ _bootstrap_pw.user_input }}"
+    # Already root: no sudo needed (and a root-password Debian install
+    # has no sudo yet). Turned back on when base_hardening switches to homelab.
+    ansible_become: "{{ bootstrap_user != 'root' }}"
+  no_log: true
+  when: not _hardened

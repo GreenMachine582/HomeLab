@@ -7,21 +7,15 @@
 #
 #   ansible-playbook playbooks/bootstrap.yml --limit laptop-01
 #
-# Safe to re-run. A probe play works out, per host:
-#   where: the first reachable SSH endpoint, tried in this order
-#          (same as bootstrap_edge.yml; tailnet entries need tailscale_tailnet):
-#            1. Tailscale MagicDNS name : ssh_port
-#            2. LAN IP                  : ssh_port
-#            3. Tailscale MagicDNS name : fallback_ssh_port  (only if different)
-#            4. LAN IP                  : fallback_ssh_port  (only if different)
-#   who:   hardened if the homelab key works there -> connect as homelab;
-#          otherwise fresh -> bootstrap_user with a password, asked for once
-#          (hidden) and also used for sudo
+# Safe to re-run. The probe (tasks/probe_ssh.yml) finds each node's SSH
+# endpoint (Tailscale or LAN, ssh_port or fallback_ssh_port) and identity:
+# hardened -> homelab with the key; fresh -> bootstrap_user with a password,
+# asked for once (hidden) and also used for sudo.
 # On a fresh host the users role installs the admin and homelab keys,
 # base_hardening moves sshd to ssh_port and turns password auth off, and the
 # play switches to the homelab key for everything after that.
 #
-# Not yet: containerd, kubeadm, kernel/swap prerequisites (M2).
+# Kubernetes itself is installed by playbooks/cluster.yml afterwards.
 # See docs/K8S_BOOTSTRAP.md.
 
 # ── Probe play ─────────────────────────────────────────────────────────────────
@@ -31,145 +25,14 @@
   become: false
   gather_facts: false
 
-  vars:
-    _lan_ip: "{{ ansible_host }}"
-    _ts_name: "{{ inventory_hostname }}.{{ tailscale_tailnet }}.ts.net"
-    _ts_available: "{{ tailscale_tailnet | default('EDIT_BEFORE_USE') != 'EDIT_BEFORE_USE' }}"
-    _has_custom_port: "{{ ssh_port | int != fallback_ssh_port | int }}"
-    _ssh_candidates: >-
-      {{
-        ([{'host': _ts_name, 'port': ssh_port | int,
-           'label': 'Tailscale ' ~ _ts_name ~ ':' ~ ssh_port}]
-         if _ts_available else [])
-        + [{'host': _lan_ip, 'port': ssh_port | int,
-            'label': 'LAN ' ~ _lan_ip ~ ':' ~ ssh_port}]
-        + ([{'host': _ts_name, 'port': fallback_ssh_port | int,
-             'label': 'Tailscale ' ~ _ts_name ~ ':' ~ fallback_ssh_port}]
-           if _ts_available and _has_custom_port else [])
-        + ([{'host': _lan_ip, 'port': fallback_ssh_port | int,
-             'label': 'LAN ' ~ _lan_ip ~ ':' ~ fallback_ssh_port}]
-           if _has_custom_port else [])
-      }}
-
   tasks:
-    - name: "Probe | Assert the node's IP is set"
-      ansible.builtin.assert:
-        that:
-          - ansible_host is defined
-          - ansible_host | length > 0
-          - ansible_host != 'EDIT_BEFORE_USE'
-        fail_msg: >-
-          No IP for {{ inventory_hostname }}. Set ip_{{ inventory_hostname | replace('-', '_') }}
-          in inventories/group_vars/all/overrides.yml.
-
-    - name: "Probe | Show candidates"
-      ansible.builtin.debug:
-        msg: "Probing {{ inventory_hostname }}: {{ _ssh_candidates | map(attribute='label') | join(' → ') }}"
-
-    - name: "Probe | Test TCP reachability"
-      ansible.builtin.wait_for:
-        host: "{{ item.host }}"
-        port: "{{ item.port }}"
-        state: started
-        timeout: 3
-      register: _probe_tcp
-      ignore_errors: true
-      changed_when: false
-      loop: "{{ _ssh_candidates }}"
-      loop_control:
-        label: "{{ item.label }}"
-
-    - name: "Probe | Pick the first reachable endpoint"
-      ansible.builtin.set_fact:
-        _endpoint: "{{ (_probe_tcp.results | selectattr('failed', 'equalto', false) | map(attribute='item') | list + [{}]) | first }}"
-
-    - name: "Probe | Fail if nothing reachable"
-      ansible.builtin.fail:
-        msg: >-
-          No SSH endpoint reachable for {{ inventory_hostname }}.
-          Tried: {{ _ssh_candidates | map(attribute='label') | join(', ') }}.
-          Check the node is powered on and its IP in overrides.yml is right.
-      when: _endpoint | length == 0
-
-    # Also records the host key (accept-new) when the key works.
-    - name: "Probe | Try the homelab key on the discovered endpoint"
-      ansible.builtin.command:
-        argv:
-          - ssh
-          - -o
-          - BatchMode=yes
-          - -o
-          - ConnectTimeout=5
-          - -o
-          - StrictHostKeyChecking=accept-new
-          - -o
-          - IdentitiesOnly=yes
-          - -i
-          - "{{ ansible_ssh_private_key_file | expanduser }}"
-          - -p
-          - "{{ _endpoint.port }}"
-          - "homelab@{{ _endpoint.host }}"
-          - "true"
-      register: _probe_key
-      changed_when: false
-      failed_when: false
-      check_mode: false
-
-    - name: "Probe | Record result"
-      ansible.builtin.set_fact:
-        _hardened: "{{ _probe_key.rc == 0 }}"
-
-    # Ansible refuses a password login to a host it has no key for.
-    - name: "Probe | Scan host key (fresh nodes)"
-      ansible.builtin.command: "ssh-keyscan -p {{ _endpoint.port }} {{ _endpoint.host }}"
-      register: _probe_host_keys
-      changed_when: false
-      failed_when: false
-      check_mode: false
-      when: not _hardened
-
-    - name: "Probe | Trust host key (fresh nodes)"
-      ansible.builtin.known_hosts:
-        name: "{{ _endpoint.host if _endpoint.port | int == 22 else '[' ~ _endpoint.host ~ ']:' ~ _endpoint.port }}"
-        key: "{{ item }}"
-        state: present
-      loop: "{{ _probe_host_keys.stdout_lines | default([]) | select('match', '^[^#]') | list }}"
-      no_log: true
-      when: not _hardened
-
-    - name: "Probe | Show result"
-      ansible.builtin.debug:
-        msg: >-
-          {{ inventory_hostname }}:
-          {{ 'hardened via ' ~ _endpoint.label ~ ', connecting as homelab with the key'
-             if _hardened else
-             'fresh via ' ~ _endpoint.label ~ ', connecting as ' ~ bootstrap_user ~ ' with a password' }}
-
-    - name: "Probe | Ask for the bootstrap password"
-      ansible.builtin.pause:
-        prompt: >-
-          Password for the install user on the fresh node(s)
-          {{ ansible_play_hosts | map('extract', hostvars) | rejectattr('_hardened') | map(attribute='inventory_hostname') | join(', ') }}
-        echo: false
-      register: _bootstrap_pw
-      run_once: true
-      when: ansible_play_hosts | map('extract', hostvars) | rejectattr('_hardened') | list | length > 0
-
-    - name: "Probe | Connect via the discovered endpoint"
-      ansible.builtin.set_fact:
-        ansible_host: "{{ _endpoint.host }}"
-        ansible_port: "{{ _endpoint.port }}"
-
-    - name: "Probe | Use the install user and password on fresh nodes"
-      ansible.builtin.set_fact:
-        ansible_user: "{{ bootstrap_user }}"
-        ansible_password: "{{ _bootstrap_pw.user_input }}"
-        ansible_become_password: "{{ _bootstrap_pw.user_input }}"
-        # Already root: no sudo needed (and a root-password Debian install
-        # has no sudo yet). Turned back on when switching to homelab.
-        ansible_become: "{{ bootstrap_user != 'root' }}"
-      no_log: true
-      when: not _hardened
+    - name: "Probe | Endpoint and identity"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        # Always, so --tags runs still connect on the probed endpoint.
+        apply:
+          tags: [always]
+      tags: [always]
 
 # ── Bootstrap play ─────────────────────────────────────────────────────────────
 - name: "Bootstrap | Users, SSH hardening, Tailscale, firewall"
@@ -235,16 +98,36 @@
         - nvme_enabled | default(false)
       tags: [nvme, storage]
 
+    - name: "Roles | Argon case (power button, fan)"
+      ansible.builtin.include_role:
+        name: argon_case
+      when: argon_case is defined
+      tags: [argon]
+
     - name: "Roles | Laptop power settings"
       ansible.builtin.include_role:
         name: laptop_power
       when: laptop_power_enabled | default(false)
       tags: [laptop, power]
 
+    # Targets (wol_mac set) arm Wake-on-LAN; wakers (the Pis) wake them at boot.
+    - name: "Roles | Wake-on-LAN"
+      ansible.builtin.include_role:
+        name: wake_on_lan
+      when: (wol_waker | default(false) | bool) or (wol_mac | default('') | length > 0)
+      tags: [wol]
+
     - name: "Roles | Tailscale"
       ansible.builtin.include_role:
         name: tailscale
       tags: [tailscale]
+
+    # After Tailscale, so a static-IP change at the site can reconnect over
+    # the tailnet. Reboots the node when its address changes.
+    - name: "Roles | Node network (Wi-Fi off, static node_ip)"
+      ansible.builtin.include_role:
+        name: node_network
+      tags: [network]
 
     - name: "Roles | Firewall"
       ansible.builtin.include_role:

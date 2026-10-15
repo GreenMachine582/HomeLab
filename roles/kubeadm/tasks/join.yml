@@ -1,0 +1,66 @@
+---
+# roles/kubeadm/tasks/join.yml (workers)
+# Joins via k8s-api (from /etc/hosts) with a fresh token from the control
+# plane. Skipped once the node has joined.
+
+- name: "kubeadm | Check whether this node has joined"
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: _kubelet_conf
+  tags: [k8s, kubeadm, join]
+
+# A join that failed part-way leaves pki/ca.crt and a running kubelet behind,
+# which fail the next join's preflight checks. Not joined + leftovers: reset.
+- name: "kubeadm | Check for leftovers from a failed join"
+  ansible.builtin.stat:
+    path: /etc/kubernetes/pki/ca.crt
+  register: _join_leftovers
+  when: not _kubelet_conf.stat.exists
+  tags: [k8s, kubeadm, join]
+
+- name: "kubeadm | Clean up a failed join"
+  ansible.builtin.command: kubeadm reset -f
+  when:
+    - not _kubelet_conf.stat.exists
+    - _join_leftovers.stat.exists | default(false)
+  tags: [k8s, kubeadm, join]
+
+- name: "kubeadm | Create a join command on the control plane"
+  ansible.builtin.command: kubeadm token create --print-join-command --ttl 30m
+  register: _join_command
+  delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+  changed_when: false
+  no_log: true
+  when: not _kubelet_conf.stat.exists
+  tags: [k8s, kubeadm, join]
+
+# no_log keeps the token out of the output, which also hides why a join
+# failed, so the rescue prints the output with the token masked.
+- name: "kubeadm | Join the cluster"
+  when: not _kubelet_conf.stat.exists
+  tags: [k8s, kubeadm, join]
+  block:
+    - name: "kubeadm | Join the cluster"
+      ansible.builtin.command: "{{ _join_command.stdout }} --ignore-preflight-errors=Swap"
+      register: _join
+      no_log: true
+
+  rescue:
+    - name: "kubeadm | Why the join failed (token masked)"
+      ansible.builtin.debug:
+        msg: >-
+          {{ ((_join.stdout_lines | default([])) + (_join.stderr_lines | default([]))
+              + ([_join.msg] if _join.msg is defined else []))
+             | map('regex_replace', '[a-z0-9]{6}[.][a-z0-9]{16}', '<token>')
+             | map('regex_replace', 'sha256:[0-9a-f]{64}', 'sha256:<hash>')
+             | list }}
+
+    - name: "kubeadm | Undo the partial join so a re-run starts clean"
+      ansible.builtin.command: kubeadm reset -f
+      failed_when: false
+
+    - name: "kubeadm | Stop here"
+      ansible.builtin.fail:
+        msg: >-
+          kubeadm join failed on {{ inventory_hostname }}; the reason is above.
+          The node was reset, so fix the cause and re-run cluster.yml.

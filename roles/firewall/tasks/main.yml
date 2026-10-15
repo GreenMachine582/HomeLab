@@ -45,6 +45,15 @@
     policy: allow
   tags: [firewall]
 
+# Kubernetes nodes route pod traffic through the host; UFW's default
+# forward policy (drop) would silently break it. Skipped unless set.
+- name: "Firewall | Set routed (forward) policy"
+  community.general.ufw:
+    direction: routed
+    policy: "{{ firewall_routed_policy }}"
+  when: firewall_routed_policy | default('') | length > 0
+  tags: [firewall]
+
 - name: "Firewall | Allow loopback"
   community.general.ufw:
     rule: allow
@@ -93,6 +102,14 @@
   loop_control:
     label: "{{ item.comment | default(item.port) }}"
   when: (item.src | default('any')) != 'EDIT_BEFORE_USE'
+  tags: [firewall]
+
+- name: "Firewall | Allow all traffic from trusted sources"
+  community.general.ufw:
+    rule: allow
+    src: "{{ item }}"
+    comment: "Trusted source"
+  loop: "{{ firewall_trusted_sources | default([]) }}"
   tags: [firewall]
 
 - name: "Firewall | Enable ufw"

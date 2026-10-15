@@ -1,0 +1,14 @@
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/wake_on_lan/templates/homelab-wol-wake.service.j2
+[Unit]
+Description=Wake the site's Wake-on-LAN nodes after boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# exec, not oneshot: polling for up to {{ wol_wake_minutes }} min mustn't hold up boot.
+Type=exec
+ExecStart={{ wol_script_dir }}/wake-targets.sh
+
+[Install]
+WantedBy=multi-user.target

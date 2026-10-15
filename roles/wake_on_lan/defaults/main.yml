@@ -1,0 +1,17 @@
+---
+# roles/wake_on_lan/defaults/main.yml
+# Wakes nodes that can't power on by themselves when site power returns
+# (laptop-01: no AC power-on in its BIOS). See docs/K8S_SITE_MOVE.md.
+
+# Target side: MAC of this node's wired interface (host_vars, value from
+# overrides.yml). Empty = this node is never woken.
+wol_mac: ""
+wol_interface: "{{ ansible_default_ipv4.interface }}"
+
+# Waker side: after it boots (e.g. power restored), send magic packets to
+# every target until it answers SSH, for up to wol_wake_minutes.
+wol_waker: false
+# Only one waker posts the Discord result, so three Pis don't post three.
+wol_report: false
+wol_wake_minutes: 10
+wol_script_dir: /usr/local/lib/homelab/wol

@@ -81,6 +81,36 @@
   register: sshd_include
   tags: [ssh, security]
 
+# Break-glass SSH certificates (docs/K8S_SITE_MOVE.md): trust the homelab
+# user CA, and let a certificate for principal "admin" log in as admin only.
+- name: "Security | Break-glass user CA"
+  when: ssh_user_ca_pubkey | default('') | length > 0
+  tags: [ssh, security, breakglass]
+  block:
+    - name: "Security | Install the user CA public key"
+      ansible.builtin.copy:
+        dest: /etc/ssh/homelab_user_ca.pub
+        content: "{{ ssh_user_ca_pubkey | trim }}\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: "Security | Principals directory"
+      ansible.builtin.file:
+        path: /etc/ssh/auth_principals
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: "Security | admin accepts the admin principal"
+      ansible.builtin.copy:
+        dest: /etc/ssh/auth_principals/admin
+        content: "admin\n"
+        owner: root
+        group: root
+        mode: "0644"
+
 - name: "Security | Deploy authoritative sshd hardening drop-in"
   ansible.builtin.template:
     src: sshd_config.d/00-homelab-hardening.conf.j2

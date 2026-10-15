@@ -5,6 +5,9 @@ tailscale_up: true
 tailscale_tags:
   - "tag:homelab"
 tailscale_accept_routes: false
+# MagicDNS on the node itself. Off for k8s nodes (group_vars/k8s.yml): they
+# reach each other by LAN IP, and DNS stays with node_network's lan_dns.
+tailscale_accept_dns: true
 tailscale_exit_node: false
 tailscale_advertise_routes: []
 tailscale_extra_args: ""

@@ -1,0 +1,6 @@
+---
+# roles/wake_on_lan/handlers/main.yml
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true

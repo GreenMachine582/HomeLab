@@ -1,0 +1,69 @@
+#!/bin/bash
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/laptop_power/templates/power-monitor.sh.j2
+#
+# The laptop is the site's power sensor: the Pis die the moment power goes,
+# the laptop runs on its battery. Posts to Discord when mains power is lost
+# and restored, and shuts down cleanly at {{ laptop_shutdown_battery_percent }}% so Wake-on-LAN
+# stays armed for the Pis to wake it when power returns (roles/wake_on_lan).
+set -uo pipefail
+
+HOST="{{ inventory_hostname }}"
+POLL={{ laptop_power_poll_seconds }}
+SHUTDOWN_AT={{ laptop_shutdown_battery_percent }}
+
+supply() {
+    local s
+    for s in /sys/class/power_supply/*; do
+        [[ "$(cat "$s/type" 2>/dev/null)" == "$1" ]] && { echo "$s"; return; }
+    done
+}
+
+MAINS="$(supply Mains)"
+BAT="$(supply Battery)"
+[[ -n "$MAINS" ]] || { echo "No mains power supply in /sys/class/power_supply; nothing to watch."; exit 0; }
+
+ac() { cat "$MAINS/online" 2>/dev/null || echo 1; }
+battery() { [[ -n "$BAT" ]] && cat "$BAT/capacity" 2>/dev/null || echo 100; }
+stamp() { date "+%Y-%m-%d %H:%M:%S"; }
+
+# The site router is probably down too, so retry in the background until it
+# gets through. The message carries the event time, not the delivery time.
+notify() {
+    local msg="$1"
+    (
+        until curl -sf --max-time 10 \
+            -H "Content-Type: application/json" \
+            --data-raw "{\"content\": \"$msg\"}" \
+            "{{ notify_discord_webhook }}" > /dev/null; do
+            sleep 15
+        done
+    ) &
+}
+
+prev="$(ac)"
+lost_at=$(date +%s)
+if [[ "$prev" == 0 ]]; then
+    notify "🔋 [Power] $HOST started on battery ($(battery)%) at $(stamp)"
+fi
+
+while sleep "$POLL"; do
+    now="$(ac)"
+    bat="$(battery)"
+
+    if [[ "$prev" == 1 && "$now" == 0 ]]; then
+        lost_at=$(date +%s)
+        notify "🔋 [Power] Site power lost at $(stamp): $HOST on battery ($bat%)"
+    elif [[ "$prev" == 0 && "$now" == 1 ]]; then
+        mins=$(( ($(date +%s) - lost_at) / 60 ))
+        notify "🔌 [Power] Site power restored at $(stamp), out ${mins} min; $HOST battery $bat%"
+    fi
+    prev="$now"
+
+    if [[ "$now" == 0 ]] && (( bat <= SHUTDOWN_AT )); then
+        notify "🪫 [Power] $HOST battery at $bat% after $(( ($(date +%s) - lost_at) / 60 )) min without power; shutting down cleanly at $(stamp). The Pis wake it when power returns."
+        sleep 20
+        systemctl poweroff
+        exit 0
+    fi
+done

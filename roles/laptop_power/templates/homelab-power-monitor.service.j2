@@ -1,0 +1,15 @@
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/laptop_power/templates/homelab-power-monitor.service.j2
+[Unit]
+Description=Alert on site power loss/restore, clean shutdown at low battery
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={{ notify_script_dir }}/power-monitor.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

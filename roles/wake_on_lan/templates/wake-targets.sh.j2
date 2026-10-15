@@ -1,0 +1,86 @@
+#!/bin/bash
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/wake_on_lan/templates/wake-targets.sh.j2
+#
+# Wakes the site's Wake-on-LAN nodes and polls until each answers SSH.
+# Run at boot by homelab-wol-wake.service (power restored), or on demand by
+# playbooks/wake.yml:
+#   wake-targets.sh [minutes] [target ...]     default: all targets
+# WOL_NOTIFY=false skips the Discord post.
+set -uo pipefail
+
+HOST="{{ inventory_hostname }}"
+MINUTES="${1:-{{ wol_wake_minutes }}}"
+shift || true
+WANT=" $* "
+NOTIFY="${WOL_NOTIFY:-{{ 'true' if wol_report | bool else 'false' }}}"
+SSH_PORT="{{ ssh_port }}"
+
+# name mac ip
+TARGETS=(
+{% for h in groups['k8s'] if h != inventory_hostname and hostvars[h].wol_mac | default('') | length > 0 %}
+  "{{ h }} {{ hostvars[h].wol_mac }} {{ hostvars[h].node_ip }}"
+{% endfor %}
+)
+
+notify() {
+    [[ "$NOTIFY" == true ]] || return 0
+    for _i in $(seq 1 12); do
+        curl -sf --max-time 10 \
+          -H "Content-Type: application/json" \
+          --data-raw "{\"content\": \"$1\"}" \
+          "{{ notify_discord_webhook }}" > /dev/null && return 0
+        sleep 5
+    done
+}
+
+up() { timeout 3 bash -c "</dev/tcp/$1/$SSH_PORT" 2>/dev/null; }
+
+broadcast() {
+    ip -4 -o addr show to {{ lan_subnet }} \
+      | awk '{for (i = 1; i <= NF; i++) if ($i == "brd") { print $(i + 1); exit }}'
+}
+
+# After a power cut the switch and router boot alongside us: wait up to
+# 5 min for our own LAN address.
+BRD=""
+for _i in $(seq 1 60); do
+    BRD="$(broadcast)"
+    [[ -n "$BRD" ]] && break
+    sleep 5
+done
+[[ -n "$BRD" ]] || { echo "No address in {{ lan_subnet }}; can't send magic packets."; exit 1; }
+
+rc=0
+for t in "${TARGETS[@]}"; do
+    read -r name mac ip <<< "$t"
+    [[ "$WANT" == "  " || "$WANT" == *" $name "* ]] || continue
+
+    if up "$ip"; then
+        echo "$name: already up."
+        continue
+    fi
+
+    echo "$name: sending magic packets to $mac via $BRD, polling $ip:$SSH_PORT for up to $MINUTES min."
+    start=$(date +%s)
+    deadline=$(( start + MINUTES * 60 ))
+    woke=false
+    while (( $(date +%s) < deadline )); do
+        wakeonlan -i "$BRD" "$mac" > /dev/null
+        for _j in 1 2 3 4; do
+            sleep 5
+            if up "$ip"; then woke=true; break 2; fi
+        done
+    done
+
+    took=$(( $(date +%s) - start ))
+    if [[ "$woke" == true ]]; then
+        echo "$name: SSH up after ${took}s."
+        notify "⏰ [Wake] $HOST woke $name, SSH up after ${took}s"
+    else
+        echo "$name: no answer after $MINUTES min."
+        notify "❌ [Wake] $HOST couldn't wake $name in $MINUTES min; it needs someone at the site"
+        rc=1
+    fi
+done
+exit $rc

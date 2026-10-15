@@ -1,0 +1,14 @@
+---
+# roles/argon_case/defaults/main.yml
+# Argon ONE cases: V2 (Pi 4) and V3 (Pi 5). Set argon_case: v2|v3 per host.
+
+# Vendor installer, pinned. If Argon changes it, get_url fails on the
+# checksum; review the new script, then update both values deliberately.
+argon_installer_url: https://download.argon40.com/argon1.sh
+argon_installer_sha256: 77f2bf2f24e7ee1735d0b6f225bbbf17bac5677399b25adf921faecfe2dadc60   # fetched 2026-10-14
+
+# Fan speed (%) once the CPU reaches each temperature (°C).
+argon_fan_curve:
+  55: 30
+  60: 55
+  65: 100

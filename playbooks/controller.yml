@@ -1,0 +1,146 @@
+---
+# playbooks/controller.yml
+#
+# Sets up the Ansible controller: WSL on the main PC, the only machine that
+# runs these playbooks and kubectl. Run once per controller, and again after
+# bumping k8s_version or cilium_cli_version. Needs your WSL sudo password:
+#
+#   ansible-playbook playbooks/controller.yml -K
+#
+# Installs: sshpass (first password-based bootstrap), the Ansible
+# collections, kubectl and cilium-cli at the cluster's versions, the k8s-api
+# hosts entry, and KUBECONFIG=~/.kube/homelab.conf in ~/.bashrc.
+# See docs/K8S_CLUSTER.md.
+
+- name: "Controller | Tooling for running the homelab"
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  # localhost isn't in the k8s group, so take the cluster settings from the
+  # control plane's view of group_vars/k8s.yml. Read each key through
+  # hostvars[host][key], which renders it; a copy of hostvars[host] holds raw
+  # templates that newer Ansible won't render (k8s-api once got the literal
+  # "{{ ... }}" text).
+  vars:
+    _cp: "{{ groups['k8s_control_plane'][0] }}"
+    k8s_version: "{{ hostvars[_cp]['k8s_version'] }}"
+    k8s_minor: "{{ hostvars[_cp]['k8s_minor'] }}"
+    k8s_api_name: "{{ hostvars[_cp]['k8s_api_name'] }}"
+    # k8s-api from the controller: the LAN IP at home, laptop-01's Tailscale
+    # IP once the cluster is remote (k8s_api_client_ip in overrides.yml).
+    k8s_control_plane_ip: "{{ k8s_api_client_ip | default(hostvars[_cp]['node_ip']) }}"
+    cilium_cli_version: "{{ hostvars[_cp]['cilium_cli_version'] }}"
+
+  pre_tasks:
+    - name: "Controller | Check the cluster settings rendered"
+      ansible.builtin.assert:
+        that:
+          - k8s_control_plane_ip is match('^[0-9]+(\.[0-9]+){3}$')
+          - k8s_minor is match('^[0-9]+\.[0-9]+$')
+        fail_msg: >-
+          k8s-api would map to '{{ k8s_control_plane_ip }}' (k8s_minor
+          '{{ k8s_minor }}'). Set k8s_api_client_ip / ip_* in overrides.yml.
+        quiet: true
+      tags: [always]
+
+    # At the remote site the LAN IP is only reachable through laptop-01's
+    # subnet route; laptop-01's own Tailscale IP always works.
+    - name: "Controller | Check k8s_api_client_ip is set for the remote site"
+      ansible.builtin.assert:
+        that:
+          - k8s_api_client_ip is defined
+          - k8s_api_client_ip is match('^100\.')
+        fail_msg: >-
+          node_network_static is on (cluster at the remote site), so set
+          k8s_api_client_ip in overrides.yml to laptop-01's Tailscale IP
+          (`tailscale ip -4 laptop-01`), not '{{ k8s_api_client_ip | default('unset') }}'.
+        quiet: true
+      when: node_network_static | default(false) | bool
+      tags: [always]
+
+  tasks:
+    # First: a conflicting Kubernetes source (e.g. a manual kubectl install)
+    # breaks every apt update, including the next task's.
+    - name: "Controller | Kubernetes apt repository"
+      ansible.builtin.include_role:
+        name: kubeadm
+        tasks_from: repo
+      tags: [controller, client, kubectl]
+
+    - name: "Controller | Base packages"
+      ansible.builtin.apt:
+        name:
+          - sshpass
+          - gpg
+          - curl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      tags: [controller, packages]
+
+    - name: "Controller | Ansible collections"
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install -r requirements.yml
+        chdir: "{{ playbook_dir }}/.."
+      register: _galaxy
+      changed_when: "'was installed successfully' in _galaxy.stdout"
+      become: false
+      tags: [controller, collections]
+
+    - name: "Controller | kubectl, cilium-cli, k8s-api, KUBECONFIG"
+      ansible.builtin.include_role:
+        name: k8s_client
+      tags: [controller, client]
+
+    # Warn only: on a first run there's no cluster yet.
+    - name: "Controller | Check the API is reachable"
+      ansible.builtin.command:
+        argv: [timeout, "5", bash, -c, "</dev/tcp/{{ k8s_control_plane_ip }}/{{ k8s_api_port | default(6443) }}"]
+      register: _api_reach
+      changed_when: false
+      failed_when: false
+      become: false
+      tags: [controller, client]
+
+    - name: "Controller | API reachability"
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'k8s-api (' ~ k8s_control_plane_ip ~ ') answers.' if _api_reach.rc == 0 else
+             'WARNING: k8s-api (' ~ k8s_control_plane_ip ~ ') does not answer. Is the cluster up, and is that address reachable from here?' }}
+      tags: [controller, client]
+
+    # Break-glass SSH user CA (docs/K8S_SITE_MOVE.md). Only with --tags ssh_ca.
+    # The private key stays here; bootstrap.yml installs the public half on
+    # the nodes; scripts/sign-breakglass.sh signs one-hour certificates.
+    - name: "Controller | Break-glass SSH user CA"
+      tags: [never, ssh_ca]
+      become: false
+      vars:
+        _ca_key: "{{ playbook_dir }}/../.ssh/homelab-user-ca"
+      block:
+        - name: "Controller | Check for an existing CA"
+          ansible.builtin.stat:
+            path: "{{ _ca_key }}"
+          register: _ca
+
+        - name: "Controller | Passphrase for the new CA key"
+          ansible.builtin.pause:
+            prompt: "Passphrase for the break-glass CA key (store it in your password manager)"
+            echo: false
+          register: _ca_pass
+          when: not _ca.stat.exists
+
+        - name: "Controller | Create the CA key pair"
+          ansible.builtin.command:
+            argv: [ssh-keygen, -t, ed25519, -f, "{{ _ca_key }}", -C, homelab-user-ca, -N, "{{ _ca_pass.user_input }}"]
+            creates: "{{ _ca_key }}"
+          no_log: true
+          when: not _ca.stat.exists
+
+        - name: "Controller | Next step"
+          ansible.builtin.debug:
+            msg: >-
+              CA at {{ _ca_key }}(.pub). Back up the private key offline with the
+              age key. Run bootstrap.yml to install the public key on the nodes.

@@ -1,0 +1,14 @@
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/wake_on_lan/templates/homelab-wol.service.j2
+[Unit]
+Description=Arm Wake-on-LAN (magic packet) on {{ wol_interface }}
+BindsTo=sys-subsystem-net-devices-{{ wol_interface }}.device
+After=sys-subsystem-net-devices-{{ wol_interface }}.device
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/ethtool -s {{ wol_interface }} wol g
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
