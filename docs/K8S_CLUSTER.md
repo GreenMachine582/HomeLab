@@ -68,8 +68,10 @@ ansible-playbook playbooks/cluster.yml     # re-run: no changes
 ```
 
 `cluster_status.yml` is read-only and safe any time. It reports:
-- per node: LAN addresses (and warns if a node has more than one), routes to the other nodes, and UFW;
-- from the control plane: nodes, Cilium nodes, all pods, and `cilium status`.
+- per node: LAN addresses (and warns if a node has more than one), routes to the other nodes, UFW, the kernel
+  features Cilium uses, and `src_valid_mark` (warns if it's 1);
+- from the control plane: nodes, Cilium nodes, all pods, `cilium status`, and the deployed Cilium Helm values
+  (what homelab-cluster's HelmRelease must match).
 
 With `connectivity_test=true` it also runs `cilium connectivity test` and removes the test namespaces afterwards.
 With the control plane tainted and one worker, the test runs in single-node mode. Add
@@ -99,12 +101,15 @@ Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next P
   `/etc/hosts` and kubelet. If it was laptop-01, that re-run also upgrades Cilium with the new `k8sServiceHost`. The
   API certificate includes the old IP but also `k8s-api`, so clients keep working by name.
 - **L7, FQDN or TLS-SNI connectivity tests time out (curl exit 28), everything else passes**: traffic redirected to
-  Envoy or the DNS proxy isn't reaching it. The cause here was `net.ipv4.conf.all.src_valid_mark=1` (set at runtime,
-  not by a sysctl file): the source check then follows the proxy mark to table 2004's `local default`, and the
+  Envoy or the DNS proxy isn't reaching it. The cause here was `net.ipv4.conf.all.src_valid_mark=1`, which
+  `tailscaled` sets on every start (its connmark workaround for strict `rp_filter`, which we don't use). The source
+  check then follows the proxy mark to table 2004's `local default`, and the
   kernel drops the packet as `IP_LOCAL_SOURCE`, both redirected pod traffic arriving on `lxc*` and the replies to
   Envoy's upstream connections arriving on `eth0`. `k8s_prereqs` sets `src_valid_mark=0` (and, as a fallback,
-  `accept_local=1` on the pod `lxc*` interfaces) in `/etc/sysctl.d/99-zzz-homelab-cilium-proxy.conf`. If the
-  report shows `src_valid_mark all=1` again, whatever sets it at runtime is back. If it recurs, run
+  `accept_local=1` on the pod `lxc*` interfaces) in `/etc/sysctl.d/99-zzz-homelab-cilium-proxy.conf`. Because
+  tailscaled overrides that file, `homelab-src-valid-mark.service` sets it back right after tailscaled starts and
+  its timer re-checks every minute (`journalctl -u homelab-src-valid-mark` logs each reset). `cluster_status.yml`
+  warns if a node shows `src_valid_mark: 1` or the timer isn't active. If it recurs, run
   `cluster_status.yml -e connectivity_test=true -e connectivity_test_only=echo-ingress-l7`. The proxy path report
   shows `src_valid_mark`/`accept_local` and the kernel's drop reasons during the test.
 - **`check-log-errors` fails on the Pi** with `CONFIG_INET_UDP_DIAG` and GENEVE BIG TCP warnings: the Raspberry Pi

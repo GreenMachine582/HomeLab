@@ -40,9 +40,11 @@
 
 # Cilium's L7 and DNS proxies get redirected traffic, and the replies to
 # their upstream connections, marked 0x200, which rule 9 routes via table
-# 2004 ("local default"). Something on these nodes sets
-# net.ipv4.conf.all.src_valid_mark=1 at runtime (no sysctl file does), so
-# the kernel's source check follows that mark too, sees every source as
+# 2004 ("local default"). tailscaled sets net.ipv4.conf.all.src_valid_mark=1
+# each time it starts with netfilter on (tailscale/tailscale
+# wgengine/router/osrouter/router_linux.go: part of its connmark workaround
+# for strict rp_filter, which we don't use). With it on, the kernel's
+# source check follows that mark too, sees every source as
 # local, and drops the packet (IP_LOCAL_SOURCE) unless accept_local=1 on
 # the arrival interface. Turning accept_local on for eth0 would let the LAN
 # spoof host addresses, so turn src_valid_mark off instead: nothing here
@@ -72,6 +74,82 @@
     done
   register: _proxy_sysctls
   changed_when: _proxy_sysctls.stdout | length > 0
+  tags: [k8s, prereqs]
+
+# tailscaled overrides the sysctl file above on every start, and applies its
+# router config a little after it starts. So set it back right after
+# tailscaled starts (WantedBy) and every minute (timer). Worst case, L7 and
+# DNS proxying fail for up to a minute after a tailscaled restart. Logs only
+# when it actually resets the value. tailscaled isn't restarted here: the
+# nodes are managed over Tailscale.
+- name: "K8s prereqs | Script that keeps src_valid_mark at 0"
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/homelab-src-valid-mark
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      # Managed by Ansible (roles/k8s_prereqs). tailscaled sets this to 1;
+      # Cilium's L7 and DNS proxies need 0.
+      f=/proc/sys/net/ipv4/conf/all/src_valid_mark
+      if [ "$(cat "$f")" != 0 ]; then
+        echo 0 > "$f"
+        echo "reset src_valid_mark to 0 (tailscaled sets 1)"
+      fi
+  tags: [k8s, prereqs]
+
+- name: "K8s prereqs | Service and timer that run it"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: homelab-src-valid-mark.service
+      content: |
+        # Managed by Ansible (roles/k8s_prereqs)
+        [Unit]
+        Description=Keep net.ipv4.conf.all.src_valid_mark at 0 for Cilium's proxies
+        After=tailscaled.service
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/sbin/homelab-src-valid-mark
+
+        [Install]
+        WantedBy=tailscaled.service
+    - name: homelab-src-valid-mark.timer
+      content: |
+        # Managed by Ansible (roles/k8s_prereqs)
+        [Unit]
+        Description=Re-check src_valid_mark every minute (tailscaled sets it late)
+
+        [Timer]
+        OnBootSec=30s
+        OnUnitActiveSec=1min
+        AccuracySec=5s
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: _svm_units
+  tags: [k8s, prereqs]
+
+- name: "K8s prereqs | Enable them"
+  ansible.builtin.systemd_service:
+    name: "{{ item.name }}"
+    enabled: true
+    state: "{{ item.state | default(omit) }}"
+    daemon_reload: "{{ _svm_units is changed }}"
+  loop:
+    - name: homelab-src-valid-mark.service
+    - name: homelab-src-valid-mark.timer
+      state: started
+  loop_control:
+    label: "{{ item.name }}"
   tags: [k8s, prereqs]
 
 - name: "K8s prereqs | API endpoint name"

@@ -95,11 +95,22 @@
       register: _kernel
       changed_when: false
 
+    # tailscaled sets src_valid_mark=1 on start; Cilium's L7 and DNS proxies
+    # need 0, which roles/k8s_prereqs keeps with a service and timer.
+    - name: "Status | src_valid_mark and its keeper"
+      ansible.builtin.shell: |
+        echo "src_valid_mark: $(cat /proc/sys/net/ipv4/conf/all/src_valid_mark)"
+        echo "keeper timer: $(systemctl is-active homelab-src-valid-mark.timer 2>&1)"
+        echo "last reset: $(journalctl -u homelab-src-valid-mark --no-pager -o short-iso -g 'reset src_valid_mark' 2>/dev/null | tail -1 | cut -c1-25)"
+      register: _svm
+      changed_when: false
+
     - name: "Status | Report"
       ansible.builtin.debug:
         msg:
           kernel: "{{ ansible_kernel }}"
           kernel_features: "{{ _kernel.stdout_lines }}"
+          cilium_proxy_sysctl: "{{ _svm.stdout_lines }}"
           node_ip: "{{ node_ip }}"
           interfaces: "{{ ansible_interfaces | sort }}"
           lan_addresses: "{{ _lan_addresses }}"
@@ -114,6 +125,17 @@
           Traffic to other nodes may leave from one that isn't node_ip
           ({{ node_ip }}); check the routes above.
       when: _lan_addresses | length > 1
+
+    - name: "Status | Warn about src_valid_mark"
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: {{ inventory_hostname }} has src_valid_mark=1 or its keeper
+          timer isn't active ({{ _svm.stdout_lines | join('; ') }}). Cilium's L7
+          and DNS proxies drop traffic as IP_LOCAL_SOURCE while it's 1. Run
+          cluster.yml --tags prereqs.
+      when: >-
+        'src_valid_mark: 1' in _svm.stdout_lines
+        or 'keeper timer: active' not in _svm.stdout_lines
 
 # laptop-01 runs closed at the site: lid ignored, never sleeps, battery
 # capped, power monitor and Wake-on-LAN running, Wi-Fi off.
@@ -201,6 +223,28 @@
     - name: "Status | Report"
       ansible.builtin.debug:
         msg: "{{ _cluster.results | map(attribute='stdout_lines') | list }}"
+
+    # The deployed Helm values, decoded from the release Secret (no helm
+    # binary needed). homelab-cluster's Cilium HelmRelease
+    # (infrastructure/controllers/cilium/helmrelease.yaml) must match them.
+    - name: "Status | Cilium Helm release values"
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl -n kube-system get secret -l owner=helm,name=cilium,status=deployed \
+          -o jsonpath='{.items[0].data.release}' | base64 -d | base64 -d | gunzip \
+          | python3 -c 'import json, sys
+        r = json.load(sys.stdin)
+        print("chart:", r["chart"]["metadata"]["version"], "revision:", r["version"])
+        print(json.dumps(r.get("config") or {}, indent=2, sort_keys=True))'
+      args:
+        executable: /bin/bash
+      register: _cilium_values
+      changed_when: false
+      failed_when: false
+
+    - name: "Status | Cilium Helm release values report"
+      ansible.builtin.debug:
+        msg: "{{ _cilium_values.stdout_lines + _cilium_values.stderr_lines }}"
 
     - name: "Status | Connectivity test"
       when: connectivity_test | default(false) | bool
