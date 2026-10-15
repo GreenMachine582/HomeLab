@@ -273,7 +273,7 @@
           ansible.builtin.set_fact:
             _conn_failed_tests: >-
               {{ (_conn.stdout_lines + _conn.stderr_lines)
-                 | select('match', '^Test [[]') | map('replace', 'Test [', '') | map('replace', ']:', '')
+                 | select('match', '^Test \\[') | map('replace', 'Test [', '') | map('replace', ']:', '')
                  | map('trim') | unique | list }}
             _conn_unknown_log_lines: >-
               {{ _conn.stdout_lines | select('search', 'level=(warn|error)')
