@@ -12,7 +12,7 @@ Runs from **WSL on the main PC**, in `~/homelab`, like the bootstrap.
 |-------------------|------------------------------------------------------------------------|---------------------------|
 | Kubernetes        | v1.36.5, packages held                                                 | `group_vars/k8s.yml`      |
 | Container runtime | containerd 2.4 (`containerd.io`, Docker's apt repo), systemd cgroups   | `roles/containerd`        |
-| CNI               | Cilium 1.20.1 (held: 1.20.2 needs kernel BTF, absent on Pi kernels), kube-proxy replacement, IPAM `kubernetes` | `group_vars/k8s.yml`      |
+| CNI               | Cilium 1.20.1 (held: 1.20.2 needs kernel BTF, absent on Pi kernels), kube-proxy replacement, IPAM `kubernetes`, eBPF TPROXY | `group_vars/k8s.yml`, `roles/cilium_install/vars` |
 | Pod / Service     | 10.244.0.0/16 / 10.96.0.0/12                                           | `group_vars/k8s.yml`      |
 | API endpoint      | `k8s-api:6443` (every node's `/etc/hosts` → control plane `node_ip`)   | `roles/k8s_prereqs`       |
 | Control plane     | `laptop-01`, keeps its `NoSchedule` taint                              | `inventories/k8s.yml`     |
@@ -72,7 +72,15 @@ ansible-playbook playbooks/cluster.yml     # re-run: no changes
 - from the control plane: nodes, Cilium nodes, all pods, and `cilium status`.
 
 With `connectivity_test=true` it also runs `cilium connectivity test` and removes the test namespaces afterwards.
-With the control plane tainted and one worker, the test runs in single-node mode.
+With the control plane tainted and one worker, the test runs in single-node mode. Add
+`-e connectivity_test_only=<name>` (a substring of a test name, e.g. `echo-ingress-l7`) to run only matching tests,
+which takes a minute or two instead of ~30. When tests fail it prints the Cilium agent and Envoy state, Hubble flows
+for the test namespace, and the host's proxy path (TPROXY rule hits, proxy listeners and their socket options,
+rp_filter, ip rules, UFW).
+
+Cilium settings live in `roles/cilium_install/vars/main.yml`. `cluster.yml` records the applied set in the
+`homelab-cilium-settings` ConfigMap and runs `cilium upgrade` when the version or any setting changes, so the agents
+restart once after a settings change.
 
 Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next PR).
 
@@ -86,5 +94,12 @@ Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next P
 - **A node stays NotReady**: check `cilium status`. Check that UFW lists the other nodes and `10.244.0.0/16` as
   trusted (`sudo ufw status numbered`), and that `ufw status verbose` shows `allow (routed)`.
 - **A node's IP changed** (DHCP reservations are still deferred): update `overrides.yml` and re-run `cluster.yml` for
-  `/etc/hosts` and kubelet. If it was laptop-01, also re-run `cilium upgrade --set k8sServiceHost=<new IP>`. The API
-  certificate includes the old IP but also `k8s-api`, so clients keep working by name.
+  `/etc/hosts` and kubelet. If it was laptop-01, that re-run also upgrades Cilium with the new `k8sServiceHost`. The
+  API certificate includes the old IP but also `k8s-api`, so clients keep working by name.
+- **L7, FQDN or TLS-SNI connectivity tests time out (curl exit 28), everything else passes**: traffic redirected to
+  Envoy or the DNS proxy isn't reaching it. On the Raspberry Pi OS kernel the iptables TPROXY rule matched and
+  Envoy's sockets had `IP_TRANSPARENT`, yet nothing reached the proxy, so Cilium uses eBPF TPROXY
+  (`bpf.tproxy=true`) instead. If it recurs, run `cluster_status.yml -e connectivity_test=true -e
+  connectivity_test_only=echo-ingress-l7` and read the proxy path report.
+- **`check-log-errors` fails on the Pi** with `CONFIG_INET_UDP_DIAG` and GENEVE BIG TCP warnings: the Raspberry Pi
+  OS kernel lacks those options. Both are harmless.
