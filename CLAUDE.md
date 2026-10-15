@@ -187,7 +187,7 @@ Key templates and their data sources:
 
 ### CI/CD (GitHub Actions)
 
-`.github/workflows/deploy.yml` triggers on push to `master` (and `workflow_dispatch`). It POSTs to an n8n or Camunda webhook endpoint — GitHub never connects directly to the homelab.
+`.github/workflows/deploy.yml` triggers on push to `main` (and `workflow_dispatch`). It POSTs to an n8n or Camunda webhook endpoint — GitHub never connects directly to the homelab.
 
 Required GitHub secrets (`Settings → Secrets and variables → Actions`):
 

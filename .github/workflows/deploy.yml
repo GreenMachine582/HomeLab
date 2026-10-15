@@ -11,11 +11,11 @@ name: Deploy
 on:
 #  push:
 #    branches:
-#      - master
+#      - main
   workflow_dispatch:
 
 concurrency:
-  group: master
+  group: main
   cancel-in-progress: true
 
 jobs:

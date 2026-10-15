@@ -301,7 +301,7 @@ bootstrap playbooks aligned (F1–F5, F6 deferred); `topology.yml` v1 + resolver
 
 | Task | From | Status |
 |---|---|---|
-| Merge `wip/svc` → master (keep master's TODO.md; then re-baseline TODO against this brief) | B1 | ☐ open |
+| Merge `wip/svc` → main (keep main's TODO.md; then re-baseline TODO against this brief) | B1 | ☐ open |
 | Bootstrap pc-01 | B3 (retargeted) | ☐ open |
 | Deploy-verify `camunda-platform`, `n8n-automation` | B4/B5, D1/D2 verify | ☐ open |
 | discord-gateway keep/remove decision | B6 | ☑ closed — removed (Oct 2026) |

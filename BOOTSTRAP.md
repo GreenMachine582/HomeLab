@@ -652,14 +652,14 @@ ansible-playbook playbooks/deploy_svc.yml --tags greentechhub
 
 ## 4️⃣ Phase 4: Automated Deployments
 
-**Goal:** Deployments trigger automatically on push to `master`, without a self-hosted runner on the edge.
+**Goal:** Deployments trigger automatically on push to `main`, without a self-hosted runner on the edge.
 
 ---
 
 ### How It Works
 
 ```
-git push → master
+git push → main
     ↓
 .github/workflows/deploy.yml  (runs on GitHub's hosted runners)
     ↓
@@ -711,7 +711,7 @@ name: Deploy
 
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 jobs:
   trigger:

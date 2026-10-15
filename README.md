@@ -65,7 +65,7 @@ Phase 3:  homelab-edge ──────► other nodes         (edge deploys o
 Phase 4:  GitHub push ──► n8n/Camunda ──► edge     (automated deploys via automation endpoint)
 ```
 
-After Phase 1, all deployments are driven by Ansible playbooks running on the edge node. On push to `master`, a minimal
+After Phase 1, all deployments are driven by Ansible playbooks running on the edge node. On push to `main`, a minimal
 GitHub Actions workflow POSTs to an n8n or Camunda endpoint, which SSHes to the edge as the `deploy` user and runs
 `ansible-playbook` directly. The edge is the sole Ansible control node — GitHub never connects directly to any homelab node.
 
@@ -125,7 +125,7 @@ homelab/
 
   # svc-01 roles (camunda, cadvisor, node_exporter, greentechhub, jellyfin) and
   # playbooks/deploy_svc.yml exist on the unmerged `wip/svc` branch — pending
-  # Stage 3 (TODO.md), not yet on master. greentechhub/jellyfin roles are retired
+  # Stage 3 (TODO.md), not yet on main. greentechhub/jellyfin roles are retired
   # once their own-repo deploy-service migration lands (Stage 8).
 
   # Docker Compose stacks (at repo root, deployed per-node)
@@ -160,7 +160,7 @@ homelab/
 
   .github/
     workflows/
-      deploy.yml              # On push to master: POST to n8n/Camunda deploy endpoint
+      deploy.yml              # On push to main: POST to n8n/Camunda deploy endpoint
 ```
 
 ---

@@ -32,7 +32,7 @@ since a Discord-outage alert can't rely on Discord).
 
 ## Stage 3 — svc-heavy live on pc-01 *(was Milestone B + D1/D2 verify + E2–E5)*
 
-- [ ] Merge `wip/svc` into master (keep master's TODO.md — this file — then re-baseline against it)
+- [ ] Merge `wip/svc` into main (keep main's TODO.md — this file — then re-baseline against it)
 - [ ] Bootstrap pc-01
 - [ ] Deploy-verify `camunda-platform`, `n8n-automation`
 - [x] discord-gateway keep/remove decision — **removed** (Oct 2026); code deleted, no tag or repo

@@ -115,4 +115,4 @@ notify_discord_webhook: "{{ vault_discord_alerts_webhook }}"
 # ── Ansible repo path (on edge node) ─────────────────────────────────────────
 homelab_repo_path: /opt/homelab
 homelab_repo_url: "git@github.com:{{ github_org }}/homelab.git"
-homelab_repo_branch: master
+homelab_repo_branch: main
