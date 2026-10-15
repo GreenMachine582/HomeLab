@@ -217,7 +217,7 @@
           ansible.builtin.shell: |
             rm -f /tmp/cilium-proxy-listeners.stop /tmp/cilium-envoy-listeners.json /tmp/cilium-envoy-sockopts
             : > /tmp/cilium-proxy-listeners
-            # Reads socket options off Envoy's own listening sockets: copies
+            # Reads socket options off the Envoy listening sockets: copies
             # each fd with pidfd_getfd (syscalls 434/438) and asks the kernel.
             cat > /tmp/cilium-envoy-sockopts.py <<'PY'
             import ctypes, os, socket, sys
