@@ -75,7 +75,7 @@ ansible-playbook playbooks/cluster.yml     # re-run: no changes
 
 With `connectivity_test=true` it also runs `cilium connectivity test` and removes the test namespaces afterwards.
 Its pods only go to nodes labelled `homelab/l7-proxy=supported` (see "Envoy and the Pi 4s" below), and with the
-control plane tainted that leaves rpi-03, so it runs in single-node mode. `-e connectivity_test_all_nodes=true`
+control plane tainted that leaves rpi-03, so it runs with `--single-node`. `-e connectivity_test_all_nodes=true`
 spreads it over every node to exercise cross-node traffic; L7/FQDN/TLS tests then fail on the Pi 4s. Add
 `-e connectivity_test_only=<name>` (a substring of a test name, e.g. `echo-ingress-l7`) to run only matching tests,
 which takes a minute or two instead of ~30. When tests fail it prints the Cilium agent and Envoy state, Hubble flows

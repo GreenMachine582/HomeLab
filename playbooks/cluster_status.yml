@@ -313,13 +313,16 @@
 
         # Test pods go only to nodes that can run Envoy (homelab/l7-proxy,
         # roles/k8s_node_config): on the Pi 4s every L7/FQDN/TLS test would
-        # fail. connectivity_test_all_nodes=true drops the selector to test
-        # the datapath across all nodes; expect proxy tests to fail there.
+        # fail. With the control plane tainted that is rpi-03 alone, so
+        # --single-node: otherwise the multi-node clients (client3,
+        # other-node) can't be scheduled and the test times out.
+        # connectivity_test_all_nodes=true drops both to test the datapath
+        # across all nodes; expect proxy tests to fail on the Pi 4s.
         - name: "Status | cilium connectivity test"
           ansible.builtin.command:
             argv: "{{ ['cilium', 'connectivity', 'test']
                       + ([] if connectivity_test_all_nodes | default(false) | bool
-                         else ['--node-selector', 'homelab/l7-proxy=supported'])
+                         else ['--node-selector', 'homelab/l7-proxy=supported', '--single-node'])
                       + (['--test', connectivity_test_only] if connectivity_test_only | default('') | length > 0 else []) }}"
           register: _conn
           changed_when: false
