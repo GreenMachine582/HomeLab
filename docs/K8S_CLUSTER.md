@@ -108,4 +108,5 @@ Still to come for the M2 exit: the etcd snapshot and a restore rehearsal (next P
   `cluster_status.yml -e connectivity_test=true -e connectivity_test_only=echo-ingress-l7`. The proxy path report
   shows `src_valid_mark`/`accept_local` and the kernel's drop reasons during the test.
 - **`check-log-errors` fails on the Pi** with `CONFIG_INET_UDP_DIAG` and GENEVE BIG TCP warnings: the Raspberry Pi
-  OS kernel lacks those options. Both are harmless.
+  OS kernel lacks those options. Both are harmless. `cluster_status.yml` counts a run as passed when those two lines
+  are its only failure; any other failed test or log line still fails it.

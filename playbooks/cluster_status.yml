@@ -265,6 +265,33 @@
                  | select('search', '^Test \[|tests? failed|tests? skipped|All .* tests')
                  | unique | list }}
 
+        # check-log-errors always fails on the Raspberry Pi OS kernel: it lacks
+        # CONFIG_INET_UDP_DIAG and GENEVE, and the agent logs both once at
+        # start. Treat a run whose only failure is exactly those as passed;
+        # anything else (another test, or another log line) still fails.
+        - name: "Status | Separate the known Pi kernel log lines"
+          ansible.builtin.set_fact:
+            _conn_failed_tests: >-
+              {{ (_conn.stdout_lines + _conn.stderr_lines)
+                 | select('match', '^Test [[]') | map('replace', 'Test [', '') | map('replace', ']:', '')
+                 | map('trim') | unique | list }}
+            _conn_unknown_log_lines: >-
+              {{ _conn.stdout_lines | select('search', 'level=(warn|error)')
+                 | reject('search', 'CONFIG_INET_UDP_DIAG|BIG TCP for UDP tunnels') | list }}
+
+        - name: "Status | Did the test really fail"
+          ansible.builtin.set_fact:
+            _conn_failed: >-
+              {{ _conn.rc != 0 and not (_conn_failed_tests == ['check-log-errors']
+                                        and _conn_unknown_log_lines | length == 0) }}
+
+        - name: "Status | Only the known Pi kernel warnings"
+          ansible.builtin.debug:
+            msg: >-
+              check-log-errors failed only on the Pi kernel warnings (CONFIG_INET_UDP_DIAG,
+              GENEVE BIG TCP probe), which are harmless; counting the run as passed.
+          when: _conn.rc != 0 and not (_conn_failed | bool)
+
         # Before the always: cleanup deletes the namespaces.
         - name: "Status | Why the tests failed"
           ansible.builtin.shell: |
@@ -326,12 +353,12 @@
             done
           register: _conn_diag
           changed_when: false
-          when: _conn.rc != 0
+          when: _conn_failed | bool
 
         - name: "Status | Test pod diagnostics"
           ansible.builtin.debug:
             msg: "{{ _conn_diag.stdout_lines }}"
-          when: _conn.rc != 0
+          when: _conn_failed | bool
 
         # Proxied traffic is TPROXY'd to 127.0.0.1 and delivered locally, so
         # the host stack can drop it where Cilium can't see: the source check
@@ -345,7 +372,7 @@
             done | grep . | sort -u
           register: _test_nodes
           changed_when: false
-          when: _conn.rc != 0
+          when: _conn_failed | bool
 
         - name: "Status | Host checks for the proxy path"
           ansible.builtin.shell: |
@@ -378,8 +405,9 @@
             echo "-- proxy route tables 2004 and 2005"
             ip route show table 2004
             ip route show table 2005
-            echo "-- UFW blocks in the last 40 minutes (last 15)"
-            journalctl -k --since=-40min --no-pager 2>/dev/null | grep 'UFW BLOCK' | tail -15
+            echo "-- UFW blocks in the last 40 minutes, multicast left out (last 15)"
+            journalctl -k --since=-40min --no-pager 2>/dev/null | grep 'UFW BLOCK' \
+              | grep -v 'DST=224[.]' | tail -15
             echo "-- INPUT chain head (Cilium's chain should come before UFW's)"
             iptables -L INPUT -v -n --line-numbers | head -12
             echo "-- Cilium's proxy accept rules (packet counts)"
@@ -429,7 +457,7 @@
           loop: "{{ _test_nodes.stdout_lines | default([]) | select('in', groups['k8s']) | list }}"
           register: _proxy_host
           changed_when: false
-          when: _conn.rc != 0
+          when: _conn_failed | bool
 
         - name: "Status | Proxy path report"
           ansible.builtin.debug:
@@ -437,7 +465,7 @@
           loop: "{{ _proxy_host.results | default([]) }}"
           loop_control:
             label: "{{ item.item | default('') }}"
-          when: _conn.rc != 0 and item.stdout_lines is defined
+          when: _conn_failed | bool and item.stdout_lines is defined
 
         - name: "Status | Fail if the test filter matched nothing"
           ansible.builtin.fail:
@@ -451,7 +479,7 @@
         - name: "Status | Fail if the connectivity test failed"
           ansible.builtin.fail:
             msg: "cilium connectivity test failed (rc={{ _conn.rc }}); see the output above."
-          when: _conn.rc != 0
+          when: _conn_failed | bool
       always:
         - name: "Status | Stop the proxy listener watch"
           ansible.builtin.file:
