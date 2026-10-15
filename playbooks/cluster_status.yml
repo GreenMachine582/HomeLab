@@ -87,6 +87,10 @@
         missing=""
         check DEBUG_INFO_BTF INET_UDP_DIAG GENEVE
         echo "optional (BTF, UDP socket termination, GENEVE):${missing:- ok}"
+        # Envoy (tcmalloc) needs a 48-bit virtual address space; kernels
+        # built with 39-bit VA make it crash at start.
+        va="$(printf '%s\n' "$cfg" | sed -n 's/^CONFIG_ARM64_VA_BITS=//p')"
+        echo "virtual address bits: ${va:-n/a (not arm64)}, page size: $(getconf PAGESIZE)"
         for m in xt_TPROXY xt_socket nf_tproxy_ipv4; do
           modprobe -n "$m" 2>/dev/null && s=loadable || s="not available"
           lsmod | grep -q "^$m " && s=loaded
@@ -227,6 +231,25 @@
     # The deployed Helm values, decoded from the release Secret (no helm
     # binary needed). homelab-cluster's Cilium HelmRelease
     # (infrastructure/controllers/cilium/helmrelease.yaml) must match them.
+    # Crash-looping Cilium or Envoy pods: node, restarts, last exit, and the
+    # end of the log from before the last restart.
+    - name: "Status | Restarting Cilium pods"
+      ansible.builtin.shell: |
+        kubectl -n kube-system get pods -l 'k8s-app in (cilium, cilium-envoy)' \
+          -o jsonpath='{range .items[*]}{.metadata.name} {.spec.nodeName} {.status.containerStatuses[0].restartCount} {.status.containerStatuses[0].lastState.terminated.reason} {.status.containerStatuses[0].lastState.terminated.exitCode}{"\n"}{end}' \
+          | while read -r pod node restarts reason code; do
+              [ "${restarts:-0}" -gt 0 ] || continue
+              echo "== $pod on $node: $restarts restarts, last exit ${reason:-?} ($code)"
+              kubectl -n kube-system logs "$pod" --previous --tail=15 2>&1
+            done
+      register: _cilium_restarts
+      changed_when: false
+      failed_when: false
+
+    - name: "Status | Restarting Cilium pods report"
+      ansible.builtin.debug:
+        msg: "{{ _cilium_restarts.stdout_lines if _cilium_restarts.stdout_lines else ['none restarting'] }}"
+
     - name: "Status | Cilium Helm release values"
       ansible.builtin.shell: |
         set -o pipefail
@@ -317,7 +340,7 @@
           ansible.builtin.set_fact:
             _conn_failed_tests: >-
               {{ (_conn.stdout_lines + _conn.stderr_lines)
-                 | select('match', '^Test \\[') | map('replace', 'Test [', '') | map('replace', ']:', '')
+                 | select('match', '^Test .[a-z0-9-]+.:') | map('replace', 'Test [', '') | map('replace', ']:', '')
                  | map('trim') | unique | list }}
             _conn_unknown_log_lines: >-
               {{ _conn.stdout_lines | select('search', 'level=(warn|error)')
