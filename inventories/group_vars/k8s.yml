@@ -59,7 +59,8 @@ k8s_control_plane_ip: "{{ hostvars[groups['k8s_control_plane'][0]].node_ip }}"
 # can't start their datapath and no pod there gets a network. Kube-proxy
 # replacement forces socket LB on, so socketLB.enabled=false can't avoid it.
 # Before upgrading, check /sys/kernel/btf/vmlinux exists on the Pis or the
-# release notes say this is fixed. homelab-cluster's HelmRelease must match.
+# release notes say this is fixed. homelab-cluster's
+# infrastructure/controllers/cilium/helmrelease.yaml must match.
 cilium_version: "1.20.1"
 cilium_cli_version: "v0.20.1"
 

@@ -1,0 +1,179 @@
+---
+# playbooks/identify_nodes.yml
+#
+# Finds and identifies freshly imaged Raspberry Pis on the site LAN before
+# they are added to the inventory. Read-only, apart from turning I2C on for
+# the current boot (to look for an Argon ONE case) and an optional LED blink.
+#
+#   ansible-playbook playbooks/identify_nodes.yml
+#       lists every host on lan_subnet answering SSH on fallback_ssh_port,
+#       swept from the control plane (it is on the site LAN), with its MAC
+#       and whether that MAC belongs to a Raspberry Pi.
+#   ansible-playbook playbooks/identify_nodes.yml -e identify_ips=IP1,IP2
+#       also logs in to those as the install user (password asked once) and
+#       reports hostname, model, serial, MAC, OS, memory, disks, and whether
+#       an Argon ONE MCU answers on I2C.
+#   add -e blink=IP to flash that Pi's activity LED for 60 seconds.
+#   add -e identify_user=NAME if the install user is not admin.
+#
+# From home the IPs are only reachable through laptop-01's subnet route, so
+# approve it in the Tailscale admin console first. See docs/K8S_BOOTSTRAP.md.
+
+- name: "Probe | Discover the control plane's SSH endpoint"
+  hosts: k8s_control_plane
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+      vars:
+        probe_allow_fresh: false
+
+- name: "Identify | Find Raspberry Pis on the site LAN"
+  hosts: k8s_control_plane
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Identify | Only a /24 is swept"
+      ansible.builtin.assert:
+        that: lan_subnet.split('/')[1] == '24'
+        fail_msg: "identify_nodes.yml sweeps a /24; lan_subnet is {{ lan_subnet }}."
+
+    # Connecting to each address also fills the neighbour table with MACs.
+    - name: "Identify | Sweep for SSH"
+      ansible.builtin.shell: |
+        net="{{ lan_subnet.split('/')[0].rsplit('.', 1)[0] }}"
+        known=" {{ (groups['k8s'] | map('extract', hostvars, 'node_ip') | list + [lan_gateway]) | join(' ') }} "
+        open="$(for i in $(seq 1 254); do
+                  (timeout 1 bash -c "exec 3<>/dev/tcp/$net.$i/{{ fallback_ssh_port }}" 2>/dev/null \
+                    && echo "$net.$i") &
+                done; wait)"
+        for ip in $(printf '%s\n' $open | sort -t. -k4 -n); do
+          case "$known" in *" $ip "*) continue ;; esac
+          mac="$(ip neigh show "$ip" | awk '{print $5}')"
+          case "$mac" in
+            b8:27:eb:*|dc:a6:32:*|e4:5f:01:*|d8:3a:dd:*|28:cd:c1:*|2c:cf:67:*) kind="Raspberry Pi" ;;
+            *) kind="other" ;;
+          esac
+          echo "$ip  ${mac:-no MAC}  $kind"
+        done
+      args:
+        executable: /bin/bash
+      register: _sweep
+      changed_when: false
+
+    - name: "Identify | SSH hosts on the LAN that are not cluster nodes"
+      ansible.builtin.debug:
+        msg: "{{ _sweep.stdout_lines if _sweep.stdout_lines else ['none found'] }}"
+
+- name: "Identify | Log in to the Pis to identify"
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Identify | Hosts to log in to"
+      ansible.builtin.set_fact:
+        _identify: "{{ identify_ips | default('') | split(',') | map('trim') | select | list }}"
+
+    - name: "Identify | Scan host keys"
+      ansible.builtin.command: "ssh-keyscan -p {{ fallback_ssh_port }} {{ item }}"
+      loop: "{{ _identify }}"
+      register: _keys
+      changed_when: false
+      failed_when: false
+
+    - name: "Identify | Trust host keys"
+      ansible.builtin.known_hosts:
+        name: "{{ item.0.item if fallback_ssh_port | int == 22 else '[' ~ item.0.item ~ ']:' ~ fallback_ssh_port }}"
+        key: "{{ item.1 }}"
+        state: present
+      loop: "{{ _keys.results | subelements('stdout_lines', skip_missing=True) }}"
+      when: not item.1.startswith('#')
+      no_log: true
+
+    - name: "Identify | Ask for the install password"
+      ansible.builtin.pause:
+        prompt: "Password for {{ identify_user | default('admin') }} on {{ _identify | join(', ') }}"
+        echo: false
+      register: _identify_pw
+      when: _identify | length > 0
+
+    - name: "Identify | Add them for this run"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: identify
+        ansible_host: "{{ item }}"
+        ansible_port: "{{ fallback_ssh_port }}"
+        ansible_user: "{{ identify_user | default('admin') }}"
+        ansible_password: "{{ _identify_pw.user_input }}"
+        ansible_become_password: "{{ _identify_pw.user_input }}"
+        ansible_python_interpreter: /usr/bin/python3
+      loop: "{{ _identify }}"
+      no_log: true
+
+- name: "Identify | What each Pi is"
+  hosts: identify
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Identify | Hardware, OS and storage"
+      ansible.builtin.shell: |
+        echo "hostname: $(hostname)"
+        echo "model: $(tr -d '\0' < /proc/device-tree/model)"
+        echo "serial: $(tr -d '\0' < /proc/device-tree/serial-number 2>/dev/null)"
+        echo "eth0 MAC: $(cat /sys/class/net/eth0/address 2>/dev/null)"
+        . /etc/os-release && echo "os: $PRETTY_NAME"
+        echo "memory: $(awk '/MemTotal/ {printf "%.1f GiB", $2 / 1048576}' /proc/meminfo)"
+        echo "root filesystem on: $(findmnt -no SOURCE /)"
+        lsblk -dno NAME,SIZE,TRAN,MODEL | grep -v '^zram' | sed 's/^/disk: /'
+      register: _hw
+      changed_when: false
+
+    # Argon ONE cases (V2 for Pi 4, V3 for Pi 5) have a fan and power-button
+    # MCU at I2C address 0x1a. I2C is turned on for this boot only; the
+    # argon_case role turns it on for good when argon_case is set.
+    - name: "Identify | Argon ONE case"
+      ansible.builtin.shell: |
+        dtparam i2c_arm=on 2>/dev/null
+        modprobe i2c-dev 2>/dev/null
+        sleep 1
+        python3 - <<'PY'
+        import fcntl, os
+        try:
+            fd = os.open("/dev/i2c-1", os.O_RDWR)
+        except OSError as e:
+            print("argon: unknown, no /dev/i2c-1 (%s)" % e.strerror)
+            raise SystemExit
+        fcntl.ioctl(fd, 0x0703, 0x1A)  # I2C_SLAVE
+        try:
+            os.read(fd, 1)
+            print("argon: present, an MCU answers at 0x1a")
+        except OSError:
+            print("argon: absent, nothing at 0x1a")
+        PY
+      register: _argon
+      changed_when: false
+
+    - name: "Identify | Blink the activity LED for 60 seconds"
+      ansible.builtin.shell: |
+        led=/sys/class/leds/ACT
+        [ -d "$led" ] || led=/sys/class/leds/led0
+        old="$(sed -n 's/.*\[\(.*\)\].*/\1/p' "$led/trigger")"
+        echo heartbeat > "$led/trigger"
+        sleep 60
+        echo "$old" > "$led/trigger"
+        echo "blinked $led for 60 seconds, trigger back to $old"
+      register: _blink
+      changed_when: false
+      when: blink | default('') == inventory_hostname
+
+    - name: "Identify | Report"
+      ansible.builtin.debug:
+        msg: "{{ _hw.stdout_lines + _argon.stdout_lines + (_blink.stdout_lines | default([])) }}"

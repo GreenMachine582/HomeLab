@@ -1,8 +1,9 @@
 ---
 # roles/cilium_install/vars/main.yml
 # Helm values for install and upgrade. Kube-proxy replacement is on, so
-# Cilium reaches the API server directly by IP. homelab-cluster's Cilium
-# HelmRelease (M3/M4) must carry the same values.
+# Cilium reaches the API server directly by IP. homelab-cluster's
+# infrastructure/controllers/cilium/helmrelease.yaml (adopted by Flux in M3)
+# must carry the same values; cluster_status.yml prints the deployed ones.
 _cilium_settings:
   - kubeProxyReplacement=true
   - "k8sServiceHost={{ node_ip }}"

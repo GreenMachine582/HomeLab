@@ -39,6 +39,11 @@ mac_laptop_01: "EDIT_BEFORE_USE"  # wired NIC, for Wake-on-LAN (ip -br link)
 ip_rpi_01:    "EDIT_BEFORE_USE"   # node (Pi 4)
 ip_rpi_02:    "EDIT_BEFORE_USE"   # node (Pi 4)
 ip_rpi_03:    "EDIT_BEFORE_USE"   # data node (Pi 5 + NVMe)
+# First boot of a fresh node only: the DHCP address it has now (from
+# playbooks/identify_nodes.yml). The bootstrap reaches it there, then
+# node_network moves it to its static ip_*. Delete once bootstrapped.
+# dhcp_rpi_01: "192.168.20.x"
+# dhcp_rpi_02: "192.168.20.x"
 
 # ── Site network (roles/node_network, docs/K8S_SITE_MOVE.md) ───────────────────
 # The site router can't reserve addresses, so nodes get static IPs: pick

@@ -10,6 +10,9 @@
 #            2. LAN IP (node_ip)        : ssh_port
 #            3. Tailscale MagicDNS name : fallback_ssh_port  (only if different)
 #            4. LAN IP (node_ip)        : fallback_ssh_port  (only if different)
+#            5. bootstrap_address       : ssh_port, then fallback_ssh_port
+#               (only when set: a fresh node still on its DHCP address before
+#               node_network moves it to the static node_ip)
 #   who:   hardened if the homelab key works there -> connect as homelab;
 #          otherwise fresh -> bootstrap_user with a password, asked for once.
 #
@@ -40,8 +43,15 @@
         + ([{'host': node_ip, 'port': fallback_ssh_port | int,
              'label': 'LAN ' ~ node_ip ~ ':' ~ fallback_ssh_port}]
            if _has_custom_port else [])
+        + ([{'host': _boot_addr, 'port': ssh_port | int,
+             'label': 'DHCP ' ~ _boot_addr ~ ':' ~ ssh_port}]
+           + ([{'host': _boot_addr, 'port': fallback_ssh_port | int,
+                'label': 'DHCP ' ~ _boot_addr ~ ':' ~ fallback_ssh_port}]
+              if _has_custom_port else [])
+           if _boot_addr | length > 0 and _boot_addr != node_ip else [])
       }}
   vars:
+    _boot_addr: "{{ bootstrap_address | default('') }}"
     _ts_name: "{{ inventory_hostname }}.{{ tailscale_tailnet }}.ts.net"
     _ts_available: "{{ tailscale_tailnet | default('EDIT_BEFORE_USE') != 'EDIT_BEFORE_USE' }}"
     _has_custom_port: "{{ ssh_port | int != fallback_ssh_port | int }}"

@@ -133,6 +133,33 @@
           when: not _resolv.stat.islnk | default(false)
 
     # ── Apply ────────────────────────────────────────────────────────────────
+    # A fresh node reached on its DHCP address (probe bootstrap_address)
+    # comes back on node_ip, which the controller has no host key for yet.
+    # Trust the node's own host keys under node_ip before the reboot.
+    - name: "Network | Host keys to trust under node_ip"
+      when:
+        - (_net_changed_nm | default({})) is changed or (_net_changed_ifupdown | default({})) is changed
+        - "'.ts.net' not in ansible_host"
+        - ansible_host != node_ip
+      block:
+        - name: "Network | Read this node's SSH host keys"
+          ansible.builtin.shell: cat /etc/ssh/ssh_host_*_key.pub
+          register: _net_host_keys
+          changed_when: false
+
+        - name: "Network | Add them to the controller's known_hosts"
+          ansible.builtin.known_hosts:
+            name: "{{ _kh_name }}"
+            key: "{{ _kh_name }} {{ (item.split() | list)[:2] | join(' ') }}"
+            state: present
+          vars:
+            _kh_name: "{{ node_ip if ansible_port | int == 22 else '[' ~ node_ip ~ ']:' ~ ansible_port }}"
+          loop: "{{ _net_host_keys.stdout_lines }}"
+          loop_control:
+            label: "{{ (item.split() | list)[0] }}"
+          delegate_to: localhost
+          become: false
+
     - name: "Network | Apply: reboot in a few seconds"
       ansible.builtin.command: systemd-run --on-active=5 systemctl reboot
       when: >-
