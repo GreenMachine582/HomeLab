@@ -13,8 +13,8 @@ Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the 
 |----------------|-------------------------|---------------------------------|--------------|----------------------|
 | `laptop-01`    | Control plane (amd64)   | Debian 13                       | `root`       | Bootstrapped 13 Oct  |
 | `rpi-03`       | Data node, Pi 5 + NVMe  | Raspberry Pi OS Lite (trixie)   | `admin`      | Bootstrapped 13 Oct  |
-| `rpi-01`       | Worker, Pi 4            | Raspberry Pi OS Lite (trixie)   | `admin`      | Imaged, at the site  |
-| `rpi-02`       | Worker, Pi 4            | Raspberry Pi OS Lite (trixie)   | `admin`      | Imaged, at the site  |
+| `rpi-01`       | Worker, Pi 4 2 GB, no case | Raspberry Pi OS Lite (trixie) | `admin`      | Identified 15 Oct    |
+| `rpi-02`       | Worker, Pi 4 8 GB, Argon ONE V2 | Raspberry Pi OS Lite (trixie) | `admin` | Identified 15 Oct    |
 
 Groups in [`inventories/k8s.yml`](../inventories/k8s.yml): `k8s` → `k8s_control_plane`, `k8s_workers`, plus
 `k8s_data` for the database node. They're deliberately not called `data`/`svc`, so the legacy group vars never apply.
@@ -141,6 +141,8 @@ reach it through laptop-01's subnet route.
 3. **Inventory**: uncomment or add the node in `inventories/k8s.yml` and create `host_vars/<node>.yml` (`argon_case`
    only where the identify run found the case, `bootstrap_address: "{{ dhcp_<node> | default('') }}"`).
 4. **`overrides.yml`**: a static `ip_<node>` outside the site DHCP pool, and `dhcp_<node>` set to its current address.
+   If the router already reserves the node's address, set `ip_<node>` to that and skip `dhcp_<node>` and
+   `bootstrap_address`: the probe reaches it on `node_ip` directly.
 5. **Bootstrap, then join**:
    ```bash
    ansible-playbook playbooks/bootstrap.yml --limit <node>   # reached on dhcp_<node>, moved to ip_<node>, then via Tailscale

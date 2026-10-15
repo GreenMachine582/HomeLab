@@ -1,0 +1,18 @@
+---
+# host_vars/rpi-01.yml
+# General worker: Pi 4B Rev 1.1, 2 GB (arm64, Raspberry Pi OS trixie), boots
+# from SD, no case. Identified 15 Oct with playbooks/identify_nodes.yml
+# (MAC dc:a6:32:27:56:ee, no Argon MCU on I2C).
+#
+# 2 GB is tight for a worker once kubelet, Cilium and Envoy are running:
+# pods scheduled here need sensible requests and limits.
+
+# Uncomment if the user created at imaging isn't "admin".
+# bootstrap_user: <imager-user>
+
+# First contact only, if the router doesn't reserve ip_rpi_01: the node's
+# DHCP address (docs/K8S_BOOTSTRAP.md, "Adding a fresh node at the site").
+# bootstrap_address: "{{ dhcp_rpi_01 | default('') }}"
+
+# ── Storage (roles/nvme_storage) ──────────────────────────────────────────────
+nvme_enabled: false

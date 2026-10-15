@@ -1,0 +1,18 @@
+---
+# host_vars/rpi-02.yml
+# General worker: Pi 4B Rev 1.5, 8 GB (arm64, Raspberry Pi OS trixie), boots
+# from SD, in an Argon ONE V2. Identified 15 Oct with
+# playbooks/identify_nodes.yml (MAC d8:3a:dd:26:ae:ec, Argon MCU at I2C 0x1a).
+
+# Uncomment if the user created at imaging isn't "admin".
+# bootstrap_user: <imager-user>
+
+# First contact only, if the router doesn't reserve ip_rpi_02: the node's
+# DHCP address (docs/K8S_BOOTSTRAP.md, "Adding a fresh node at the site").
+# bootstrap_address: "{{ dhcp_rpi_02 | default('') }}"
+
+# ── Storage (roles/nvme_storage) ──────────────────────────────────────────────
+nvme_enabled: false
+
+# ── Case (roles/argon_case) ──────────────────────────────────────────────────
+argon_case: v2

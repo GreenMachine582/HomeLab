@@ -34,12 +34,10 @@ all:
           hosts:
             rpi-03:
               node_ip: "{{ ip_rpi_03 }}"
-            # rpi-01:
-            #   node_ip: "{{ ip_rpi_01 }}"
-            #   argon_case: v2
-            # rpi-02:
-            #   node_ip: "{{ ip_rpi_02 }}"
-            #   argon_case: v2
+            rpi-01:
+              node_ip: "{{ ip_rpi_01 }}"
+            rpi-02:
+              node_ip: "{{ ip_rpi_02 }}"
 
         # Database node: local PVs on its NVMe. Labelled in M2; the database
         # taint waits for general workers (k8s_data_taint_enabled).
