@@ -110,16 +110,17 @@
       register: _check
       changed_when: false
 
-    # apps only appears once flux-system has reconciled clusters/prod.
+    # apps only appears once flux-system has reconciled clusters/prod, and
+    # kubectl wait fails at once on a missing object, hence the retries.
     - name: "Flux | Wait until the Kustomizations are Ready"
       ansible.builtin.command: >-
-        kubectl -n flux-system get kustomization {{ item }}
-        -o jsonpath={.status.conditions[?(@.type=="Ready")].status}
+        kubectl -n flux-system wait kustomization/{{ item }}
+        --for=condition=Ready --timeout=10s
       loop: [flux-system, apps]
       register: _ready
-      until: _ready.stdout == 'True'
+      until: _ready.rc == 0
       retries: 30
-      delay: 10
+      delay: 5
       changed_when: false
       failed_when: false
 
@@ -135,7 +136,7 @@
     - name: "Flux | Fail if a Kustomization isn't Ready"
       ansible.builtin.fail:
         msg: >-
-          {{ _ready.results | rejectattr('stdout', 'eq', 'True') | map(attribute='item') | join(', ') }}
-          not Ready after 5 minutes. See the status above and
+          {{ _ready.results | rejectattr('rc', 'eq', 0) | map(attribute='item') | join(', ') }}
+          not Ready after 7 minutes. See the status above and
           `flux logs --level=error`.
-      when: _ready.results | rejectattr('stdout', 'eq', 'True') | list | length > 0
+      when: _ready.results | rejectattr('rc', 'eq', 0) | list | length > 0
