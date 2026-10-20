@@ -19,6 +19,31 @@
   check_mode: false
   tags: [k8s, cilium]
 
+# Since M3 Flux owns the release (homelab-cluster
+# infrastructure/controllers/cilium). Ansible then only installs Cilium on a
+# fresh cluster, where Flux can't start without a CNI, and leaves upgrades to
+# a homelab-cluster PR. No HelmRelease CRD (before Flux) reads as not owned.
+# -e cilium_ansible_upgrade=true upgrades anyway: only with the HelmRelease
+# suspended, as an escape hatch. Never delete the HelmRelease to hand Cilium
+# back; helm-controller uninstalls the release when it's deleted.
+- name: "Cilium | Check whether Flux owns the release"
+  ansible.builtin.command: kubectl -n kube-system get helmrelease cilium -o name
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: _cilium_hr
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: _cilium_ds.rc == 0
+  tags: [k8s, cilium]
+
+- name: "Cilium | Decide who upgrades"
+  ansible.builtin.set_fact:
+    _cilium_flux_owned: >-
+      {{ _cilium_ds.rc == 0 and (_cilium_hr.rc | default(1)) == 0
+         and not (cilium_ansible_upgrade | default(false) | bool) }}
+  tags: [k8s, cilium]
+
 # One operator replica: with a single schedulable worker the default two
 # (with anti-affinity) would leave one Pending forever. The same settings go
 # to install and upgrade, so an upgrade can reset the release's values.
@@ -62,9 +87,24 @@
   when: _cilium_ds.rc == 0
   tags: [k8s, cilium]
 
+# cilium_version and _cilium_settings are now the seed for a rebuild; they
+# should match what Flux runs, or a rebuilt cluster starts on another version.
+- name: "Cilium | Managed by Flux"
+  ansible.builtin.debug:
+    msg: >-
+      Cilium is managed by Flux (homelab-cluster
+      infrastructure/controllers/cilium/helmrelease.yaml); upgrade it there.
+      Running {{ _cilium_image.stdout | regex_replace('^.*:v([^@]+)@.*$', '\1') }},
+      cilium_version is {{ cilium_version }}{{
+        '' if (':v' ~ cilium_version ~ '@') in _cilium_image.stdout
+        else ': update cilium_version (and _cilium_settings) to match the HelmRelease' }}.
+  when: _cilium_flux_owned | bool
+  tags: [k8s, cilium]
+
 - name: "Cilium | Upgrade to {{ cilium_version }} with the current settings"
   when:
     - _cilium_ds.rc == 0
+    - not (_cilium_flux_owned | bool)
     - (':v' ~ cilium_version ~ '@') not in _cilium_image.stdout
       or _cilium_applied.stdout != _cilium_settings_record
   tags: [k8s, cilium]
@@ -124,4 +164,5 @@
     KUBECONFIG: /etc/kubernetes/admin.conf
   register: _cilium_record
   changed_when: "'unchanged' not in _cilium_record.stdout"
+  when: not (_cilium_flux_owned | bool)
   tags: [k8s, cilium]

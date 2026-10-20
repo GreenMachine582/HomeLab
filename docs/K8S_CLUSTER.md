@@ -83,8 +83,19 @@ which takes a minute or two instead of ~30. When tests fail it prints the Cilium
 for the test namespace, and the host's proxy path (TPROXY rule hits, proxy listeners and their socket options,
 rp_filter, ip rules, UFW).
 
-Cilium settings live in `roles/cilium_install/vars/main.yml`. `cluster.yml` records the applied set in the
-`homelab-cilium-settings` ConfigMap and runs `cilium upgrade` when the version or any setting changes. The chart's
+**Since M3, Flux owns the Cilium release.** Upgrades and setting changes go through a homelab-cluster PR
+(`infrastructure/controllers/cilium/helmrelease.yaml`).
+- `cluster.yml` still installs Cilium on a fresh cluster, because Flux can't start without a CNI.
+- When the HelmRelease exists, `cluster.yml` skips the upgrade and says so. It also flags `cilium_version` if it
+  doesn't match what's running.
+- `-e cilium_ansible_upgrade=true` overrides that. It's an escape hatch, for use only with the HelmRelease
+  suspended (`flux suspend helmrelease cilium -n kube-system`).
+- Never delete the HelmRelease to hand Cilium back: helm-controller uninstalls a release when its HelmRelease is
+  deleted.
+
+Before Flux (and with the override), Cilium settings come from `roles/cilium_install/vars/main.yml`. `cluster.yml`
+records the applied set in the `homelab-cilium-settings` ConfigMap and runs `cilium upgrade` when the version or any
+setting changes. The chart's
 `rollOutCiliumPods`/`rollOutPods` options are on, so the agent, operator and Envoy pods restart to pick up the
 change. If the agent logs `Mismatch found … config-drift-checker`, the running agent doesn't match `cilium-config`;
 `kubectl -n kube-system rollout restart ds/cilium` fixes it.
