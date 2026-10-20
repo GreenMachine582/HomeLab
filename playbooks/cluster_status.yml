@@ -303,6 +303,34 @@
       ansible.builtin.debug:
         msg: "{{ _cilium_values.stdout_lines + _cilium_values.stderr_lines }}"
 
+    # Gateway API (M4, homelab-cluster gateway-api.yaml): the operator runs the
+    # Gateway controller only if enable-gateway-api is on and the CRDs existed
+    # when it started. A GatewayClass stuck at Accepted Unknown means it isn't
+    # running: compare the operator start time with the CRD creation time.
+    - name: "Status | Gateway API"
+      ansible.builtin.shell: |
+        echo "gateway API CRDs: $(kubectl get crd -o name | grep -c gateway.networking.k8s.io)"
+        echo "CRDs created: $(kubectl get crd gatewayclasses.gateway.networking.k8s.io -o jsonpath='{.metadata.creationTimestamp}' 2>&1)"
+        echo "cilium-config enable-gateway-api: $(kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.enable-gateway-api}')"
+        echo "cilium-config enable-l2-announcements: $(kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.enable-l2-announcements}')"
+        kubectl -n kube-system get pods -l io.cilium/app=operator \
+          -o jsonpath='{range .items[*]}operator {.metadata.name} on {.spec.nodeName}, started {.status.startTime}, restarts {.status.containerStatuses[0].restartCount}{"\n"}{end}'
+        echo "-- gatewayclasses"
+        kubectl get gatewayclass \
+          -o jsonpath='{range .items[*]}{.metadata.name} ({.spec.controllerName}):{range .status.conditions[*]} {.type}={.status} {.reason} {.message};{end}{"\n"}{end}' 2>&1
+        echo "-- gateways"
+        kubectl get gateway -A 2>&1
+        echo "-- operator log, gateway lines (last 2h)"
+        kubectl -n kube-system logs deploy/cilium-operator --since=2h 2>&1 \
+          | grep -iE 'gateway|gatewayclass' | tail -25 | cut -c1-260
+      register: _gateway
+      changed_when: false
+      failed_when: false
+
+    - name: "Status | Gateway API report"
+      ansible.builtin.debug:
+        msg: "{{ _gateway.stdout_lines + _gateway.stderr_lines }}"
+
     - name: "Status | Connectivity test"
       when: connectivity_test | default(false) | bool
       block:
