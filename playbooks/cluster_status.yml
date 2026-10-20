@@ -123,9 +123,21 @@
         c=/var/lib/kubelet/pki/kubelet-client-current.pem
         [ -r "$c" ] && echo "kubelet client cert: $(openssl x509 -in "$c" -noout -enddate)"
         api="$(awk '/server:/ {print $2; exit}' /etc/kubernetes/kubelet.conf)"
-        echo "api $api: $(curl -sk -m 5 -o /dev/null -w '%{http_code}' "$api/livez" || echo unreachable)"
+        code="$(curl -sk -m 5 -o /dev/null -w '%{http_code}' "$api/livez")"
+        echo "api $api: $code$( [ "$code" = 000 ] && echo ' (no connection)')"
+        # The API is addressed by name (k8s_prereqs/tasks/hosts.yml); cloud-init's
+        # manage_etc_hosts rewrites /etc/hosts at boot and drops that line.
+        name="$(printf '%s\n' "$api" | sed -E 's#https?://([^:/]+).*#\1#')"
+        echo "resolve $name: $(getent hosts "$name" | xargs || echo none)"
+        echo "/etc/hosts $name: $(grep -E "\s$name(\s|$)" /etc/hosts | xargs || echo none)"
+        if command -v cloud-init >/dev/null; then
+          m="$(grep -rhs '^manage_etc_hosts' /etc/cloud/cloud.cfg /etc/cloud/cloud.cfg.d /boot/firmware/user-data | xargs)"
+          echo "cloud-init: installed, ${m:-manage_etc_hosts unset}"
+        fi
+        # kubelet logs through klog at journal priority info; errors start E<mmdd>.
         echo "-- kubelet log (errors, last 15)"
-        journalctl -u kubelet --no-pager -o short-iso -p err -n 15 2>&1 | cut -c1-220
+        journalctl -u kubelet --no-pager -o short-iso -n 2000 2>&1 \
+          | grep -E ' E[0-9]{4} ' | tail -15 | cut -c1-220
       register: _kubelet
       changed_when: false
 

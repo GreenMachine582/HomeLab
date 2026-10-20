@@ -11,8 +11,8 @@ Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the 
 
 | Inventory name | Role                    | OS                              | Install user | Status               |
 |----------------|-------------------------|---------------------------------|--------------|----------------------|
-| `laptop-01`    | Control plane (amd64)   | Debian 13                       | `root`       | Bootstrapped 13 Oct  |
-| `rpi-03`       | Data node, Pi 5 + NVMe  | Raspberry Pi OS Lite (trixie)   | `admin`      | Bootstrapped 13 Oct  |
+| `laptop-01`    | Control plane (amd64)   | Debian 13                       | `root`       | Joined 15 Oct        |
+| `rpi-03`       | Data node, Pi 5 + NVMe  | Raspberry Pi OS Lite (trixie)   | `admin`      | Joined 15 Oct        |
 | `rpi-01`       | Worker, Pi 4 2 GB, no case | Raspberry Pi OS Lite (trixie) | `admin`      | Joined 15 Oct        |
 | `rpi-02`       | Worker, Pi 4 8 GB, Argon ONE V2 | Raspberry Pi OS Lite (trixie) | `admin` | Joined 15 Oct        |
 
