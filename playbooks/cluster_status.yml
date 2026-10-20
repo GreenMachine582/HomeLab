@@ -125,8 +125,9 @@
         api="$(awk '/server:/ {print $2; exit}' /etc/kubernetes/kubelet.conf)"
         code="$(curl -sk -m 5 -o /dev/null -w '%{http_code}' "$api/livez")"
         echo "api $api: $code$( [ "$code" = 000 ] && echo ' (no connection)')"
-        # The API is addressed by name (k8s_prereqs/tasks/hosts.yml); cloud-init's
-        # manage_etc_hosts rewrites /etc/hosts at boot and drops that line.
+        # The API is addressed by name (k8s_prereqs/tasks/hosts.yml); the
+        # cloud-init manage_etc_hosts setting rewrites /etc/hosts at boot and
+        # drops that line. (No apostrophes here: Ansible splits these args.)
         name="$(printf '%s\n' "$api" | sed -E 's#https?://([^:/]+).*#\1#')"
         echo "resolve $name: $(getent hosts "$name" | xargs || echo none)"
         echo "/etc/hosts $name: $(grep -E "\s$name(\s|$)" /etc/hosts | xargs || echo none)"
