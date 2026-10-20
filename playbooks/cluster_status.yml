@@ -109,9 +109,43 @@
       register: _svm
       changed_when: false
 
+    # A NotReady node: is the kubelet running, can it reach the API, and
+    # what did it last log. Swap back on or a stopped containerd keep it down.
+    - name: "Status | Kubelet and containerd"
+      ansible.builtin.shell: |
+        echo "boot: $(uptime -s), up $(uptime -p)"
+        for u in containerd kubelet; do
+          echo "service $u: $(systemctl is-active "$u") since $(systemctl show -p ActiveEnterTimestamp --value "$u")"
+        done
+        echo "swap: $(swapon --noheadings --show=NAME 2>/dev/null | tr '\n' ' ' | sed 's/ $//' | grep . || echo off)"
+        echo "time synced: $(timedatectl show -p NTPSynchronized --value)"
+        echo "disk /: $(df -h --output=pcent,avail / | tail -1 | xargs)"
+        c=/var/lib/kubelet/pki/kubelet-client-current.pem
+        [ -r "$c" ] && echo "kubelet client cert: $(openssl x509 -in "$c" -noout -enddate)"
+        api="$(awk '/server:/ {print $2; exit}' /etc/kubernetes/kubelet.conf)"
+        code="$(curl -sk -m 5 -o /dev/null -w '%{http_code}' "$api/livez")"
+        echo "api $api: $code$( [ "$code" = 000 ] && echo ' (no connection)')"
+        # The API is addressed by name (k8s_prereqs/tasks/hosts.yml); the
+        # cloud-init manage_etc_hosts setting rewrites /etc/hosts at boot and
+        # drops that line. (No apostrophes here: Ansible splits these args.)
+        name="$(printf '%s\n' "$api" | sed -E 's#https?://([^:/]+).*#\1#')"
+        echo "resolve $name: $(getent hosts "$name" | xargs || echo none)"
+        echo "/etc/hosts $name: $(grep -E "\s$name(\s|$)" /etc/hosts | xargs || echo none)"
+        if command -v cloud-init >/dev/null; then
+          m="$(grep -rhs '^manage_etc_hosts' /etc/cloud/cloud.cfg /etc/cloud/cloud.cfg.d /boot/firmware/user-data | xargs)"
+          echo "cloud-init: installed, ${m:-manage_etc_hosts unset}"
+        fi
+        # kubelet logs through klog at journal priority info; errors start E<mmdd>.
+        echo "-- kubelet log (errors, last 15)"
+        journalctl -u kubelet --no-pager -o short-iso -n 2000 2>&1 \
+          | grep -E ' E[0-9]{4} ' | tail -15 | cut -c1-220
+      register: _kubelet
+      changed_when: false
+
     - name: "Status | Report"
       ansible.builtin.debug:
         msg:
+          kubelet: "{{ _kubelet.stdout_lines }}"
           kernel: "{{ ansible_kernel }}"
           kernel_features: "{{ _kernel.stdout_lines }}"
           cilium_proxy_sysctl: "{{ _svm.stdout_lines }}"
