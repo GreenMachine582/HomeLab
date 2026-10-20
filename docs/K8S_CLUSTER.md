@@ -100,6 +100,10 @@ rp_filter, ip rules, UFW).
   suspended (`flux suspend helmrelease cilium -n kube-system`).
 - Never delete the HelmRelease to hand Cilium back: helm-controller uninstalls a release when its HelmRelease is
   deleted.
+- `_cilium_settings` holds only the core networking values. Gateway API and L2 announcements (M4) are set only in
+  the HelmRelease, because they need CRDs that Flux installs. So:
+  - a rebuild comes up with a plain CNI, and Flux adds them;
+  - the escape hatch (`--reset-values`) drops them until the HelmRelease is resumed.
 
 Before Flux (and with the override), Cilium settings come from `roles/cilium_install/vars/main.yml`. `cluster.yml`
 records the applied set in the `homelab-cilium-settings` ConfigMap and runs `cilium upgrade` when the version or any

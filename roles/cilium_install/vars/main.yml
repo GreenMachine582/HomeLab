@@ -3,9 +3,13 @@
 # Helm values for a fresh install (and for upgrades before Flux owned the
 # release). Kube-proxy replacement is on, so Cilium reaches the API server
 # directly by IP. Since M3 homelab-cluster's
-# infrastructure/controllers/cilium/helmrelease.yaml is the source of truth;
-# keep these the same so a rebuild matches. cluster_status.yml prints the
-# deployed values.
+# infrastructure/controllers/cilium/helmrelease.yaml is the source of truth.
+# These are the core networking values a rebuild needs before Flux runs;
+# keep them the same as the HelmRelease. Values that need Flux-managed CRDs
+# (gatewayAPI, l2announcements, M4) are deliberately left out: Flux adds
+# them after a rebuild, and cilium_ansible_upgrade=true (--reset-values)
+# drops them until Flux is resumed. cluster_status.yml prints the deployed
+# values.
 _cilium_settings:
   - kubeProxyReplacement=true
   - "k8sServiceHost={{ node_ip }}"
