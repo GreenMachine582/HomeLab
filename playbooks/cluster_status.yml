@@ -109,9 +109,30 @@
       register: _svm
       changed_when: false
 
+    # A NotReady node: is the kubelet running, can it reach the API, and
+    # what did it last log. Swap back on or a stopped containerd keep it down.
+    - name: "Status | Kubelet and containerd"
+      ansible.builtin.shell: |
+        echo "boot: $(uptime -s), up $(uptime -p)"
+        for u in containerd kubelet; do
+          echo "service $u: $(systemctl is-active "$u") since $(systemctl show -p ActiveEnterTimestamp --value "$u")"
+        done
+        echo "swap: $(swapon --noheadings --show=NAME 2>/dev/null | tr '\n' ' ' | sed 's/ $//' | grep . || echo off)"
+        echo "time synced: $(timedatectl show -p NTPSynchronized --value)"
+        echo "disk /: $(df -h --output=pcent,avail / | tail -1 | xargs)"
+        c=/var/lib/kubelet/pki/kubelet-client-current.pem
+        [ -r "$c" ] && echo "kubelet client cert: $(openssl x509 -in "$c" -noout -enddate)"
+        api="$(awk '/server:/ {print $2; exit}' /etc/kubernetes/kubelet.conf)"
+        echo "api $api: $(curl -sk -m 5 -o /dev/null -w '%{http_code}' "$api/livez" || echo unreachable)"
+        echo "-- kubelet log (errors, last 15)"
+        journalctl -u kubelet --no-pager -o short-iso -p err -n 15 2>&1 | cut -c1-220
+      register: _kubelet
+      changed_when: false
+
     - name: "Status | Report"
       ansible.builtin.debug:
         msg:
+          kubelet: "{{ _kubelet.stdout_lines }}"
           kernel: "{{ ansible_kernel }}"
           kernel_features: "{{ _kernel.stdout_lines }}"
           cilium_proxy_sysctl: "{{ _svm.stdout_lines }}"
