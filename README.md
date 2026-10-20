@@ -15,6 +15,14 @@ A Raspberry Pi homelab managed entirely through Ansible. Manual intervention is 
 [docs/K8S_BOOTSTRAP.md](./docs/K8S_BOOTSTRAP.md) and `inventories/k8s.yml`. Everything about homelab-edge, Infisical,
 Semaphore, deploy-service and Docker Compose below is legacy and is removed at the M8 cutover.
 
+**Status (20 Oct 2026):**
+- **M0–M2 done:** four nodes at the remote site, Cilium, and daily etcd snapshots with a tested restore.
+- **M3 (GitOps) nearly done:** Flux runs from homelab-cluster, and SOPS apply, decrypt and prune are proven. Flux
+  adopting Cilium is the last step.
+- **Next is M4.** See [docs/K8S_CLUSTER.md](./docs/K8S_CLUSTER.md).
+
+Changes go through PRs with signed, Conventional Commit messages: see [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 **⚠️ This repo is mid-migration to a polyrepo layout** — see [Polyrepo Migration](#-polyrepo-migration) below and [docs/repo_split_brief.md](./docs/repo_split_brief.md) for the full design and status.
 
 **See [BOOTSTRAP.md](./BOOTSTRAP.md) to get started.**

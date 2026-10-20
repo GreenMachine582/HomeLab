@@ -71,6 +71,14 @@ ansible-playbook playbooks/cluster.yml     # re-run: no changes
 `cluster_status.yml` is read-only and safe any time. It reports:
 - per node: LAN addresses (and warns if a node has more than one), routes to the other nodes, UFW, the kernel
   features Cilium uses, and `src_valid_mark` (warns if it's 1);
+- per node, under `kubelet`:
+  - boot time
+  - kubelet and containerd state
+  - swap, NTP sync, free disk
+  - the kubelet client cert expiry
+  - whether the API answers, how its name resolves, and its `/etc/hosts` line
+  - cloud-init's `manage_etc_hosts`
+  - the last kubelet errors;
 - from the control plane: nodes, Cilium nodes, all pods, `cilium status`, and the deployed Cilium Helm values
   (what homelab-cluster's HelmRelease must match).
 
@@ -125,6 +133,13 @@ flux get kustomizations
 4. Waits until the `flux-system` and `apps` Kustomizations are Ready.
 
 Re-running it is also the recovery step when Flux is broken or was deleted.
+
+**Status (20 Oct 2026):**
+- Flux v2.9.6 runs from homelab-cluster `main`.
+- The smoke test passed: homelab-cluster PR #1 applied a namespace, ConfigMap and SOPS Secret, which decrypted, and
+  PR #2 removed them, which pruned.
+- homelab-cluster `main` needs a PR and signed commits.
+- What's left of M3 is Flux adopting the Cilium Helm release.
 
 **Upgrading Flux:** bump `flux_version` in `group_vars/k8s.yml` (HomeLab PR). In a homelab-cluster PR, replace
 `gotk-components.yaml` with that release's `install.yaml`. Flux applies its own upgrade once that PR is merged. Then
@@ -185,6 +200,13 @@ part of the M8 DR test.
 - **`cilium-health-ep … no route to host` / pods can't reach the other node**: cross-node (VXLAN) traffic is being
   dropped. Run `cluster_status.yml`. If it warns about a second LAN address (e.g. laptop Wi-Fi), that's the likely
   source. `ufw_rules` allow Cilium's ports (8472/udp, 4240, 4244, 10250) from the whole LAN for this reason.
+- **The Pis go NotReady after a reboot or power cut** (kubelet logs "node not registered", `kubectl logs` fails with
+  `Authorization error (user=kube-apiserver-kubelet-client … nodes/proxy)`): in `cluster_status.yml`, look at
+  `resolve k8s-api` and the `/etc/hosts` line under `kubelet`. Raspberry Pi OS runs cloud-init with
+  `manage_etc_hosts: true`, which rebuilds `/etc/hosts` on every boot. `k8s_prereqs` writes the `k8s-api` line into
+  `/etc/cloud/templates/hosts.debian.tmpl` as well, so it survives. If it's missing, run
+  `cluster.yml --tags prereqs --limit 'rpi-*'`. This happened after the 18 Oct 2026 site power cut. Flux's
+  controllers were on a Pi, so Flux stopped too.
 - **A node stays NotReady**: check `cilium status`. Check that UFW lists the other nodes and `10.244.0.0/16` as
   trusted (`sudo ufw status numbered`), and that `ufw status verbose` shows `allow (routed)`.
 - **A node's IP changed** (DHCP reservations are still deferred): update `overrides.yml` and re-run `cluster.yml` for
