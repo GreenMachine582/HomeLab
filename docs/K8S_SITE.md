@@ -120,6 +120,8 @@ The policy:
 - lets only admins tag nodes as `tag:homelab`
 - lets your own devices reach each other
 - lets admins reach the nodes on `ssh_port`, 22 and 6443
+- lets WSL on the main PC (`tag:dev-wsl`) reach the nodes the same way, since controller traffic leaves as that tag
+  once WSL runs its own `tailscaled`, and lets admins reach WSL on 22 ([REMOTE_ACCESS.md](./REMOTE_ACCESS.md))
 - makes the site route admins-only, never auto-approved (you approve it per use)
 - stops nodes from connecting to your devices
 

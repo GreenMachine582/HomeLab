@@ -7,7 +7,7 @@
 	"tagOwners": {
 		"tag:homelab": ["autogroup:admin"],
 		// WSL on the main PC (the Ansible controller), reached from your
-		// laptop over Tailscale SSH (docs/REMOTE_ACCESS.md).
+		// laptop over SSH (docs/REMOTE_ACCESS.md).
 		"tag:dev-wsl": ["autogroup:admin"],
 	},
 
@@ -24,8 +24,10 @@
 		// as you, so the rule above no longer matches it.
 		{"action": "accept", "src": ["tag:dev-wsl"], "dst": ["tag:homelab:{{ ssh_port }},22,6443"]},
 
-		// Admins reach WSL on 22, where Tailscale SSH answers. The ssh
-		// section below still gates every session with check mode.
+		// Only your approved devices reach WSL's sshd, which then wants a key
+		// and a TOTP code on every login. Not Tailscale SSH: its check mode
+		// can't re-ask more often than every 12h on this plan, and it skips
+		// sshd's PAM, so the TOTP prompt would never run.
 		{"action": "accept", "src": ["autogroup:admin"], "dst": ["tag:dev-wsl:22"]},
 {% if tailscale_site_route %}
 
@@ -36,19 +38,6 @@
 		{"action": "accept", "src": ["autogroup:admin"], "dst": ["{{ tailscale_site_route }}:*"]},
 {% endif %}
 		// Nothing else: homelab nodes can't initiate connections to your devices.
-	],
-
-	// Tailscale SSH into WSL: check mode with checkPeriod "always" sends
-	// every new session through a browser re-auth (and your IdP's MFA). No
-	// "accept" SSH rule exists, so nothing bypasses it.
-	"ssh": [
-		{
-			"action": "check",
-			"checkPeriod": "always",
-			"src": ["autogroup:admin"],
-			"dst": ["tag:dev-wsl"],
-			"users": ["{{ dev_wsl_user }}"],
-		},
 	],
 {% if tailscale_admin_login | default('') | length > 0 %}
 
@@ -65,15 +54,6 @@
 		{
 			"src": "tag:homelab",
 			"deny": ["{{ tailscale_admin_login }}:22", "tag:dev-wsl:22"],
-		},
-	],
-
-	"sshTests": [
-		{
-			"src": "{{ tailscale_admin_login }}",
-			"dst": ["tag:dev-wsl"],
-			"check": ["{{ dev_wsl_user }}"],
-			"deny": ["root"],
 		},
 	],
 {% endif %}

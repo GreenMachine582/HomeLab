@@ -79,7 +79,7 @@ ansible-playbook playbooks/cluster_status.yml         # 🩺 read-only health re
 
 | Playbook | What it does |
 |---|---|
-| `controller.yml` | Controller toolchain at pinned versions, `k8s-api` hosts entry, `KUBECONFIG`. `--tags ssh_ca` makes the break-glass CA |
+| `controller.yml` | Controller toolchain at pinned versions, `k8s-api` hosts entry, `KUBECONFIG`. `--tags ssh_ca` makes the break-glass CA; `--tags dev_wsl` sets up key + TOTP SSH into WSL ([REMOTE_ACCESS.md](./docs/REMOTE_ACCESS.md)) |
 | `bootstrap.yml` | Fresh or hardened node → hardened, key-only, on the tailnet. Probes how to reach each node |
 | `cluster.yml` | kubeadm cluster, Cilium (fresh installs only, since Flux owns it), labels/taints, etcd snapshot timer |
 | `cluster_status.yml` | Read-only report: nodes, kubelet, Cilium, Gateway API, Gateway reachability from the controller. `-e connectivity_test=true` |
@@ -102,7 +102,7 @@ ansible-playbook playbooks/cluster_status.yml         # 🩺 read-only health re
 | 🛡️ | [K8S_BOOTSTRAP.md](./docs/K8S_BOOTSTRAP.md) | Preparing nodes, adding a fresh node at the site |
 | ☸️ | [K8S_CLUSTER.md](./docs/K8S_CLUSTER.md) | Building the cluster, Flux, etcd backups and restore, troubleshooting |
 | 🏞️ | [K8S_SITE.md](./docs/K8S_SITE.md) | The remote site: access paths, site LAN, router UI, power and wake-up, break-glass, one-time setup, moving to another site |
-| 💻 | [REMOTE_ACCESS.md](./docs/REMOTE_ACCESS.md) | SSH from your laptop into WSL on the main PC: Tailscale SSH check mode with MFA |
+| 💻 | [REMOTE_ACCESS.md](./docs/REMOTE_ACCESS.md) | SSH from your laptop into WSL on the main PC: tailnet-only, SSH key + TOTP |
 | 🤝 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Branches, signed commits, Conventional Commits, Ansible style |
 | 🧩 | [homelab-cluster docs](https://github.com/GreenMachine582/homelab-cluster/tree/main/docs) | Adding a service, secrets, M4 plan + Cloudflare setup |
 
@@ -131,7 +131,7 @@ HomeLab/
   tailscale/policy.hujson.j2  # tailnet policy (tailscale_admin.yml)
   scripts/sign-breakglass.sh  # one-hour SSH certificates
   docs/K8S_*.md
-  docs/REMOTE_ACCESS.md       # laptop → WSL over Tailscale SSH
+  docs/REMOTE_ACCESS.md       # laptop → WSL: key + TOTP over the tailnet
 ```
 
 </details>
@@ -150,7 +150,9 @@ HomeLab/
 4. 🆘 **Break-glass:** one-hour SSH certificates signed by an offline CA, for when Tailscale is down.
 5. 🔐 **Secrets:** Ansible Vault and `overrides.yml` stay on the controller and are never committed. Cluster
    secrets are SOPS + age in homelab-cluster.
-6. 🔀 **Change control:** protected `main`, signed commits, PRs, `commit-style` check.
+6. 💻 **Remote access to WSL:** tailnet-only (admins' approved devices), then an SSH key and a TOTP code on every
+   login. No public ports.
+7. 🔀 **Change control:** protected `main`, signed commits, PRs, `commit-style` check.
 
 ---
 
