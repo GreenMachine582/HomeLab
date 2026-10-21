@@ -2,6 +2,9 @@
 # roles/tailscale/defaults/main.yml
 
 tailscale_up: true
+# pkgs.tailscale.com repo: debian for the nodes (Raspberry Pi OS reports
+# Debian too), ubuntu for the WSL controller (playbooks/controller.yml).
+tailscale_repo_distro: debian
 tailscale_tags:
   - "tag:homelab"
 tailscale_accept_routes: false

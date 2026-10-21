@@ -13,6 +13,9 @@
 # and age (homelab-cluster secrets), cloudflared (the tunnel), the k8s-api
 # hosts entry, and KUBECONFIG=~/.kube/homelab.conf in ~/.bashrc.
 # See docs/K8S_CLUSTER.md.
+#
+# Opt-in: --tags ssh_ca (break-glass SSH CA, docs/K8S_SITE.md) and
+# --tags dev_wsl (tailscaled in WSL for Tailscale SSH, docs/REMOTE_ACCESS.md).
 
 - name: "Controller | Tooling for running the homelab"
   hosts: localhost
@@ -150,3 +153,53 @@
             msg: >-
               CA at {{ _ca_key }}(.pub). Back up the private key offline with the
               age key. Run bootstrap.yml to install the public key on the nodes.
+
+    # tailscaled in WSL, so your laptop can reach it over Tailscale SSH
+    # (docs/REMOTE_ACCESS.md). Only with --tags dev_wsl. Installs and starts
+    # the daemon only: you run `tailscale up` yourself and approve the
+    # device, so no pre-approved auth key ever skips device approval.
+    - name: "Controller | Tailscale SSH into WSL"
+      tags: [never, dev_wsl]
+      when: "'microsoft' in ansible_kernel | lower"
+      block:
+        - name: "Controller | Boot WSL with systemd (tailscaled needs it)"
+          community.general.ini_file:
+            path: /etc/wsl.conf
+            section: boot
+            option: systemd
+            value: "true"
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: "Controller | Check systemd is running"
+          ansible.builtin.assert:
+            that: ansible_service_mgr == 'systemd'
+            fail_msg: >-
+              systemd isn't PID 1 yet. From Windows run `wsl --shutdown`,
+              reopen WSL, then re-run with --tags dev_wsl.
+            quiet: true
+
+        - name: "Controller | Install and start tailscaled"
+          ansible.builtin.include_role:
+            name: tailscale
+            apply:
+              tags: [dev_wsl]
+          vars:
+            tailscale_up: false
+            tailscale_repo_distro: "{{ ansible_distribution | lower }}"
+
+        - name: "Controller | Check whether WSL is on the tailnet"
+          ansible.builtin.command: tailscale status --json
+          register: _wsl_ts
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        - name: "Controller | Next step"
+          ansible.builtin.debug:
+            msg: >-
+              {{ 'WSL is on the tailnet.'
+                 if _wsl_ts.rc == 0 and (_wsl_ts.stdout | from_json).BackendState | default('') == 'Running' else
+                 'Run: sudo tailscale up --hostname=dev-wsl --advertise-tags=tag:dev-wsl --ssh --accept-dns=false
+                 then approve dev-wsl in the admin console (docs/REMOTE_ACCESS.md).' }}
