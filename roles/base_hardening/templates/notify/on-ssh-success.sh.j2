@@ -4,7 +4,7 @@
 # Persistent daemon: watches journalctl for accepted SSH logins and notifies.
 set -euo pipefail
 
-HOST="{{ inventory_hostname }}"
+HOST="{{ notify_host | default(inventory_hostname) }}"
 
 notify() {
     local user="$1" ip="$2" time="$3"
@@ -12,7 +12,7 @@ notify() {
 
 {% if notify_ntfy_url %}
     curl -sf \
-      -H "Title: SSH login on {{ inventory_hostname }}" \
+      -H "Title: SSH login on $HOST" \
       -H "Priority: high" \
       -H "Tags: key" \
       -d "$msg" \

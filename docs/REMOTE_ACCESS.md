@@ -11,7 +11,8 @@ router changes are needed.
 > [🖥️ Starting WSL on demand](#️-starting-wsl-on-demand) and [🛰️ Relay design](#️-relay-design-pi-zero-w-not-bought-yet).
 
 **Quick links:** [🗺️ How it works](#️-how-it-works) · [✅ Prerequisites](#-prerequisites) ·
-[🔧 Setup](#-setup) · [🖥️ Starting WSL on demand](#️-starting-wsl-on-demand) ·
+[🔧 Setup](#-setup) · [🪟 Windows and WSL on the tailnet](#-windows-and-wsl-on-the-tailnet) ·
+[🖥️ Starting WSL on demand](#️-starting-wsl-on-demand) ·
 [🚶 Day to day](#-day-to-day) · [🛡️ If the laptop is stolen or hacked](#️-if-the-laptop-is-stolen-or-hacked) ·
 [🧪 Tests](#-tests) · [❓ Open questions](#-open-questions) · [🛰️ Relay design](#️-relay-design-pi-zero-w-not-bought-yet)
 
@@ -23,22 +24,24 @@ router changes are needed.
 Laptop (on the tailnet as you: IdP login with MFA, device approved)
   │  ssh <user>@dev-wsl ── tailnet ACL: only admins' devices reach :22
   ▼
-Main PC (woken on demand) → WSL (started on demand), systemd, tailscaled as dev-wsl (tag:dev-wsl)
-  │  sshd: SSH key, then TOTP code, every login
-  │
-  │  Ansible / kubectl, leaving as tag:dev-wsl
-  ▼
-Homelab nodes (tag:homelab)
+Main PC (woken on demand)
+  ├─ Windows: Tailscale client as tag:dev-pc ── your devices reach only dev_pc_ports; answers MagicDNS for WSL
+  └─ WSL (started on demand), systemd, tailscaled as dev-wsl (tag:dev-wsl)
+       │  sshd: SSH key, then TOTP code, every login
+       │
+       │  Ansible / kubectl, leaving as tag:dev-wsl
+       ▼
+     Homelab nodes (tag:homelab)
 ```
 
 | Layer | What | Why |
 |---|---|---|
-| Network | Tailnet ACL `autogroup:admin → tag:dev-wsl:22`, **device approval** on | Nothing but your own approved, signed-in devices can open a connection |
+| Network | Tailnet ACL `autogroup:admin → tag:dev-wsl:22`, **device approval** on. Windows (`tag:dev-pc`): only `dev_pc_ports` from your devices | Nothing but your own approved, signed-in devices can open a connection, and Windows exposes only the dev ports you chose |
 | Login | OpenSSH in WSL: `AuthenticationMethods publickey,keyboard-interactive`, PAM `pam_google_authenticator` | A fresh second factor on every login; a stolen key alone gets nowhere |
 | Policy | `tailscale/policy.hujson.j2`, pushed by `tailscale_admin.yml` | Policy as code; console edits get overwritten |
 | WSL setup | `controller.yml --tags dev_wsl`; you run `tailscale up` and the TOTP enrolment | WSL is the controller, so you join it by hand and the TOTP secret never touches Ansible |
 | Power | PC off by default; woken, started and stopped on demand, never at boot and never automatically | The PC only runs while you want it to, and a dropped session never kills your work |
-| Detection & response | Login alerts on every SSH login (to build), and a [removal checklist](#️-if-the-laptop-is-stolen-or-hacked) | A login you didn't make stands out, and a lost laptop is cut off from your phone in minutes |
+| Detection & response | Login alerts on every SSH login (dev-wsl now, the relay later), and a [removal checklist](#️-if-the-laptop-is-stolen-or-hacked) | A login you didn't make stands out, and a lost laptop is cut off from your phone in minutes |
 
 > [!NOTE]
 > **Why not Tailscale SSH check mode?** On this plan, check mode re-asks at most every 12h (`checkPeriod` other than
@@ -88,14 +91,19 @@ ansible-playbook playbooks/tailscale_admin.yml -e confirm=true  # apply
 ansible-playbook playbooks/controller.yml --tags dev_wsl -K
 ```
 
+- Checks WSL is in **NAT** networking mode (`wslinfo --networking-mode`) and stops if it's mirrored
+  ([why](#-windows-and-wsl-on-the-tailnet)).
 - Sets `[boot] systemd=true` in `/etc/wsl.conf`. This **doesn't start WSL**, at boot or ever. It only makes systemd
   WSL's init, so whenever WSL does start, `tailscaled` and `sshd` come up with it. If systemd wasn't already running,
   the play stops and asks you to run `wsl --shutdown` from Windows, reopen WSL, and run it again.
 - Installs and starts `tailscaled`. It never creates an auth key.
 - Installs `openssh-server` and `libpam-google-authenticator`. Writes `/etc/ssh/sshd_config.d/00-dev-wsl.conf` (key
-  then TOTP, only `dev_wsl_user`, no root, no passwords) and swaps the password prompt in `/etc/pam.d/sshd` for the
-  TOTP prompt.
-- Ends with a list of whatever manual steps are still missing (steps 3–5).
+  then TOTP, only `dev_wsl_user`, no root, no passwords; sessions dropped about 3 minutes after the laptop goes
+  silent; no agent forwarding or tunnels) and swaps the password prompt in `/etc/pam.d/sshd` for the TOTP prompt.
+- Starts **login alerts**: every accepted SSH login posts to Discord as `dev-wsl` (the nodes' `on-ssh-success`
+  watcher).
+- Ends with a list of whatever manual steps are still missing (steps 3–6), and warns if MagicDNS names stop
+  resolving in WSL.
 
 `dev_wsl_user` defaults to the user running the play; set it in `overrides.yml` if your WSL login differs.
 
@@ -110,7 +118,7 @@ sudo tailscale up --hostname=dev-wsl --advertise-tags=tag:dev-wsl --accept-dns=f
 
 - Open the login link and sign in as yourself. Then approve `dev-wsl` in the admin console.
 - `--accept-dns=false` leaves WSL's DNS alone (`k8s_client` manages `/etc/hosts`, and WSL generates
-  `resolv.conf`). Step 6 confirms the node names still resolve.
+  `resolv.conf`). MagicDNS names keep resolving through the Windows client. Step 7 confirms it.
 - No `--ssh`: sshd answers on 22, not Tailscale SSH.
 
 </details>
@@ -159,15 +167,59 @@ lives only in `~/.google_authenticator`.
 </details>
 
 <details>
-<summary><b>6. Check Ansible still reaches the nodes</b></summary>
+<summary><b>6. Tag the Windows client</b></summary>
+
+In **admin PowerShell** on the PC:
+
+```powershell
+tailscale up --advertise-tags=tag:dev-pc --hostname=dev-pc --unattended --reset
+```
+
+Sign in as yourself, then approve the device in the admin console if asked.
+
+- `--hostname=dev-pc` gives Windows a stable tailnet name (otherwise it's the computer name).
+- `--unattended` keeps the client running with **no one signed in to Windows**, which is the normal state after a
+  remote wake. Without it, MagicDNS for WSL and your dev ports vanish until someone logs in.
+- `--reset` is needed because Windows' `tailscale up` otherwise insists you restate every flag set before.
+  Afterwards, re-tick **Use Tailscale DNS** in the tray menu if it's off (WSL depends on it). Set `dev_pc_ports` to the dev ports your devices should reach, and
+push the policy again (step 1). See [🪟 Windows and WSL on the tailnet](#-windows-and-wsl-on-the-tailnet).
+
+</details>
+
+<details>
+<summary><b>7. Check Ansible still reaches the nodes</b></summary>
 
 ```bash
 ansible-playbook playbooks/cluster_status.yml
 ```
 
-If this fails right after step 3, the `tag:dev-wsl → tag:homelab` rule isn't live. Re-run step 1.
+If this fails right after step 3, the `tag:dev-wsl → tag:homelab` rule isn't live. Re-run step 1. If node names
+don't resolve, the Windows client or its DNS setting is off.
 
 </details>
+
+---
+
+## 🪟 Windows and WSL on the tailnet
+
+The PC runs **two** Tailscale nodes, and both stay on:
+
+| Node | What | Carries |
+|---|---|---|
+| `dev-pc` (`tag:dev-pc`) | The Windows Tailscale client, in unattended mode | Windows apps' tailnet traffic (local dev work), and **MagicDNS for WSL** |
+| `dev-wsl` (`tag:dev-wsl`) | `tailscaled` inside WSL | WSL's tailnet traffic: Ansible, kubectl, and your SSH into WSL |
+
+- **NAT networking mode is required.** WSL's default NAT mode runs it as its own small VM with its own network
+  stack, so the two clients never meet. **Mirrored** mode shares the PC's interfaces, where they clash and WSL's sshd
+  would also listen on the LAN. `controller.yml --tags dev_wsl` checks this and stops on mirrored.
+- **DNS goes through Windows.** WSL runs with `--accept-dns=false` and resolves through Windows, whose client answers
+  MagicDNS. That's how Ansible finds `<node>.<tailnet>.ts.net`. If the Windows client is off, WSL loses those names.
+- **Windows is tagged** so it leaves `autogroup:self`. Untagged, every one of your devices (a stolen laptop included)
+  could reach **every** port on Windows: SMB, RDP, dev servers, and later the relay's sshd on 2222. Tagged:
+  - your devices reach only `dev_pc_ports` (`group_vars/all/main.yml`, e.g. `[8096]`; empty means nothing);
+  - Windows keeps reaching the nodes (`ssh_port`, 22, 6443) and, when you approve it, the site route. WSL's site
+    LAN traffic also goes out through Windows, since WSL doesn't accept routes.
+- The policy's `tests` check that SMB (445), RDP (3389) and 2222 stay closed unless you list them.
 
 ---
 
@@ -239,7 +291,7 @@ What a successful login can reach, so you know what to rotate:
   NOPASSWD.
 - **Windows:** WSL interop lets anything in WSL run Windows programs as your (admin) Windows account and read all of
   `C:`. **Known risk, kept on deliberately**: disabling it (`[interop] enabled=false`) would break Windows tools
-  from WSL day to day.
+  from WSL day to day. Over the tailnet, Windows itself exposes only `dev_pc_ports`.
 - **The relay:** only the six commands. The laptop's login there has no shell and no sudo
   ([Relay design](#the-pieces)).
 
@@ -277,7 +329,11 @@ All of these must pass before you retire Chrome Remote Desktop:
 - [ ] **Removal drill:** with a session open, remove the laptop in the admin console. It can't reach `dev-wsl:22`,
   and the open session drops within a few minutes. Then re-add the laptop.
 - [ ] `ssh -A dev-wsl` gets no forwarded agent (`ssh-add -l` inside says it can't connect).
-- [ ] Once login alerts are built: every login sends one.
+- [ ] Every login to dev-wsl posts a Discord alert naming `dev-wsl`.
+- [ ] `wslinfo --networking-mode` in WSL prints `nat`.
+- [ ] From the laptop, Windows answers only on `dev_pc_ports`: `nc -zv dev-pc <port>` works for a listed port, and
+  445 / 3389 time out.
+- [ ] With both clients up, `ssh <node>.<tailnet>.ts.net` from WSL still resolves and connects.
 
 Once the relay exists (all from offsite, not just the LAN):
 
@@ -301,10 +357,8 @@ Once the relay exists (all from offsite, not just the LAN):
 
 1. **The on-demand task with a passwordless account:** "HomeLab WSL" needs "run whether logged on or not". Add a
    password to the account, or use a dedicated local account. Decide after testing.
-2. **Tailscale on both Windows and WSL:** keep the Windows client only if Windows itself must be on the tailnet (for
-   example for break-glass RDP). Under WSL's **mirrored** networking mode the two clients can conflict, and WSL's sshd
-   would also listen on the PC's LAN address. NAT mode (the default) keeps both apart. Check `networkingMode` in
-   `%UserProfile%\.wslconfig`.
+2. ~~Tailscale on both Windows and WSL~~ **Settled:** both stay on, Windows tagged `tag:dev-pc`, WSL in NAT mode.
+   See [🪟 Windows and WSL on the tailnet](#-windows-and-wsl-on-the-tailnet).
 3. **Break-glass desktop access:** built-in Windows RDP allowed only from the Tailscale interface, or none at all.
 
 4. **Relay: `wsl.exe` from a Windows OpenSSH session.** `wsl-open` checks WSL is ready with short
@@ -469,10 +523,9 @@ The Pi has no case and no power button: it runs whenever it has power, and boots
 
 Security items this doc relies on that aren't in the playbooks yet:
 
-- [ ] **dev-wsl sshd** (`controller.yml --tags dev_wsl`): `ClientAliveInterval 60`, `ClientAliveCountMax 3`,
+- [x] **dev-wsl sshd** (`controller.yml --tags dev_wsl`): `ClientAliveInterval 60`, `ClientAliveCountMax 3`,
   `AllowAgentForwarding no`, `PermitTunnel no`, `LoginGraceTime 30`. TCP forwarding stays on for dev port-forwards.
-- [ ] **Login alerts** on dev-wsl and the relay, reusing `roles/base_hardening`'s `on-ssh-success` watcher
-  (Discord/ntfy on every accepted login).
-- [ ] **Relay:** the `pc` user with `pc-dispatch`, the LAN-only admin user, the same sshd extras as dev-wsl, and
-  removal of the passwordless-sudo file.
+- [x] **Login alerts on dev-wsl**, reusing `roles/base_hardening`'s `on-ssh-success` watcher (Discord).
+- [ ] **Relay:** the `pc` user with `pc-dispatch`, the LAN-only admin user, the same sshd extras and login alerts
+  as dev-wsl, and removal of the passwordless-sudo file.
 - [ ] **Windows:** `pc-control.ps1` and the sshd settings above.

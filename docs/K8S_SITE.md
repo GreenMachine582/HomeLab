@@ -122,6 +122,8 @@ The policy:
 - lets admins reach the nodes on `ssh_port`, 22 and 6443
 - lets WSL on the main PC (`tag:dev-wsl`) reach the nodes the same way, since controller traffic leaves as that tag
   once WSL runs its own `tailscaled`, and lets admins reach WSL on 22 ([REMOTE_ACCESS.md](./REMOTE_ACCESS.md))
+- tags the PC's Windows client `tag:dev-pc`: it keeps reaching the nodes (and the site route), but your devices
+  reach only the ports in `dev_pc_ports` on it
 - makes the site route admins-only, never auto-approved (you approve it per use)
 - stops nodes from connecting to your devices
 

@@ -163,6 +163,34 @@
       tags: [never, dev_wsl]
       when: "'microsoft' in ansible_kernel | lower"
       block:
+        # The Windows Tailscale client stays on (it also answers MagicDNS for
+        # WSL). In NAT mode WSL is its own VM and the two are separate nodes;
+        # in mirrored mode they share the PC's interfaces and clash.
+        - name: "Controller | WSL networking mode"
+          ansible.builtin.command: wslinfo --networking-mode
+          register: _wsl_netmode
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        - name: "Controller | Check WSL is in NAT mode"
+          ansible.builtin.assert:
+            that: _wsl_netmode.rc != 0 or _wsl_netmode.stdout | trim != 'mirrored'
+            fail_msg: >-
+              WSL is in mirrored networking mode, where its tailscaled clashes
+              with the Windows client. Set networkingMode=nat under [wsl2] in
+              %UserProfile%\.wslconfig, run `wsl --shutdown`, reopen WSL and
+              re-run with --tags dev_wsl.
+            quiet: true
+
+        - name: "Controller | Networking mode unknown"
+          ansible.builtin.debug:
+            msg: >-
+              WARNING: wslinfo not found (WSL older than 2.0), so the networking
+              mode wasn't checked. Make sure %UserProfile%\.wslconfig doesn't
+              set networkingMode=mirrored.
+          when: _wsl_netmode.rc != 0
+
         - name: "Controller | Boot WSL with systemd (tailscaled needs it)"
           community.general.ini_file:
             path: /etc/wsl.conf
@@ -200,7 +228,10 @@
             cache_valid_time: 3600
 
         # "00-" so it beats any other drop-in: sshd takes the first value of
-        # each keyword. Both methods are required, in this order.
+        # each keyword. Both methods are required, in this order. ClientAlive*
+        # drops a session about 3 min after its laptop is cut off the tailnet;
+        # no agent forwarding or tunnels so a hacked laptop gets less. TCP
+        # forwarding stays on for dev port-forwards.
         - name: "Controller | sshd: key, then TOTP, for dev_wsl_user only"
           ansible.builtin.copy:
             dest: /etc/ssh/sshd_config.d/00-dev-wsl.conf
@@ -213,6 +244,11 @@
               AuthenticationMethods publickey,keyboard-interactive
               AllowUsers {{ dev_wsl_user }}
               MaxAuthTries 3
+              LoginGraceTime 30
+              ClientAliveInterval 60
+              ClientAliveCountMax 3
+              AllowAgentForwarding no
+              PermitTunnel no
               X11Forwarding no
             owner: root
             group: root
@@ -255,6 +291,49 @@
             state: "{{ 'restarted' if (_wsl_sshd.changed or _wsl_pam_auth.changed or _wsl_pam_totp.changed) else 'started' }}"
           ignore_errors: "{{ ansible_check_mode }}"
 
+        # Every accepted login pings Discord, so one you didn't make stands
+        # out. Same watcher as the nodes (roles/base_hardening), Discord only.
+        - name: "Controller | Login alerts"
+          vars:
+            notify_host: dev-wsl
+            notify_ntfy_url: ""
+            notify_script_dir: /usr/local/lib/homelab/notify
+            _notify_tpl: "{{ playbook_dir }}/../roles/base_hardening/templates/notify"
+          block:
+            - name: "Controller | Notify script directory"
+              ansible.builtin.file:
+                path: "{{ notify_script_dir }}"
+                state: directory
+                owner: root
+                group: root
+                mode: "0755"
+
+            - name: "Controller | SSH login alert script"
+              ansible.builtin.template:
+                src: "{{ _notify_tpl }}/on-ssh-success.sh.j2"
+                dest: "{{ notify_script_dir }}/on-ssh-success.sh"
+                owner: root
+                group: root
+                mode: "0700"
+              register: _wsl_notify_script
+
+            - name: "Controller | SSH login alert unit"
+              ansible.builtin.template:
+                src: "{{ _notify_tpl }}/on-ssh-success.service.j2"
+                dest: /etc/systemd/system/on-ssh-success.service
+                owner: root
+                group: root
+                mode: "0644"
+              register: _wsl_notify_unit
+
+            - name: "Controller | Enable and (re)start the login alerts"
+              ansible.builtin.systemd:
+                name: on-ssh-success.service
+                enabled: true
+                daemon_reload: true
+                state: "{{ 'restarted' if (_wsl_notify_script.changed or _wsl_notify_unit.changed) else 'started' }}"
+              ignore_errors: "{{ ansible_check_mode }}"
+
         - name: "Controller | Look up dev_wsl_user"
           ansible.builtin.getent:
             database: passwd
@@ -273,12 +352,35 @@
           failed_when: false
           check_mode: false
 
+        # WSL keeps --accept-dns=false, so MagicDNS names (which Ansible uses
+        # for the nodes) resolve through the Windows client.
+        - name: "Controller | Check MagicDNS resolves through Windows"
+          ansible.builtin.command: "getent hosts {{ groups['k8s'] | first }}.{{ tailscale_tailnet }}.ts.net"
+          register: _wsl_magicdns
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        # Through WSL interop; dev-wsl can't see dev-pc as a peer (no rule
+        # between them), so ask the Windows client itself.
+        - name: "Controller | Check the Windows client is tagged tag:dev-pc"
+          ansible.builtin.command:
+            argv: ["/mnt/c/Program Files/Tailscale/tailscale.exe", status, --json]
+          register: _win_ts
+          become: false
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
         - name: "Controller | Next steps"
           ansible.builtin.debug:
             msg: "{{ _steps | select | list or ['All set: ssh ' ~ dev_wsl_user ~ '@dev-wsl from your laptop.'] }}"
           vars:
             _on_tailnet: "{{ _wsl_ts.rc == 0 and (_wsl_ts.stdout | from_json).BackendState | default('') == 'Running' }}"
+            _win_tagged: "{{ _win_ts.rc == 0 and 'tag:dev-pc' in ((_win_ts.stdout | from_json).Self.Tags | default([])) }}"
             _steps:
               - "{{ '' if _on_tailnet else 'Run: sudo tailscale up --hostname=dev-wsl --advertise-tags=tag:dev-wsl --accept-dns=false, then approve dev-wsl in the admin console.' }}"
               - "{{ '' if _wsl_auth_files.results[0].stat.exists else 'Add the laptop public key to ~/.ssh/authorized_keys.' }}"
               - "{{ '' if _wsl_auth_files.results[1].stat.exists else 'Enrol TOTP as ' ~ dev_wsl_user ~ ': google-authenticator -t -d -f -r 3 -R 30 -w 3' }}"
+              - "{{ '' if _win_tagged else 'Tag the Windows client: in admin PowerShell run tailscale up --advertise-tags=tag:dev-pc --hostname=dev-pc --unattended --reset, sign in, then approve it (docs/REMOTE_ACCESS.md).' }}"
+              - "{{ '' if _wsl_magicdns.rc == 0 else 'MagicDNS names do not resolve in WSL: is the Windows Tailscale client running with Use Tailscale DNS on?' }}"

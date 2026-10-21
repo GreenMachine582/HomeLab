@@ -39,6 +39,11 @@ tailscale_tailnet: "EDIT_BEFORE_USE"   # short tailnet name, e.g. mango-beaver (
 # set it in overrides.yml if that differs.
 dev_wsl_user: "{{ lookup('ansible.builtin.env', 'USER') }}"
 
+# TCP ports your devices may reach on the Windows PC (tag:dev-pc) over the
+# tailnet, e.g. [3000, 8000] for dev servers. Empty: nothing reaches Windows.
+# Set in overrides.yml (tailscale/policy.hujson.j2, docs/REMOTE_ACCESS.md).
+dev_pc_ports: [8096]
+
 # ── System ────────────────────────────────────────────────────────────────────
 ssh_port: 22
 fallback_ssh_port: 22
