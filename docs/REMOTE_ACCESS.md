@@ -12,8 +12,8 @@ router changes are needed.
 
 **Quick links:** [🗺️ How it works](#️-how-it-works) · [✅ Prerequisites](#-prerequisites) ·
 [🔧 Setup](#-setup) · [🖥️ Starting WSL on demand](#️-starting-wsl-on-demand) ·
-[🚶 Day to day](#-day-to-day) · [🧪 Tests](#-tests) · [❓ Open questions](#-open-questions) ·
-[🛰️ Relay design](#️-relay-design-pi-zero-w-not-bought-yet)
+[🚶 Day to day](#-day-to-day) · [🛡️ If the laptop is stolen or hacked](#️-if-the-laptop-is-stolen-or-hacked) ·
+[🧪 Tests](#-tests) · [❓ Open questions](#-open-questions) · [🛰️ Relay design](#️-relay-design-pi-zero-w-not-bought-yet)
 
 ---
 
@@ -38,6 +38,7 @@ Homelab nodes (tag:homelab)
 | Policy | `tailscale/policy.hujson.j2`, pushed by `tailscale_admin.yml` | Policy as code; console edits get overwritten |
 | WSL setup | `controller.yml --tags dev_wsl`; you run `tailscale up` and the TOTP enrolment | WSL is the controller, so you join it by hand and the TOTP secret never touches Ansible |
 | Power | PC off by default; woken, started and stopped on demand, never at boot and never automatically | The PC only runs while you want it to, and a dropped session never kills your work |
+| Detection & response | Login alerts on every SSH login (to build), and a [removal checklist](#️-if-the-laptop-is-stolen-or-hacked) | A login you didn't make stands out, and a lost laptop is cut off from your phone in minutes |
 
 > [!NOTE]
 > **Why not Tailscale SSH check mode?** On this plan, check mode re-asks at most every 12h (`checkPeriod` other than
@@ -54,8 +55,14 @@ Homelab nodes (tag:homelab)
 ## ✅ Prerequisites
 
 - [ ] **Device approval** is on: admin console → Settings → Device management.
+- [ ] **Node key expiry** is on for the laptop (never "Disable key expiry"), and the tailnet's key expiry is set to
+  **30 days** (Settings → Device management). A stolen laptop then drops off the tailnet by itself; the cost is a
+  monthly IdP + MFA re-auth.
 - [ ] The laptop is on the tailnet, signed in as you (an admin), and approved.
+- [ ] The laptop has **full-disk encryption** and locks itself when idle.
 - [ ] An authenticator app on your phone (any TOTP app).
+- [ ] You can sign in to the **Tailscale admin console and your IdP from your phone**. That's how you cut off a lost
+  laptop ([checklist](#️-if-the-laptop-is-stolen-or-hacked)).
 - [ ] Keep your current access method (Chrome Remote Desktop) until every [test](#-tests) passes.
 
 ---
@@ -111,7 +118,8 @@ sudo tailscale up --hostname=dev-wsl --advertise-tags=tag:dev-wsl --accept-dns=f
 <details>
 <summary><b>4. Add the laptop's key</b></summary>
 
-On the laptop, make a key **with a passphrase** just for this:
+On the laptop, make a key **with a strong, unique passphrase**, used only for dev-wsl. One key per destination
+means you can revoke one without the other:
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/dev-wsl -C "laptop → dev-wsl"
@@ -126,7 +134,12 @@ Host dev-wsl
   User <user>
   IdentityFile ~/.ssh/dev-wsl
   IdentitiesOnly yes
+  # the agent forgets the key after an hour
+  AddKeysToAgent 1h
+  ForwardAgent no
 ```
+
+Keep the TOTP secret and scratch codes off the laptop's disk (your password manager is fine).
 
 </details>
 
@@ -169,7 +182,9 @@ Nothing starts WSL at boot, and the PC isn't kept awake. Two things have to happ
 | | Wake the PC | Start WSL and hold it open |
 |---|---|---|
 | **Today** | You: at the PC, or Chrome Remote Desktop | Open a WSL terminal and leave it open (or run `wsl.exe -d <Distro> --exec sleep infinity` in a minimised window) |
-| **With the relay** | `ssh -t wol-relay pc-start` | `ssh -t wol-relay wsl-open`, which starts the on-demand task "HomeLab WSL" ([Relay design](#️-relay-design-pi-zero-w-not-bought-yet)) |
+| **With the relay** | `ssh wol-relay pc-start` | `ssh wol-relay wsl-open`, which starts the on-demand task "HomeLab WSL" ([Relay design](#️-relay-design-pi-zero-w-not-bought-yet)) |
+
+`<Distro>` is the WSL distro's name from `wsl -l -v` (the default here is `Ubuntu`).
 
 **Stopping** is also explicit: `wsl-close`, `pc-shutdown`, `pc-sleep` or `pc-restart` through the relay (today: by
 hand). A dropped, expired or closed SSH session never shuts down the PC or WSL.
@@ -191,6 +206,61 @@ ssh dev-wsl
 1. Unlock the key (its passphrase, or your SSH agent).
 2. Enter the current code from your authenticator app when asked for `Verification code:`.
 
+With the relay, a full session is:
+
+```bash
+ssh wol-relay pc-start      # wake the PC          (key + TOTP)
+ssh wol-relay wsl-open      # start WSL            (key + TOTP)
+ssh dev-wsl                 # work                 (key + TOTP)
+ssh wol-relay wsl-close     # stop WSL             (key + TOTP)
+ssh wol-relay pc-shutdown   # or pc-sleep          (key + TOTP)
+```
+
+Every connection asks for a code. That's deliberate: there's no connection sharing (`ControlMaster`), because a
+lingering shared connection would let malware on the laptop run commands without one.
+
+---
+
+## 🛡️ If the laptop is stolen or hacked
+
+### What an attacker needs
+
+| Scenario | They have | They still need |
+|---|---|---|
+| **Stolen** (off or locked) | Tailnet membership (until removed or its key expires), the encrypted key files | The laptop's disk-encryption/login password, each key's passphrase, **and** a TOTP code from your phone |
+| **Hacked** (malware while you use it) | Anything you type (passphrases), a loaded agent, any open session | TOTP codes are single-use, so a captured code can't be replayed, but an **open session can be ridden**. Hence the short agent lifetime, no connection sharing, login alerts, and the limits on what each login can reach |
+
+### Blast radius
+
+What a successful login can reach, so you know what to rotate:
+
+- **dev-wsl** is the homelab's Ansible controller: `vault.yml` and `.vault_pass`, the nodes' SSH key, the kubeconfig,
+  the SOPS age key, and the break-glass CA (passphrase-protected). `sudo` in WSL keeps its password; never make it
+  NOPASSWD.
+- **Windows:** WSL interop lets anything in WSL run Windows programs as your (admin) Windows account and read all of
+  `C:`. **Known risk, kept on deliberately**: disabling it (`[interop] enabled=false`) would break Windows tools
+  from WSL day to day.
+- **The relay:** only the six commands. The laptop's login there has no shell and no sudo
+  ([Relay design](#the-pieces)).
+
+### Response checklist
+
+From your phone, as soon as you notice:
+
+1. **Tailscale admin console → remove the laptop.** It loses tailnet access at once. Its open SSH sessions stall,
+   and sshd drops them within about 3 minutes (`ClientAliveInterval 60`, `ClientAliveCountMax 3`).
+2. **Your IdP:** sign out all sessions and change the password.
+3. **Look for logins you didn't make:** the login alerts, and `journalctl -u ssh` / `last` on dev-wsl and the relay.
+
+Back at the PC:
+
+4. Remove the laptop's keys from `~/.ssh/authorized_keys` on dev-wsl and the relay. Re-enrol TOTP
+   (`google-authenticator`) only if the phone was lost too.
+5. **If anyone got in**, treat everything dev-wsl holds as exposed and rotate it: the vault password and its
+   secrets, the nodes' SSH key, cluster credentials, the age key, the Tailscale OAuth clients, and the Cloudflare
+   token (homelab-cluster `docs/SECRETS.md` has the recreate steps). Check Windows too, given interop.
+6. A replacement laptop gets **new** keys, then device approval as usual.
+
 ---
 
 ## 🧪 Tests
@@ -204,8 +274,10 @@ All of these must pass before you retire Chrome Remote Desktop:
 - [ ] `cluster_status.yml` from WSL still reaches every node.
 - [ ] WSL starts only on demand: after a reboot, `dev-wsl` stays offline until something starts WSL, then
   `tailscaled` and `sshd` come up without any manual step inside WSL.
-- [ ] After you remove the laptop from the tailnet, it can't reach `dev-wsl:22`. Existing sessions are **not** killed
-  automatically, so end them by hand.
+- [ ] **Removal drill:** with a session open, remove the laptop in the admin console. It can't reach `dev-wsl:22`,
+  and the open session drops within a few minutes. Then re-add the laptop.
+- [ ] `ssh -A dev-wsl` gets no forwarded agent (`ssh-add -l` inside says it can't connect).
+- [ ] Once login alerts are built: every login sends one.
 
 Once the relay exists (all from offsite, not just the LAN):
 
@@ -214,6 +286,11 @@ Once the relay exists (all from offsite, not just the LAN):
 - [ ] `wsl-close`, `pc-sleep`, `pc-restart` and `pc-shutdown` each do what they say.
 - [ ] A dropped or closed SSH session leaves the PC and WSL running.
 - [ ] The Pi's trigger key is refused for anything outside `pc-control.ps1`'s allow-list (e.g. `ssh … whoami`).
+- [ ] `ssh wol-relay` with no command, `ssh wol-relay bash` and `ssh wol-relay whoami` are all refused (the `pc`
+  user only runs the six commands).
+- [ ] The relay's admin user is refused over the tailnet, even with its key.
+- [ ] Windows sshd on 2222 refuses password logins.
+- [ ] The removal drill above also cuts off the relay.
 - [ ] The PC is still found after its IP address changes.
 - [ ] After a power cut, the relay rejoins the tailnet by itself and does **not** wake the PC.
 - [ ] A hung Pi reboots itself (hardware watchdog).
@@ -275,8 +352,9 @@ Stop-Service sshd; Set-Service sshd -StartupType Manual; Remove-NetFirewallRule 
 - **Finding the PC:** by its **MAC address** only. There's no router access, so no DHCP reservations; the MAC is
   needed for Wake-on-LAN anyway. Each command looks up the PC's current IP with `arp-scan --localnet`.
 - **Windows account:** admin, so the Pi's key goes in `C:\ProgramData\ssh\administrators_authorized_keys`.
-- **Ansible to the relay:** TOTP is skipped **only from the home LAN** (`Match User <relay user> Address
-  <home_lan_subnet>` → key only). Over the tailnet it's key + TOTP.
+- **Ansible to the relay:** a separate admin user, key-only and accepted **only from the home LAN**. The laptop's
+  `pc` user (key + TOTP over the tailnet) can only run the six commands, so a stolen or hacked laptop never reaches
+  a shell or sudo on the Pi.
 - **No automatic shutdown:** the laptop stops WSL and the PC explicitly. A dropped session never shuts anything down.
 - **Relay reboots never wake the PC** (`wol_wake_at_boot: false`), and the Pi is kept always on
   ([Keeping the relay on](#keeping-the-relay-on)).
@@ -289,9 +367,9 @@ The design so far. Nothing here is built yet; [open question 4](#-open-questions
 
 ```text
 Laptop
-  │  ssh -t wol-relay <command> ── tailnet ACL: admins → tag:wol-relay:22; key + TOTP
+  │  ssh wol-relay <command> ── tailnet ACL: admins → tag:wol-relay:22; user pc, key + TOTP
   ▼
-wol-relay (Pi Zero W, tag:wol-relay, home LAN, Wi-Fi)
+wol-relay (Pi Zero W, tag:wol-relay, home LAN, Wi-Fi) → pc-dispatch (the six commands only)
   │  pc-start: Wake-on-LAN magic packets → PC's MAC; poll until Windows answers on 2222
   │  others:   find the PC's IP by MAC (arp-scan), then
   │            ssh -i ~/.ssh/pc-trigger -p 2222 <winuser>@<pc ip> <action>   (LAN only)
@@ -304,7 +382,7 @@ Laptop: ssh dev-wsl ── key + TOTP
 
 ### The six commands
 
-Run from the laptop as `ssh -t wol-relay <command>`:
+Run from the laptop as `ssh wol-relay <command>`:
 
 | Command | What it does | How |
 |---|---|---|
@@ -313,22 +391,23 @@ Run from the laptop as `ssh -t wol-relay <command>`:
 | `pc-restart` | Restart | `shutdown /r /t 60`. WSL isn't started afterwards: run `wsl-open` |
 | `pc-sleep` | Sleep | `rundll32 powrprof.dll,SetSuspendState 0,1,0`. Needs hibernation off (`powercfg /h off`), or it hibernates instead. `pc-start` wakes it |
 | `wsl-open` | Start WSL and keep it running | Starts the on-demand task "HomeLab WSL", waits until `tailscaled` and `sshd` are active, reports |
-| `wsl-close` | Stop WSL cleanly | Stops the task, then `wsl.exe --terminate <Distro>` |
+| `wsl-close` | Stop WSL cleanly | Stops the task, then `wsl.exe --terminate <Distro>`. **Never `wsl --shutdown`**: that stops every distro, including `docker-desktop` |
 
-Typical session: `pc-start`, `wsl-open`, `ssh dev-wsl` … then `wsl-close` and `pc-shutdown` (or `pc-sleep`).
+Typical session: [Day to day](#-day-to-day). Every command asks for a TOTP code, with no connection sharing on
+purpose.
 
-> [!TIP]
-> Each `ssh wol-relay` asks for a TOTP code. Reuse one connection for a run of commands with this in the laptop's
-> `~/.ssh/config`:
->
-> ```text
-> Host wol-relay
->   ControlMaster auto
->   ControlPath ~/.ssh/cm-%r@%h:%p
->   ControlPersist 10m
-> ```
->
-> `ssh dev-wsl` still asks separately.
+The laptop's `~/.ssh/config` gets its own key for the relay, the same way as dev-wsl:
+
+```text
+Host wol-relay
+  HostName wol-relay
+  User pc
+  IdentityFile ~/.ssh/wol-relay
+  IdentitiesOnly yes
+  # the agent forgets the key after an hour
+  AddKeysToAgent 1h
+  ForwardAgent no
+```
 
 ### The pieces
 
@@ -336,15 +415,24 @@ Typical session: `pc-start`, `wsl-open`, `ssh dev-wsl` … then `wsl-close` and 
 - **The relay:**
   - Raspberry Pi OS Lite 32-bit (ARMv6), on Wi-Fi. Tailscale tagged `tag:wol-relay`, joined by hand
     (`tailscale up`, then approve), the same way as WSL.
-  - The same key + TOTP sshd as WSL, through a shared role extracted from `controller.yml`, plus the home-LAN
-    key-only exception for Ansible.
+  - The same key + TOTP sshd as WSL, through a shared role extracted from `controller.yml`.
+  - **Two users:**
+    - **`pc`**, for the laptop: key + TOTP, and its `authorized_keys` entry is
+      `restrict,command="/usr/local/bin/pc-dispatch" ssh-ed25519 …`. `pc-dispatch` reads `$SSH_ORIGINAL_COMMAND` and
+      runs only the six commands; anything else is refused and logged. No shell, no sudo, no forwarding.
+    - **An admin user**, for Ansible: key-only, accepted **only from the home LAN** (`AllowUsers pc
+      <admin>@<home_lan_subnet>`). Raspberry Pi OS's passwordless-sudo file is removed, so sudo needs a password
+      (`oob.yml -K`).
   - Its own `oob` inventory group, outside every Kubernetes group. It never joins the cluster.
   - The six commands in `/usr/local/bin`, sharing one helper: find the PC's IP by MAC (`arp-scan --localnet`), then
     call `pc-control` with the trigger key. `pc-start` reuses the Wake-on-LAN logic in `roles/wake_on_lan`.
-  - A trigger keypair generated on the Pi, so the private key never leaves it.
+  - **The trigger key** is generated on the Pi and never leaves it. Even if the Pi is compromised, Windows only lets
+    that key run `pc-control.ps1`'s allow-list, and only from the home LAN.
 - **Windows:**
-  - OpenSSH Server on **port 2222**, key-only, with its firewall rule limited to `-RemoteAddress LocalSubnet`. Not
-    22: WSL's localhost forwarding would clash with a Windows sshd on 22.
+  - OpenSSH Server on **port 2222**, with its firewall rule limited to `-RemoteAddress LocalSubnet`. Not 22: WSL's
+    localhost forwarding would clash with a Windows sshd on 22. In `C:\ProgramData\ssh\sshd_config`:
+    `PasswordAuthentication no`, `AllowUsers <winuser>`, `AllowTcpForwarding no`. Keep the service **stopped
+    (Manual)** until the relay exists.
   - The Pi's key in `C:\ProgramData\ssh\administrators_authorized_keys` (admin account) as
     `restrict,from="<home LAN CIDR>",command="powershell -NoProfile -File C:\HomeLab\pc-control.ps1" ssh-ed25519 …`.
     The file must be readable only by Administrators and SYSTEM, or sshd ignores it:
@@ -376,3 +464,15 @@ The Pi has no case and no power button: it runs whenever it has power, and boots
 - **NIC:** "Wake on Magic Packet" on, and allow it to wake the PC (Device Manager → the adapter → Power Management).
 - **Windows:** Fast Startup off; hibernation off (`powercfg /h off`) so `pc-sleep` sleeps rather than hibernates.
 - **Network:** wired Ethernet. Record the PC's MAC address (`getmac /v`): the relay finds and wakes the PC by it.
+
+### To build
+
+Security items this doc relies on that aren't in the playbooks yet:
+
+- [ ] **dev-wsl sshd** (`controller.yml --tags dev_wsl`): `ClientAliveInterval 60`, `ClientAliveCountMax 3`,
+  `AllowAgentForwarding no`, `PermitTunnel no`, `LoginGraceTime 30`. TCP forwarding stays on for dev port-forwards.
+- [ ] **Login alerts** on dev-wsl and the relay, reusing `roles/base_hardening`'s `on-ssh-success` watcher
+  (Discord/ntfy on every accepted login).
+- [ ] **Relay:** the `pc` user with `pc-dispatch`, the LAN-only admin user, the same sshd extras as dev-wsl, and
+  removal of the passwordless-sudo file.
+- [ ] **Windows:** `pc-control.ps1` and the sshd settings above.
