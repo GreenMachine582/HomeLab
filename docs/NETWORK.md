@@ -272,7 +272,7 @@ console: the next push overwrites it. Summary:
 when you need the site LAN and disable it afterwards, so that access is off by default. SSH port forwarding is off on
 the nodes (`ssh_allow_tcp_forwarding`), which leaves the route as the only way in. The site
 route must never overlap the home LAN; the `tailscale` role refuses to advertise `home_lan_subnet`. See
-[K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md) for the remote-site access paths, including break-glass SSH certificates.
+[K8S_SITE.md](./K8S_SITE.md) for the remote-site access paths, including break-glass SSH certificates.
 
 ### Key Rotation
 

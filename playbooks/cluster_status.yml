@@ -654,7 +654,7 @@
     gateway_lan_ip: 192.168.50.240
     gateway_test_host: whoami.home.green-tech-hub.com
     # From home the site LAN is only reachable while laptop-01's subnet route
-    # is approved (docs/K8S_SITE_MOVE.md § Site LAN). Probe the API on its LAN
+    # is approved (docs/K8S_SITE.md § Site LAN). Probe the API on its LAN
     # IP to tell "route off" from "Gateway broken".
     _site_probe_ip: "{{ hostvars[groups['k8s_control_plane'][0]]['node_ip'] }}"
 

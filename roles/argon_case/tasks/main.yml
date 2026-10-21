@@ -7,7 +7,7 @@
 # argononed.service. Note: it downloads its helper scripts from
 # download.argon40.com without checksums; only argon1.sh itself is pinned.
 # Manual: set the case's power jumper to "always on" so the Pi boots after
-# a power cut (docs/K8S_SITE_MOVE.md).
+# a power cut (docs/K8S_SITE.md).
 
 - name: "Argon | Assert a supported case"
   ansible.builtin.assert:

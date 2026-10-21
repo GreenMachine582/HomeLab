@@ -117,7 +117,7 @@
              'WARNING: k8s-api (' ~ k8s_control_plane_ip ~ ') does not answer. Is the cluster up, and is that address reachable from here?' }}
       tags: [controller, client]
 
-    # Break-glass SSH user CA (docs/K8S_SITE_MOVE.md). Only with --tags ssh_ca.
+    # Break-glass SSH user CA (docs/K8S_SITE.md). Only with --tags ssh_ca.
     # The private key stays here; bootstrap.yml installs the public half on
     # the nodes; scripts/sign-breakglass.sh signs one-hour certificates.
     - name: "Controller | Break-glass SSH user CA"

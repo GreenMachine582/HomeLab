@@ -2,7 +2,7 @@
 
 Runbook for `playbooks/bootstrap.yml`: takes a freshly installed node to a hardened, key-only host on the tailnet. Part
 of milestone M1 in the Kubernetes migration. Next, [K8S_CLUSTER.md](./K8S_CLUSTER.md) (`playbooks/cluster.yml`)
-builds the cluster on these nodes (M2), and [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md) covers running them at the
+builds the cluster on these nodes (M2), and [K8S_SITE.md](./K8S_SITE.md) covers running them at the
 remote site.
 
 Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the only Ansible controller.
@@ -114,18 +114,18 @@ It prompts once, hidden, for the install user's password, if any targeted node i
    cleanly at 15% battery.
    **`wake_on_lan`** (tag `wol`): arms Wake-on-LAN on nodes with `wol_mac` (laptop-01, which has no AC power-on), and
    has the Pis wake them after every boot. `playbooks/wake.yml` wakes them on demand and waits for SSH. See
-   [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md).
+   [K8S_SITE.md](./K8S_SITE.md).
 7. **`tailscale`**: installs it from the Debian repo, then joins the tailnet with a freshly minted, single-use,
    tagged auth key. It also applies `tailscale_advertise_routes` (laptop-01's site subnet route).
    > **Subnet route approval.** Advertising the route doesn't enable it: it shows as *Awaiting Approval* under the
    > machine's **Subnets** in the Tailscale admin console until someone approves it. The policy never
-   > auto-approves it, and it's left unapproved while nothing needs it (see "Router UI" in K8S_SITE_MOVE.md). Everything here reaches the nodes by MagicDNS name, and an unapproved route
+   > auto-approves it, and it's left unapproved while nothing needs it (see "Router UI" in K8S_SITE.md). Everything here reaches the nodes by MagicDNS name, and an unapproved route
    > exposes less of the site LAN. Approve it only when a tailnet device at home has to reach site LAN IPs
    > (`192.168.50.x`) directly, and check that no Tailscale client *on the site LAN* accepts routes (Windows and
    > macOS do by default), or it would send local LAN traffic via laptop-01. The k8s nodes don't accept routes
    > (`tailscale_accept_routes: false`), so approving it doesn't change cluster traffic.
    **`node_network`**: Wi-Fi off where `node_disable_wifi`, and a static `node_ip` when `node_network_static`
-   (remote site, [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md)). Reboots the node once if its address changes.
+   (remote site, [K8S_SITE.md](./K8S_SITE.md)). Reboots the node once if its address changes.
 8. **`firewall`**: UFW default-deny inbound; SSH allowed from the LAN and the tailnet. A 5-minute auto-rollback guards
    against lockout.
 

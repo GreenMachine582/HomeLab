@@ -55,7 +55,7 @@ GitHub main ──────────────► Flux        everything
 | Tailscale down on a node    | Break-glass: RDP to the site PC, SSH over the LAN with a one-hour certificate |
 | laptop-01 off               | `playbooks/wake.yml` (Wake-on-LAN from a Pi). The Pis also wake it after every boot |
 
-Details: [docs/K8S_SITE_MOVE.md](./docs/K8S_SITE_MOVE.md).
+Details: [docs/K8S_SITE.md](./docs/K8S_SITE.md).
 
 </details>
 
@@ -101,7 +101,7 @@ ansible-playbook playbooks/cluster_status.yml         # 🩺 read-only health re
 |---|---|---|
 | 🛡️ | [K8S_BOOTSTRAP.md](./docs/K8S_BOOTSTRAP.md) | Preparing nodes, adding a fresh node at the site |
 | ☸️ | [K8S_CLUSTER.md](./docs/K8S_CLUSTER.md) | Building the cluster, Flux, etcd backups and restore, troubleshooting |
-| 🏞️ | [K8S_SITE_MOVE.md](./docs/K8S_SITE_MOVE.md) | Running at the remote site: access paths, site LAN, router UI, break-glass |
+| 🏞️ | [K8S_SITE.md](./docs/K8S_SITE.md) | The remote site: access paths, site LAN, router UI, power and wake-up, break-glass, one-time setup, moving to another site |
 | 🤝 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Branches, signed commits, Conventional Commits, Ansible style |
 | 🧩 | [homelab-cluster docs](https://github.com/GreenMachine582/homelab-cluster/tree/main/docs) | Adding a service, secrets, M4 plan + Cloudflare setup |
 

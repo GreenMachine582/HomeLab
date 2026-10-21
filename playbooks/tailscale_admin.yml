@@ -14,7 +14,7 @@
 # "Policy File" (write) and "Devices: Core" (write), in vault.yml as
 # vault_tailscale_admin_oauth_client_id / _secret. Optional in overrides.yml:
 # tailscale_admin_login (your login email, enables the policy's tests).
-# See docs/K8S_SITE_MOVE.md.
+# See docs/K8S_SITE.md.
 
 - name: "Tailscale admin | Policy and devices"
   hosts: localhost
