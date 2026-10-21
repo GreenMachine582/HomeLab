@@ -9,6 +9,10 @@
 		// WSL on the main PC (the Ansible controller), reached from your
 		// laptop over SSH (docs/REMOTE_ACCESS.md).
 		"tag:dev-wsl": ["autogroup:admin"],
+		// The Windows Tailscale client on the same PC. Tagged so it leaves
+		// autogroup:self: otherwise every one of your devices (a stolen laptop
+		// included) could reach every port on Windows.
+		"tag:dev-pc": ["autogroup:admin"],
 	},
 
 	"acls": [
@@ -29,13 +33,24 @@
 		// can't re-ask more often than every 12h on this plan, and it skips
 		// sshd's PAM, so the TOTP prompt would never run.
 		{"action": "accept", "src": ["autogroup:admin"], "dst": ["tag:dev-wsl:22"]},
+
+		// Windows keeps the access you had from it before it was tagged. Same
+		// machine as dev-wsl, which WSL interop makes equivalent anyway.
+		{"action": "accept", "src": ["tag:dev-pc"], "dst": ["tag:homelab:{{ ssh_port }},22,6443"]},
+{% if dev_pc_ports | default([]) | length > 0 %}
+
+		// Your devices reach only these dev ports on Windows (dev_pc_ports).
+		{"action": "accept", "src": ["autogroup:admin"], "dst": ["tag:dev-pc:{{ dev_pc_ports | join(',') }}"]},
+{% endif %}
 {% if tailscale_site_route %}
 
 		// Admins reach the site LAN through laptop-01's subnet route (router
 		// UI, nodes not yet on the tailnet). Deliberately not auto-approved:
 		// approve the route in the console when needed and disable it after,
-		// so site LAN access is off by default (docs/K8S_SITE.md).
-		{"action": "accept", "src": ["autogroup:admin"], "dst": ["{{ tailscale_site_route }}:*"]},
+		// so site LAN access is off by default (docs/K8S_SITE.md). Windows
+		// too: WSL doesn't accept routes, so its site LAN traffic goes out
+		// through Windows as tag:dev-pc.
+		{"action": "accept", "src": ["autogroup:admin", "tag:dev-pc"], "dst": ["{{ tailscale_site_route }}:*"]},
 {% endif %}
 		// Nothing else: homelab nodes can't initiate connections to your devices.
 	],
@@ -52,8 +67,20 @@
 			"accept": ["tag:homelab:{{ ssh_port }}", "tag:homelab:6443"],
 		},
 		{
+			"src": "tag:dev-pc",
+			"accept": ["tag:homelab:{{ ssh_port }}", "tag:homelab:6443"],
+		},
+		{
+			// Windows exposes nothing but dev_pc_ports: no SMB, RDP or sshd.
+			"src": "{{ tailscale_admin_login }}",
+{% if dev_pc_ports | default([]) | length > 0 %}
+			"accept": ["tag:dev-pc:{{ dev_pc_ports | first }}"],
+{% endif %}
+			"deny": [{% for p in [445, 3389, 2222] if p not in dev_pc_ports | default([]) %}"tag:dev-pc:{{ p }}", {% endfor %}],
+		},
+		{
 			"src": "tag:homelab",
-			"deny": ["{{ tailscale_admin_login }}:22", "tag:dev-wsl:22"],
+			"deny": ["{{ tailscale_admin_login }}:22", "tag:dev-wsl:22", "tag:dev-pc:445"],
 		},
 	],
 {% endif %}
