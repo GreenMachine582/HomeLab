@@ -34,6 +34,11 @@ tailscale_ip_svc_03:  "EDIT_BEFORE_USE"
 
 tailscale_tailnet: "EDIT_BEFORE_USE"   # short tailnet name, e.g. mango-beaver (Tailscale admin console → DNS)
 
+# The only WSL user sshd lets in from your laptop (controller.yml --tags
+# dev_wsl, docs/REMOTE_ACCESS.md). Defaults to the user running the play;
+# set it in overrides.yml if that differs.
+dev_wsl_user: "{{ lookup('ansible.builtin.env', 'USER') }}"
+
 # ── System ────────────────────────────────────────────────────────────────────
 ssh_port: 22
 fallback_ssh_port: 22

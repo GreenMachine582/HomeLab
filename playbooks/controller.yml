@@ -13,6 +13,9 @@
 # and age (homelab-cluster secrets), cloudflared (the tunnel), the k8s-api
 # hosts entry, and KUBECONFIG=~/.kube/homelab.conf in ~/.bashrc.
 # See docs/K8S_CLUSTER.md.
+#
+# Opt-in: --tags ssh_ca (break-glass SSH CA, docs/K8S_SITE.md) and
+# --tags dev_wsl (tailscaled + key/TOTP sshd in WSL, docs/REMOTE_ACCESS.md).
 
 - name: "Controller | Tooling for running the homelab"
   hosts: localhost
@@ -150,3 +153,132 @@
             msg: >-
               CA at {{ _ca_key }}(.pub). Back up the private key offline with the
               age key. Run bootstrap.yml to install the public key on the nodes.
+
+    # SSH from your laptop into WSL (docs/REMOTE_ACCESS.md). Only with
+    # --tags dev_wsl. tailscaled puts WSL on the tailnet, where the policy
+    # lets only your devices reach port 22; sshd then wants a key and a TOTP
+    # code on every login. You run `tailscale up` and the TOTP enrolment
+    # yourself, so no pre-approved auth key or TOTP secret goes near Ansible.
+    - name: "Controller | SSH into WSL from your laptop"
+      tags: [never, dev_wsl]
+      when: "'microsoft' in ansible_kernel | lower"
+      block:
+        - name: "Controller | Boot WSL with systemd (tailscaled needs it)"
+          community.general.ini_file:
+            path: /etc/wsl.conf
+            section: boot
+            option: systemd
+            value: "true"
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: "Controller | Check systemd is running"
+          ansible.builtin.assert:
+            that: ansible_service_mgr == 'systemd'
+            fail_msg: >-
+              systemd isn't PID 1 yet. From Windows run `wsl --shutdown`,
+              reopen WSL, then re-run with --tags dev_wsl.
+            quiet: true
+
+        - name: "Controller | Install and start tailscaled"
+          ansible.builtin.include_role:
+            name: tailscale
+            apply:
+              tags: [dev_wsl]
+          vars:
+            tailscale_up: false
+            tailscale_repo_distro: "{{ ansible_distribution | lower }}"
+
+        - name: "Controller | OpenSSH server and the TOTP PAM module"
+          ansible.builtin.apt:
+            name:
+              - openssh-server
+              - libpam-google-authenticator
+            state: present
+            update_cache: true
+            cache_valid_time: 3600
+
+        # "00-" so it beats any other drop-in: sshd takes the first value of
+        # each keyword. Both methods are required, in this order.
+        - name: "Controller | sshd: key, then TOTP, for dev_wsl_user only"
+          ansible.builtin.copy:
+            dest: /etc/ssh/sshd_config.d/00-dev-wsl.conf
+            content: |
+              # Managed by playbooks/controller.yml --tags dev_wsl
+              PermitRootLogin no
+              PasswordAuthentication no
+              KbdInteractiveAuthentication yes
+              UsePAM yes
+              AuthenticationMethods publickey,keyboard-interactive
+              AllowUsers {{ dev_wsl_user }}
+              MaxAuthTries 3
+              X11Forwarding no
+            owner: root
+            group: root
+            mode: "0600"
+            validate: "sshd -t -f %s"
+          register: _wsl_sshd
+
+        # sshd's PAM stack asks for the TOTP code instead of the password;
+        # the key already stands in for "something you have". No nullok, so
+        # a user who hasn't enrolled can't log in at all.
+        - name: "Controller | PAM: no password prompt over SSH"
+          ansible.builtin.lineinfile:
+            path: /etc/pam.d/sshd
+            regexp: '^#?\s*@include common-auth'
+            line: "# @include common-auth  # key + TOTP instead (controller.yml --tags dev_wsl)"
+            backup: true
+          register: _wsl_pam_auth
+
+        - name: "Controller | PAM: ask for the TOTP code"
+          ansible.builtin.lineinfile:
+            path: /etc/pam.d/sshd
+            line: "auth required pam_google_authenticator.so"
+            insertafter: '^# @include common-auth'
+          register: _wsl_pam_totp
+
+        # Ubuntu 24.04 socket-activates sshd, and ssh.service then can't bind
+        # 22. Run it as a plain service on every release instead.
+        # check mode: the units don't exist until openssh-server is installed.
+        - name: "Controller | sshd without socket activation"
+          ansible.builtin.systemd:
+            name: ssh.socket
+            enabled: false
+            state: stopped
+          ignore_errors: "{{ ansible_check_mode }}"
+
+        - name: "Controller | Enable and (re)start sshd"
+          ansible.builtin.systemd:
+            name: ssh
+            enabled: true
+            state: "{{ 'restarted' if (_wsl_sshd.changed or _wsl_pam_auth.changed or _wsl_pam_totp.changed) else 'started' }}"
+          ignore_errors: "{{ ansible_check_mode }}"
+
+        - name: "Controller | Look up dev_wsl_user"
+          ansible.builtin.getent:
+            database: passwd
+            key: "{{ dev_wsl_user }}"
+
+        - name: "Controller | Check the key and TOTP enrolment"
+          ansible.builtin.stat:
+            path: "{{ getent_passwd[dev_wsl_user][4] }}/{{ item }}"
+          loop: [.ssh/authorized_keys, .google_authenticator]
+          register: _wsl_auth_files
+
+        - name: "Controller | Check whether WSL is on the tailnet"
+          ansible.builtin.command: tailscale status --json
+          register: _wsl_ts
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        - name: "Controller | Next steps"
+          ansible.builtin.debug:
+            msg: "{{ _steps | select | list or ['All set: ssh ' ~ dev_wsl_user ~ '@dev-wsl from your laptop.'] }}"
+          vars:
+            _on_tailnet: "{{ _wsl_ts.rc == 0 and (_wsl_ts.stdout | from_json).BackendState | default('') == 'Running' }}"
+            _steps:
+              - "{{ '' if _on_tailnet else 'Run: sudo tailscale up --hostname=dev-wsl --advertise-tags=tag:dev-wsl --accept-dns=false, then approve dev-wsl in the admin console.' }}"
+              - "{{ '' if _wsl_auth_files.results[0].stat.exists else 'Add the laptop public key to ~/.ssh/authorized_keys.' }}"
+              - "{{ '' if _wsl_auth_files.results[1].stat.exists else 'Enrol TOTP as ' ~ dev_wsl_user ~ ': google-authenticator -t -d -f -r 3 -R 30 -w 3' }}"
