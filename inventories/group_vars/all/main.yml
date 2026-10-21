@@ -34,6 +34,11 @@ tailscale_ip_svc_03:  "EDIT_BEFORE_USE"
 
 tailscale_tailnet: "EDIT_BEFORE_USE"   # short tailnet name, e.g. mango-beaver (Tailscale admin console → DNS)
 
+# The WSL user Tailscale SSH logs you in as (tailscale/policy.hujson.j2).
+# The policy renders on the controller, so this is the user running
+# tailscale_admin.yml; set it in overrides.yml if that differs.
+dev_wsl_user: "{{ lookup('ansible.builtin.env', 'USER') }}"
+
 # ── System ────────────────────────────────────────────────────────────────────
 ssh_port: 22
 fallback_ssh_port: 22

@@ -6,7 +6,7 @@
 - name: "Tailscale | Add apt signing key"
   ansible.builtin.shell:
     cmd: |
-      curl -fsSL https://pkgs.tailscale.com/stable/debian/{{ ansible_distribution_release }}.noarmor.gpg \
+      curl -fsSL https://pkgs.tailscale.com/stable/{{ tailscale_repo_distro }}/{{ ansible_distribution_release }}.noarmor.gpg \
         | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null
     creates: /usr/share/keyrings/tailscale-archive-keyring.gpg
   tags: [tailscale, install]
@@ -15,7 +15,7 @@
   ansible.builtin.apt_repository:
     repo: >
       deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
-      https://pkgs.tailscale.com/stable/debian {{ ansible_distribution_release }} main
+      https://pkgs.tailscale.com/stable/{{ tailscale_repo_distro }} {{ ansible_distribution_release }} main
     filename: tailscale
     state: present
   tags: [tailscale, install]
