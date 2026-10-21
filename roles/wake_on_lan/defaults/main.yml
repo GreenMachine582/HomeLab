@@ -1,7 +1,7 @@
 ---
 # roles/wake_on_lan/defaults/main.yml
 # Wakes nodes that can't power on by themselves when site power returns
-# (laptop-01: no AC power-on in its BIOS). See docs/K8S_SITE_MOVE.md.
+# (laptop-01: no AC power-on in its BIOS). See docs/K8S_SITE.md.
 
 # Target side: MAC of this node's wired interface (host_vars, value from
 # overrides.yml). Empty = this node is never woken.

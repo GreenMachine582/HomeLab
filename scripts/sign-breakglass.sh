@@ -2,7 +2,7 @@
 # scripts/sign-breakglass.sh
 #
 # Signs a one-off public key so it can log in to the nodes as "admin" for a
-# limited time, for when Tailscale is unavailable (docs/K8S_SITE_MOVE.md).
+# limited time, for when Tailscale is unavailable (docs/K8S_SITE.md).
 #
 # On the site PC (over RDP):  ssh-keygen -t ed25519 -f breakglass
 # Paste breakglass.pub here:  scripts/sign-breakglass.sh [validity, default +1h]

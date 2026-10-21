@@ -7,7 +7,7 @@
 # node_ip is the LAN address Kubernetes uses (kubelet --node-ip, etcd,
 # k8s-api). IPs live in the gitignored group_vars/all/overrides.yml (ip_laptop_01,
 # ip_rpi_03, ...); roles/node_network makes them static
-# (node_network_static, docs/K8S_SITE_MOVE.md).
+# (node_network_static, docs/K8S_SITE.md).
 #
 # Group names are k8s_* on purpose: the legacy group_vars/data.yml
 # (Postgres/Redis firewall rules) must never apply to these hosts.

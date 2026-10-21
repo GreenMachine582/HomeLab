@@ -81,7 +81,7 @@
   register: sshd_include
   tags: [ssh, security]
 
-# Break-glass SSH certificates (docs/K8S_SITE_MOVE.md): trust the homelab
+# Break-glass SSH certificates (docs/K8S_SITE.md): trust the homelab
 # user CA, and let a certificate for principal "admin" log in as admin only.
 - name: "Security | Break-glass user CA"
   when: ssh_user_ca_pubkey | default('') | length > 0

@@ -1,13 +1,19 @@
-# Bootstrapping Kubernetes nodes
+# 🛡️ Bootstrapping Kubernetes nodes
 
 Runbook for `playbooks/bootstrap.yml`: takes a freshly installed node to a hardened, key-only host on the tailnet. Part
 of milestone M1 in the Kubernetes migration. Next, [K8S_CLUSTER.md](./K8S_CLUSTER.md) (`playbooks/cluster.yml`)
-builds the cluster on these nodes (M2), and [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md) covers running them at the
+builds the cluster on these nodes (M2), and [K8S_SITE.md](./K8S_SITE.md) covers running them at the
 remote site.
 
 Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the only Ansible controller.
 
-## Nodes
+**Quick links:** [🖥️ Nodes](#️-nodes) · [📋 Before the first run](#-before-the-first-run) · [▶️ Run](#️-run) ·
+[⚙️ What it does](#️-what-it-does) · [✅ Verify](#-verify) · [➕ Adding a fresh node](#-adding-a-fresh-node-at-the-site) ·
+[🩺 Troubleshooting](#-troubleshooting)
+
+---
+
+## 🖥️ Nodes
 
 | Inventory name | Role                    | OS                              | Install user | Status               |
 |----------------|-------------------------|---------------------------------|--------------|----------------------|
@@ -19,10 +25,12 @@ Everything runs from **WSL on the main PC**, in the `~/homelab` clone. It's the 
 Groups in [`inventories/k8s.yml`](../inventories/k8s.yml): `k8s` → `k8s_control_plane`, `k8s_workers`, plus
 `k8s_data` for the database node. They're deliberately not called `data`/`svc`, so the legacy group vars never apply.
 
-## Before the first run
+---
 
-1. **Controller tooling**: `sshpass` (for the first, password-based login), the Ansible collections, kubectl and
-   cilium-cli:
+## 📋 Before the first run
+
+1. **Controller tooling**: `sshpass` (for the first, password-based login), the Ansible collections, kubectl,
+   cilium-cli, flux, sops, age and cloudflared:
    ```bash
    cd ~/homelab && git pull
    ansible-playbook playbooks/controller.yml -K
@@ -58,7 +66,9 @@ Groups in [`inventories/k8s.yml`](../inventories/k8s.yml): `k8s` → `k8s_contro
 7. **IP changes**: router DHCP reservations are deferred for now. If a node's lease changes, update its `ip_*` in
    `overrides.yml` and re-run.
 
-## Run
+---
+
+## ▶️ Run
 
 ```bash
 ansible-inventory --graph                               # k8s groups and hosts
@@ -72,7 +82,12 @@ It prompts once, hidden, for the install user's password, if any targeted node i
 `--check` doesn't work on a fresh node: the `users` role can't add keys for users that don't exist yet. Use
 `--check --diff` on re-runs.
 
-## What it does
+---
+
+## ⚙️ What it does
+
+<details>
+<summary>The roles, in order</summary>
 
 1. **Probe** (runs locally), per node:
    - **Where:** TCP-probes these endpoints in order and uses the first that answers. This is the same order
@@ -99,22 +114,26 @@ It prompts once, hidden, for the install user's password, if any targeted node i
    cleanly at 15% battery.
    **`wake_on_lan`** (tag `wol`): arms Wake-on-LAN on nodes with `wol_mac` (laptop-01, which has no AC power-on), and
    has the Pis wake them after every boot. `playbooks/wake.yml` wakes them on demand and waits for SSH. See
-   [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md).
+   [K8S_SITE.md](./K8S_SITE.md).
 7. **`tailscale`**: installs it from the Debian repo, then joins the tailnet with a freshly minted, single-use,
    tagged auth key. It also applies `tailscale_advertise_routes` (laptop-01's site subnet route).
    > **Subnet route approval.** Advertising the route doesn't enable it: it shows as *Awaiting Approval* under the
    > machine's **Subnets** in the Tailscale admin console until someone approves it. The policy never
-   > auto-approves it, and it's left unapproved while nothing needs it (see "Router UI" in K8S_SITE_MOVE.md). Everything here reaches the nodes by MagicDNS name, and an unapproved route
+   > auto-approves it, and it's left unapproved while nothing needs it (see "Router UI" in K8S_SITE.md). Everything here reaches the nodes by MagicDNS name, and an unapproved route
    > exposes less of the site LAN. Approve it only when a tailnet device at home has to reach site LAN IPs
    > (`192.168.50.x`) directly, and check that no Tailscale client *on the site LAN* accepts routes (Windows and
    > macOS do by default), or it would send local LAN traffic via laptop-01. The k8s nodes don't accept routes
    > (`tailscale_accept_routes: false`), so approving it doesn't change cluster traffic.
    **`node_network`**: Wi-Fi off where `node_disable_wifi`, and a static `node_ip` when `node_network_static`
-   (remote site, [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md)). Reboots the node once if its address changes.
+   (remote site, [K8S_SITE.md](./K8S_SITE.md)). Reboots the node once if its address changes.
 8. **`firewall`**: UFW default-deny inbound; SSH allowed from the LAN and the tailnet. A 5-minute auto-rollback guards
    against lockout.
 
-## Verify
+</details>
+
+---
+
+## ✅ Verify
 
 ```bash
 ssh -p <ssh_port> -i .ssh/homelab homelab@<laptop-01 IP> hostname    # → laptop-01, no password
@@ -123,7 +142,9 @@ ssh -p <ssh_port> -i .ssh/homelab homelab@<laptop-01 IP> ping -c2 <rpi-03 IP>   
 ansible-playbook playbooks/bootstrap.yml --limit laptop-01        # re-run: probe says "hardened", no prompt
 ```
 
-## Adding a fresh node at the site
+---
+
+## ➕ Adding a fresh node at the site
 
 A newly imaged node at the site is on a DHCP address and not on Tailscale yet, so the controller at home can only
 reach it through laptop-01's subnet route.
@@ -151,7 +172,12 @@ reach it through laptop-01's subnet route.
    ```
 6. **Close up**: un-approve the subnet route and delete the `dhcp_<node>` lines.
 
-## Troubleshooting
+---
+
+## 🩺 Troubleshooting
+
+<details>
+<summary>Symptoms and fixes</summary>
 
 - **`Connection reset by peer` / `kex_exchange_identification` after a few failed logins**: OpenSSH 10's
   `PerSourcePenalties` briefly blocks your IP. Wait about a minute and re-run.
@@ -163,3 +189,5 @@ reach it through laptop-01's subnet route.
   data or the OS. Check `lsblk -f`; wipe the disk deliberately (`wipefs -a`) only if its contents aren't needed, or set
   `nvme_enabled: false`. rpi-03 hit this on its first run: its NVMe still held an old Raspberry Pi OS image
   (`bootfs` + `rootfs` partitions), which was checked, wiped and then formatted by the role.
+
+</details>

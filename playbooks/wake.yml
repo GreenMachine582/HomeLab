@@ -10,7 +10,7 @@
 #   ansible-playbook playbooks/wake.yml -e wait_minutes=15
 #
 # The Pis do the same by themselves after a power cut (roles/wake_on_lan).
-# See docs/K8S_SITE_MOVE.md.
+# See docs/K8S_SITE.md.
 
 - name: "Probe | Discover the wakers' SSH endpoints"
   hosts: k8s_workers

@@ -1,70 +1,201 @@
 # Homelab
 
 ![Ansible](https://img.shields.io/badge/Ansible-EE0000?logo=ansible&logoColor=white)
-![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?logo=docker&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?logo=kubernetes&logoColor=white)
+![Cilium](https://img.shields.io/badge/Cilium-F8C517?logo=cilium&logoColor=black)
 ![Raspberry Pi](https://img.shields.io/badge/Raspberry_Pi-C51A4A?logo=raspberrypi&logoColor=white)
 ![Tailscale](https://img.shields.io/badge/Tailscale-579DFF?logo=tailscale&logoColor=white)
 ![Self-hosted](https://img.shields.io/badge/self--hosted-homelab-4A90D9)
-![Status](https://img.shields.io/badge/status-polyrepo_migration_in_progress-yellow)
+![Status](https://img.shields.io/badge/status-M4_Platform-yellow)
 
-A Raspberry Pi homelab managed entirely through Ansible. Manual intervention is limited to the one-time bootstrap 
-(Phase 1); all subsequent deployments and updates are automated.
+Ansible for the homelab's machines. This repo builds the nodes and the bare Kubernetes cluster: hardening,
+Tailscale, containerd, `kubeadm`, the first Cilium install, etcd backups, Flux bootstrap. It also sets up the
+controller toolchain. Everything inside the cluster lives in
+[homelab-cluster](https://github.com/GreenMachine582/homelab-cluster) and is applied by Flux.
 
-**🚧 Migrating to Kubernetes.** The cluster is being rebuilt as kubeadm + Cilium + Flux; in-cluster config lives in
-[homelab-cluster](https://github.com/GreenMachine582/homelab-cluster). This repo now only builds the nodes: start with
-[docs/K8S_BOOTSTRAP.md](./docs/K8S_BOOTSTRAP.md) and `inventories/k8s.yml`. Everything about homelab-edge, Infisical,
-Semaphore, deploy-service and Docker Compose below is legacy and is removed at the M8 cutover.
+> [!NOTE]
+> **Status: M4, Platform.**
+> - **M0–M3 done:** four nodes at the remote site, Cilium, daily etcd snapshots with a tested restore, and Flux
+>   owning everything in the cluster, Cilium included.
+> - **M4:** the Gateway, TLS, LB IPs, storage, the Cloudflare tunnel and Discord deploy notifications are live. The
+>   backup target (a drive on a Pi, NFS) is left.
+>
+> See [homelab-cluster › M4](https://github.com/GreenMachine582/homelab-cluster/blob/main/docs/M4_PLATFORM.md).
 
-**Status (20 Oct 2026):**
-- **M0–M2 done:** four nodes at the remote site, Cilium, and daily etcd snapshots with a tested restore.
-- **M3 (GitOps) nearly done:** Flux runs from homelab-cluster, and SOPS apply, decrypt and prune are proven. Flux
-  adopting Cilium is the last step.
-- **Next is M4.** See [docs/K8S_CLUSTER.md](./docs/K8S_CLUSTER.md).
+**Quick links:** [🏗️ Architecture](#️-architecture) · [🚀 Getting started](#-getting-started) ·
+[📚 Docs](#-docs) · [🗂️ Repo structure](#️-repo-structure) · [🔒 Security](#-security) ·
+[💾 Backups](#-backups) · [🗺️ Roadmap](#️-roadmap) · [🗄️ Legacy stack](#️-legacy-compose-stack-removed-at-m8)
 
-Changes go through PRs with signed, Conventional Commit messages: see [CONTRIBUTING.md](./CONTRIBUTING.md).
+---
 
-**⚠️ This repo is mid-migration to a polyrepo layout** — see [Polyrepo Migration](#-polyrepo-migration) below and [docs/repo_split_brief.md](./docs/repo_split_brief.md) for the full design and status.
+## 🏗️ Architecture
 
-**See [BOOTSTRAP.md](./BOOTSTRAP.md) to get started.**
+The nodes sit on one switch at a remote site, with static LAN IPs on `192.168.50.0/24`. Everything is run from **WSL
+on the main PC at home** (the only Ansible controller) over **Tailscale**, using MagicDNS names.
 
-**Quick links:** [🏗️ Architecture Overview](#-architecture-overview) · [🗂️ Repo Structure](#-repo-structure) · [🔀 Polyrepo Migration](#-polyrepo-migration) · [🌐 Network](#-network) · [🔒 Security](#-security) · [💾 Backup Strategy](#-backup-strategy) · [📊 Monitoring & Alerting](#-monitoring--alerting)
+| Node        | Role                                         | Hardware                              | Envoy |
+|-------------|----------------------------------------------|---------------------------------------|-------|
+| `laptop-01` | Control plane, Tailscale subnet router       | Old laptop (amd64), Debian 13, wired  | ✅ |
+| `rpi-03`    | Worker, database node (local NVMe)           | Raspberry Pi 5 8 GB + NVMe, Argon V3  | ✅ |
+| `rpi-01`    | Worker                                       | Raspberry Pi 4 2 GB, no case          | ❌ |
+| `rpi-02`    | Worker                                       | Raspberry Pi 4 8 GB, Argon ONE V2     | ❌ |
+
+```
+WSL (home) ──Tailscale──► nodes        Ansible (bootstrap.yml, cluster.yml), kubectl → k8s-api
+GitHub main ──────────────► Flux        everything inside the cluster (homelab-cluster)
+```
 
 <details>
-<summary>Full outline</summary>
+<summary>🌐 <b>Access paths</b></summary>
 
-<!-- TOC -->
-* [Homelab](#homelab)
-  * [🏗️ Architecture Overview](#-architecture-overview)
-    * [Deployment Phases](#deployment-phases)
-  * [🗂️ Repo Structure](#-repo-structure)
-  * [🔀 Polyrepo Migration](#-polyrepo-migration)
-  * [🌐 Network](#-network)
-  * [🔒 Security](#-security)
-    * [User Model](#user-model)
-    * [Defense in Depth](#defense-in-depth)
-  * [💾 Backup Strategy](#-backup-strategy)
-  * [📊 Monitoring & Alerting](#-monitoring--alerting)
-<!-- TOC -->
+| Situation                   | How you get in |
+|-----------------------------|----------------|
+| Normal                      | Tailscale MagicDNS: Ansible to `<node>.<tailnet>.ts.net`, kubectl via `k8s-api` → laptop-01's Tailscale IP |
+| A device not on the tailnet | laptop-01's subnet route to the site LAN. Approve it in the Tailscale console when you need it, then disable it |
+| Tailscale down on a node    | Break-glass: RDP to the site PC, SSH over the LAN with a one-hour certificate |
+| laptop-01 off               | `playbooks/wake.yml` (Wake-on-LAN from a Pi). The Pis also wake it after every boot |
+
+Details: [docs/K8S_SITE.md](./docs/K8S_SITE.md).
 
 </details>
 
 ---
 
-## 🏗️ Architecture Overview
+## 🚀 Getting started
 
-The homelab is organised into multiple node roles. Full hardware and service details are in [NODES.md](./NODES.md).
+Everything runs from the WSL clone `~/homelab`. Edit and commit in the Windows clone (see
+[CONTRIBUTING.md](./CONTRIBUTING.md)).
 
-| Node                | Role                                                    | Status          |
-|---------------------|----------------------------------------------------------|-----------------|
-| `homelab-edge`      | Internet edge, DNS, ingress, Ansible control              | Active          |
-| `homelab-observe`   | Monitoring, logging, alerting                              | Pending Stage 1 |
-| `homelab-data-01`   | Shared Postgres/Redis data tier (Pi 5, 2TB NVMe)          | Pending Stage 4 |
-| `homelab-svc-01`    | Orchestration, SSO, media (Camunda stack, Jellyfin) — pc-01 desktop | Pending Stage 3 |
-| `homelab-svc-02`    | User-facing application workloads (GreenTechHub) — laptop-01 | Pending Stage 8 |
+```bash
+ansible-playbook playbooks/controller.yml -K          # 🧰 controller: kubectl, cilium-cli, flux, sops, age, cloudflared
+ansible-playbook playbooks/bootstrap.yml              # 🛡️ nodes: hardening, users, Tailscale, firewall (M1)
+ansible-playbook playbooks/cluster.yml                # ☸️ kubeadm + Cilium + etcd backups (M2)
+ansible-playbook playbooks/flux_bootstrap.yml         # 🔄 Flux + sops-age (M3); repairs Flux too
+ansible-playbook playbooks/cluster_status.yml         # 🩺 read-only health report, safe any time
+```
 
-> See [TODO.md](./TODO.md) for exact status — `homelab-observe`'s role is merged but not yet bootstrapped (Stage 1); `homelab-svc-01`'s role now targets a reclaimed pc-01 desktop, pending hardware intake (Stage 2/3).
+<details>
+<summary>🧰 <b>All Kubernetes-era playbooks</b></summary>
 
-### Deployment Phases
+| Playbook | What it does |
+|---|---|
+| `controller.yml` | Controller toolchain at pinned versions, `k8s-api` hosts entry, `KUBECONFIG`. `--tags ssh_ca` makes the break-glass CA |
+| `bootstrap.yml` | Fresh or hardened node → hardened, key-only, on the tailnet. Probes how to reach each node |
+| `cluster.yml` | kubeadm cluster, Cilium (fresh installs only, since Flux owns it), labels/taints, etcd snapshot timer |
+| `cluster_status.yml` | Read-only report: nodes, kubelet, Cilium, Gateway API, Gateway reachability from the controller. `-e connectivity_test=true` |
+| `cluster_reset.yml` | Tears the cluster down (asks you to type `reset`) |
+| `flux_bootstrap.yml` | Installs or repairs Flux from homelab-cluster's committed manifests, with the `sops-age` secret |
+| `etcd_fetch.yml` | Newest etcd snapshot + PKI → `~/homelab-backups/etcd` |
+| `etcd_restore_test.yml` | Restore rehearsal into a throwaway etcd |
+| `identify_nodes.yml` | Finds and identifies freshly imaged nodes on the site LAN |
+| `tailscale_admin.yml` | Tailscale policy (dry run by default; `-e confirm=true` applies) |
+| `wake.yml` | Wake-on-LAN for laptop-01, then waits for SSH |
+
+</details>
+
+---
+
+## 📚 Docs
+
+| | Doc | For |
+|---|---|---|
+| 🛡️ | [K8S_BOOTSTRAP.md](./docs/K8S_BOOTSTRAP.md) | Preparing nodes, adding a fresh node at the site |
+| ☸️ | [K8S_CLUSTER.md](./docs/K8S_CLUSTER.md) | Building the cluster, Flux, etcd backups and restore, troubleshooting |
+| 🏞️ | [K8S_SITE.md](./docs/K8S_SITE.md) | The remote site: access paths, site LAN, router UI, power and wake-up, break-glass, one-time setup, moving to another site |
+| 🤝 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Branches, signed commits, Conventional Commits, Ansible style |
+| 🧩 | [homelab-cluster docs](https://github.com/GreenMachine582/homelab-cluster/tree/main/docs) | Adding a service, secrets, M4 plan + Cloudflare setup |
+
+---
+
+## 🗂️ Repo structure
+
+<details open>
+<summary><b>Kubernetes-era layout</b></summary>
+
+```text
+HomeLab/
+  inventories/
+    k8s.yml                   # k8s → k8s_control_plane, k8s_workers, k8s_data
+    group_vars/k8s.yml        # versions (Kubernetes, Cilium, Flux, sops, cloudflared), cluster settings
+    group_vars/all/           # overrides.yml (IPs, gitignored), vault.yml (Ansible Vault, gitignored)
+    host_vars/<node>.yml      # Argon case, l7 proxy, Wake-on-LAN, ...
+  playbooks/                  # see "Getting started"; tasks/probe_ssh.yml is shared
+  roles/
+    users/  base_hardening/  firewall/  tailscale/      # every node
+    node_network/  nvme_storage/  argon_case/           # static IPs, NVMe, Pi cases
+    laptop_power/  wake_on_lan/                         # laptop-01 power, site wake-ups
+    k8s_prereqs/  containerd/  kubeadm/                 # cluster prerequisites
+    cilium_install/  k8s_node_config/  etcd_backup/     # CNI seed, labels/taints, snapshots
+    k8s_client/                                         # the controller toolchain
+  tailscale/policy.hujson.j2  # tailnet policy (tailscale_admin.yml)
+  scripts/sign-breakglass.sh  # one-hour SSH certificates
+  docs/K8S_*.md
+```
+
+</details>
+
+---
+
+## 🔒 Security
+
+1. 🔑 **SSH:** key-only, no root login, non-standard port, `AllowTcpForwarding no`. `admin` (your key, sudo with a
+   password) and `homelab` (the Ansible key, passwordless sudo).
+2. 🧱 **Firewall:** UFW default-deny inbound. SSH and the API only from the site LAN and the tailnet. Cilium and
+   kubelet ports only from the site LAN. Everything is trusted from the other nodes and the pod network. A 5-minute
+   auto-rollback guards against lockout.
+3. 🌐 **Tailscale:** nodes are tagged `tag:homelab` by admins only, can't connect to your devices, and never accept
+   routes. The site subnet route is never auto-approved.
+4. 🆘 **Break-glass:** one-hour SSH certificates signed by an offline CA, for when Tailscale is down.
+5. 🔐 **Secrets:** Ansible Vault and `overrides.yml` stay on the controller and are never committed. Cluster
+   secrets are SOPS + age in homelab-cluster.
+6. 🔀 **Change control:** protected `main`, signed commits, PRs, `commit-style` check.
+
+---
+
+## 💾 Backups
+
+| Data | How | Where |
+|---|---|---|
+| etcd + PKI | `homelab-etcd-snapshot.timer`, daily, keeps 7 | laptop-01 `/var/backups/etcd` ✅ |
+| Off-site copy | `etcd_fetch.yml` (weekly, and before risky changes) | `~/homelab-backups/etcd` at home ✅ |
+| Backup target | External drive on a Pi, NFS | ⏳ M4 |
+| age key, break-glass CA | Offline copies | Two places, one off-site |
+
+Restore steps: [K8S_CLUSTER.md › etcd backups](./docs/K8S_CLUSTER.md#-etcd-backups).
+
+---
+
+## 🗺️ Roadmap
+
+| Milestone | Scope | Status |
+|---|---|---|
+| M0 | Repo, age key, discord-gateway removed, splits frozen | ✅ |
+| M1 | Nodes bootstrapped by Ansible, on the tailnet | ✅ |
+| M2 | kubeadm + Cilium, etcd snapshot restore tested | ✅ |
+| M3 | Flux, SOPS, branch protection, Cilium adopted | ✅ |
+| M4 | Gateway, LB-IPAM, cert-manager, storage, cloudflared, backup NFS | 🚧 Backup target left |
+| M5 | Prometheus, Grafana, Loki, Alloy, Uptime Kuma | ⏳ |
+| M6 | BottleBot, GreenTechHub, Postgres, Authentik | ⏳ |
+| M7 | Jellyfin and the rest | ⏳ |
+| M8 | Cutover from Compose (legacy deleted here), full DR rebuild test | ⏳ |
+
+---
+
+## 🗄️ Legacy Compose stack (removed at M8)
+
+> [!WARNING]
+> Everything below describes the Docker Compose era: homelab-edge, Infisical, Semaphore, deploy-service and the
+> polyrepo split. None of it runs on the Kubernetes nodes, and it's all deleted at the M8 cutover. Don't extend
+> it.
+
+<details>
+<summary>Legacy architecture, files and docs</summary>
+
+**Nodes (legacy names):** `homelab-edge` (edge, DNS, Ansible control), `homelab-observe` (monitoring),
+`homelab-data-01`, `homelab-svc-01`, `homelab-svc-02`. Details are in [NODES.md](./NODES.md), and status in
+[TODO.md](./TODO.md).
+
+**Deployment phases:**
 
 ```
 Phase 1:  PC ────────────────► homelab-edge        (bootstrap from PC, one-time)
@@ -73,217 +204,28 @@ Phase 3:  homelab-edge ──────► other nodes         (edge deploys o
 Phase 4:  GitHub push ──► n8n/Camunda ──► edge     (automated deploys via automation endpoint)
 ```
 
-After Phase 1, all deployments are driven by Ansible playbooks running on the edge node. On push to `main`, a minimal
-GitHub Actions workflow POSTs to an n8n or Camunda endpoint, which SSHes to the edge as the `deploy` user and runs
-`ansible-playbook` directly. The edge is the sole Ansible control node — GitHub never connects directly to any homelab node.
+**Legacy files:**
+- Inventories: `inventories/bootstrap.ini`, `inventories/prod.yml`, `topology.yml`, `group_vars/{edge,observe,data}.yml`.
+- Playbooks: `bootstrap_edge.yml`, `bootstrap_node.yml`, `deploy_edge.yml`, `apply_firewall.yml`,
+  `resolve_node_ips.yml`, `update_all.yml`, `backup.yml`, `rollback.yml`, `healthcheck.yml`.
+- Roles: `docker`, `docker_compose`, `fail2ban`, `unbound`, `alloy`, `infisical`, `semaphore`.
+- Other: `docker-compose.edge.yml`, `docker-compose.svc01.yml`, `deploy-service/`, `services.yml`,
+  `scripts/deploy.sh`, `.github/workflows/deploy.yml`.
 
----
+**Legacy docs:**
+- [BOOTSTRAP.md](./BOOTSTRAP.md): Phases 1–4
+- [docs/NETWORK.md](./docs/NETWORK.md)
+- [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)
+- [docs/repo_split_brief.md](./docs/repo_split_brief.md): the polyrepo design
+- [docs/consolidated_brief.md](./docs/consolidated_brief.md)
+- [docs/topology_data_brief.md](./docs/topology_data_brief.md)
 
-## 🗂️ Repo Structure
+**Polyrepo split (frozen at M0):**
+- `homelab-edge-services` was live.
+- `homelab-observe-services`, `camunda-platform` and `n8n-automation` were extracted.
+- `authentik-sso` was in progress.
+- `discord-gateway` was dropped.
 
-```text
-homelab/
-  README.md                   # This file
-  BOOTSTRAP.md                # Step-by-step bootstrap guide (Phases 1–4)
-  NODES.md                    # Hardware and service details per node
-  TODO.md                     # Open tasks — authoritative source for what's actually done vs pending
+Their services move into homelab-cluster in M5–M7.
 
-  inventories/
-    bootstrap.ini              # Phase 1: bootstrap edge from PC
-    prod.yml                   # All nodes, production groups
-    group_vars/
-      all/
-        main.yml                # Common: timezone, NTP, users, node IP placeholders, SSH port (EDIT_BEFORE_USE)
-        overrides.yml.example   # Template for real IPs/subnet (gitignored once copied to overrides.yml)
-        vault.yml.example       # Template for Ansible Vault secrets — commit this, never vault.yml itself
-      edge.yml                  # Edge-specific: Tailscale subnet, firewall rules
-      observe.yml                # Observability: retention, alert endpoints
-      # svc.yml (service nodes: Docker daemon config, resource limits) lives on
-      # the unmerged `wip/svc` branch — pending Stage 3
-    host_vars/
-      homelab-edge.yml          # Cloudflare tunnel ID, Pi-hole upstream
-      homelab-observe.yml       # Prometheus scrape targets, Loki config
-      # homelab-data-01.yml, homelab-svc-01.yml, homelab-svc-02.yml don't exist yet —
-      # svc-01 host_vars live on the unmerged `wip/svc` branch (Stage 3); data-01/svc-02
-      # are unstarted (Stage 2/4, Stage 8)
-
-  playbooks/
-    bootstrap_edge.yml        # Phase 1: edge setup, Infisical bring-up + full provision/seed, Semaphore — single pass
-    bootstrap_node.yml        # Phase 3: bootstrap a new node
-    deploy_edge.yml           # Phase 2: deploy edge services
-    apply_firewall.yml        # Update UFW rules after provisioning a node/service
-    resolve_node_ips.yml      # Shared preamble: resolves observe/svc IPs live from Infisical
-    update_all.yml            # OS updates, Docker image pulls
-    backup.yml                # Database backups, config exports
-    rollback.yml              # Revert to previous Docker images
-    healthcheck.yml           # Verify all services are healthy
-
-  roles/
-    base_hardening/           # SSH hardening, sysctl
-    docker/                   # Docker install and daemon config
-    docker_compose/           # Docker Compose plugin
-    tailscale/                # Tailscale install and config
-    firewall/                 # ufw rules
-    fail2ban/                 # SSH + HTTP jails (templates/jail.conf.j2)
-    unbound/                  # Recursive DNS resolver, Pi-hole upstream (edge)
-    alloy/                    # Grafana Alloy (logs → Loki)
-    users/                    # System user creation (admin, homelab, deploy)
-    infisical/                # Infisical .env rendering + seed (secrets manager, Tailscale-only)
-    semaphore/                # Semaphore .env rendering (Ansible web UI, Tailscale-only)
-
-  # svc-01 roles (camunda, cadvisor, node_exporter, greentechhub, jellyfin) and
-  # playbooks/deploy_svc.yml exist on the unmerged `wip/svc` branch — pending
-  # Stage 3 (TODO.md), not yet on main. greentechhub/jellyfin roles are retired
-  # once their own-repo deploy-service migration lands (Stage 8).
-
-  # Docker Compose stacks (at repo root, deployed per-node)
-  docker-compose.edge.yml     # Infisical (+ Postgres, Redis), Semaphore (+ Postgres) — bootstrap tier only
-                              # homelab-edge-services (separate repo): cloudflared, Caddy, Pi-hole, pihole-exporter, node-exporter, portainer-agent
-                              # homelab-observe-services (separate repo): Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer
-                              # camunda-platform (separate repo): Camunda 8, Elasticsearch
-                              # n8n-automation (separate repo): n8n
-                              # authentik-sso (separate repo, in progress): Authentik server/worker/Redis + own Postgres
-  docker-compose.svc01.yml    # Portainer Agent — the remaining leftover (legacy, removed at the k8s cutover)
-
-  # Jinja2 templates live inside each role at roles/<role>/templates/
-  # Key templates:
-  #   roles/alloy/templates/config.alloy.j2
-  #   roles/infisical/templates/env.j2
-  #   roles/semaphore/templates/env.j2
-  #   roles/fail2ban/templates/jail.conf.j2
-
-  scripts/
-    deploy.sh                 # Restricted-sudo entrypoint for the `deploy` user (Phase 4)
-    backup_databases.sh       # Thin wrapper around playbooks/backup.yml
-    test_connectivity.sh      # LAN ping, Tailscale, SSH, HTTP endpoints, DNS checks
-
-  deploy-service/             # Python CLI: deploy/check for services.yml-registered repos
-    deploy_service/            # cli.py, config.py, compose.py, target.py, topology.py, infisical.py
-    tests/                      # pytest suite (116 tests) -- see deploy-service/README.md
-
-  docs/
-    NETWORK.md                # IP assignments, firewall rules, Tailscale ACLs
-    TROUBLESHOOTING.md        # Common issues and recovery procedures
-    repo_split_brief.md       # Polyrepo migration design brief (active, in-progress)
-
-  .github/
-    workflows/
-      deploy.yml              # On push to main: POST to n8n/Camunda deploy endpoint
-```
-
----
-
-## 🔀 Polyrepo Migration
-
-This repo is being split into a polyrepo — see [docs/repo_split_brief.md](./docs/repo_split_brief.md) for the full design and [TODO.md](./TODO.md) for the live checklist. Current status:
-
-| Split | Status |
-|---|---|
-| `homelab-edge-services` (cloudflared, Caddy, Pi-hole, exporters) | ✅ Live |
-| `homelab-observe-services` (Prometheus, Loki, Grafana, Alertmanager, ntfy, Uptime Kuma, Portainer) | ✅ Extracted, tagged `v0.1.0`, registered in `services.yml` — end-to-end deploy verification still pending `homelab-observe` going live |
-| `camunda-platform` (Camunda 8, Elasticsearch) | ✅ Extracted, registered in `services.yml` — end-to-end deploy verification still pending `homelab-svc-01` going live |
-| `n8n-automation` (n8n) | ✅ Extracted, registered in `services.yml` — end-to-end deploy verification still pending `homelab-svc-01` going live |
-| `discord-gateway` (out of `homelab-svc-01`) | 🗑️ Dropped (Oct 2026) — no longer needed; code removed |
-| `authentik-sso` (Authentik SSO, own repo + bundled Postgres) | 🚧 In progress — repo created, `docker-compose.yml` written; not yet registered in `services.yml` or deployed |
-
----
-
-## 🌐 Network
-
-IP assignments, firewall rules, DNS, Tailscale ACLs, and traffic flow diagrams are in [docs/NETWORK.md](./docs/NETWORK.md).
-
-**Summary:**
-
-| Node              | IP var        | Tailscale IP |
-|-------------------|---------------|--------------|
-| `homelab-edge`    | `ip_edge`     | 100.x.x.1    |
-| `homelab-observe` | `ip_observe`  | 100.x.x.2    |
-| `homelab-data-01` | `ip_data_01`  | 100.x.x.3    |
-| `homelab-svc-01`  | `ip_svc_01`   | 100.x.x.4    |
-| `homelab-svc-02`  | `ip_svc_02`   | 100.x.x.5    |
-
-> Real IP values are defined in `inventories/group_vars/all/overrides.yml` (gitignored) — `main.yml` only holds `EDIT_BEFORE_USE` placeholders.
-
-- Internal DNS served by Pi-hole on `homelab-edge` (LAN only, port 53 firewalled)
-- External traffic enters via Cloudflare Tunnel — no router port forwards required
-- Tailscale is installed on every node individually; each node remains accessible over VPN even if `homelab-edge` is down
-
----
-
-## 🔒 Security
-
-### User Model
-
-Three separate system users are created by the bootstrap playbook:
-
-| User      | Purpose                   | SSH Key        | Sudo                             |
-|-----------|---------------------------|----------------|----------------------------------|
-| `admin`   | Manual maintenance        | `homelab-edge` | Yes (password)                   |
-| `homelab` | Ansible automation        | `homelab`      | Yes (passwordless)               |
-| `deploy`  | Webhook-triggered deploys | `deploy`       | `scripts/deploy.sh` only         |
-
-Separation ensures a webhook or script compromise cannot escalate beyond running approved playbooks.
-
-### Defense in Depth
-
-1. **Network perimeter** — no open router ports; Cloudflare Tunnel handles all external ingress; UPnP disabled
-2. **Edge node** — fail2ban (SSH: 3 failures; HTTP: 10 failures); Pi-hole blocks malicious domains; Cloudflare Tunnel 
-rate-limits and filters before traffic reaches the homelab
-3. **All nodes** — SSH key-only, no root login, no password auth; ufw default-deny inbound; unattended security updates
-4. **Secrets** — all credentials in Ansible Vault, encrypted at rest; no hardcoded values in playbooks or templates
-5. **Tailscale VPN** — per-node ACLs restrict inter-node communication; admin access requires Tailscale login with MFA
-6. **Monitoring** — Alertmanager notifies on failed SSH attempts; Uptime Kuma alerts on service downtime
-
-Secrets are stored in `inventories/group_vars/all/vault.yml`. See `inventories/group_vars/all/vault.yml.example` for required variable names.
-
----
-
-## 💾 Backup Strategy
-
-| Data                    | Method                | Destination               | Frequency |
-|-------------------------|-----------------------|---------------------------|-----------|
-| PostgreSQL databases    | `pg_dump`             | `/mnt/nvme/backups`       | Daily     |
-| Infisical / Semaphore DBs (edge) | `pg_dump` \| `gzip` | `/opt/backups/postgres` (homelab-edge) | Daily |
-| Elasticsearch snapshots | Snapshot API          | `/mnt/nvme/elasticsearch` | Daily     |
-| All configuration       | Git (Ansible repo)    | GitHub                    | On commit |
-| Grafana dashboards      | JSON in repo          | GitHub                    | On commit |
-| Pi-hole config          | `custom.list` in repo | GitHub                    | On commit |
-
-Run backups on demand:
-
-```bash
-ansible-playbook playbooks/backup.yml
-```
-
-For disaster recovery procedures see [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md#disaster-recovery).
-
----
-
-## 📊 Monitoring & Alerting
-
-Full stack reference (Prometheus, Loki, Grafana, Alertmanager, Uptime Kuma) is in [homelab-observe-services/docs/MONITORING.md](https://github.com/GreenMachine582/homelab-observe-services/blob/master/docs/MONITORING.md).
-
-**Alert channels:**
-
-| Severity | Condition                                          | Channel       |
-|----------|----------------------------------------------------|---------------|
-| Critical | Node down, disk < 5%, crash loop                   | Discord / SMS |
-| Warning  | CPU/memory > 80%, disk < 10%, SSL expiry           | Discord       |
-| Info     | Updates available, backup done, new Tailscale node | Discord       |
-
-**Key service endpoints (internal):**
-
-| Service      | URL                                      |
-|--------------|------------------------------------------|
-| Grafana      | `http://grafana.homelab.local:3000`      |
-| Prometheus   | `http://prometheus.homelab.local:9090`   |
-| Alertmanager | `http://alertmanager.homelab.local:9093` |
-| Uptime Kuma  | `http://uptime.homelab.local:3001`       |
-| Portainer    | `http://portainer.homelab.local:9000`    |
-
-**Infisical & Semaphore (LAN via Caddy, Tailscale HTTPS via Caddy, or Tailscale direct — see [docs/NETWORK.md](./docs/NETWORK.md)):**
-
-| Service   | URL                                          | Notes                                                                          |
-|-----------|----------------------------------------------|--------------------------------------------------------------------------------|
-| Infisical | `https://homelab-edge.<tailnet>.ts.net:8443` | or `http://<edge-tailscale-ip>:8222` (non-browser) |
-| Semaphore | `https://homelab-edge.<tailnet>.ts.net:8444` | or `http://<edge-tailscale-ip>:3010` (non-browser) |
+</details>
