@@ -226,6 +226,11 @@
             state: present
             update_cache: true
             cache_valid_time: 3600
+          register: _wsl_pkgs
+
+        # --check on a fresh WSL only pretends to install openssh-server, so
+        # /etc/ssh/sshd_config.d and /etc/pam.d/sshd don't exist yet: the
+        # tasks that edit them skip instead of failing (when: below).
 
         # "00-" so it beats any other drop-in: sshd takes the first value of
         # each keyword. Both methods are required, in this order. ClientAlive*
@@ -255,6 +260,7 @@
             mode: "0600"
             validate: "sshd -t -f %s"
           register: _wsl_sshd
+          when: not (ansible_check_mode and _wsl_pkgs is changed)
 
         # sshd's PAM stack asks for the TOTP code instead of the password;
         # the key already stands in for "something you have". No nullok, so
@@ -266,6 +272,7 @@
             line: "# @include common-auth  # key + TOTP instead (controller.yml --tags dev_wsl)"
             backup: true
           register: _wsl_pam_auth
+          when: not (ansible_check_mode and _wsl_pkgs is changed)
 
         - name: "Controller | PAM: ask for the TOTP code"
           ansible.builtin.lineinfile:
@@ -273,6 +280,7 @@
             line: "auth required pam_google_authenticator.so"
             insertafter: '^# @include common-auth'
           register: _wsl_pam_totp
+          when: not (ansible_check_mode and _wsl_pkgs is changed)
 
         # Ubuntu 24.04 socket-activates sshd, and ssh.service then can't bind
         # 22. Run it as a plain service on every release instead.
