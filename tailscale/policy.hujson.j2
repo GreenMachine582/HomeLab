@@ -6,6 +6,9 @@
 	// auth keys carry this tag).
 	"tagOwners": {
 		"tag:homelab": ["autogroup:admin"],
+		// WSL on the main PC (the Ansible controller), reached from your
+		// laptop over Tailscale SSH (docs/REMOTE_ACCESS.md).
+		"tag:dev-wsl": ["autogroup:admin"],
 	},
 
 	"acls": [
@@ -15,6 +18,15 @@
 		// Admins manage the homelab nodes: SSH (hardened ssh_port, and 22 for
 		// fresh nodes) and the Kubernetes API.
 		{"action": "accept", "src": ["autogroup:admin"], "dst": ["tag:homelab:{{ ssh_port }},22,6443"]},
+
+		// The controller runs Ansible and kubectl from WSL. Once WSL's own
+		// tailscaled is up, that traffic leaves as tag:dev-wsl rather than
+		// as you, so the rule above no longer matches it.
+		{"action": "accept", "src": ["tag:dev-wsl"], "dst": ["tag:homelab:{{ ssh_port }},22,6443"]},
+
+		// Admins reach WSL on 22, where Tailscale SSH answers. The ssh
+		// section below still gates every session with check mode.
+		{"action": "accept", "src": ["autogroup:admin"], "dst": ["tag:dev-wsl:22"]},
 {% if tailscale_site_route %}
 
 		// Admins reach the site LAN through laptop-01's subnet route (router
@@ -25,17 +37,43 @@
 {% endif %}
 		// Nothing else: homelab nodes can't initiate connections to your devices.
 	],
+
+	// Tailscale SSH into WSL: check mode with checkPeriod "always" sends
+	// every new session through a browser re-auth (and your IdP's MFA). No
+	// "accept" SSH rule exists, so nothing bypasses it.
+	"ssh": [
+		{
+			"action": "check",
+			"checkPeriod": "always",
+			"src": ["autogroup:admin"],
+			"dst": ["tag:dev-wsl"],
+			"users": ["{{ dev_wsl_user }}"],
+		},
+	],
 {% if tailscale_admin_login | default('') | length > 0 %}
 
 	"tests": [
 		{
 			"src": "{{ tailscale_admin_login }}",
-			"accept": ["tag:homelab:{{ ssh_port }}", "tag:homelab:6443"],
+			"accept": ["tag:homelab:{{ ssh_port }}", "tag:homelab:6443", "tag:dev-wsl:22"],
 			"deny": ["tag:homelab:80"],
 		},
 		{
+			"src": "tag:dev-wsl",
+			"accept": ["tag:homelab:{{ ssh_port }}", "tag:homelab:6443"],
+		},
+		{
 			"src": "tag:homelab",
-			"deny": ["{{ tailscale_admin_login }}:22"],
+			"deny": ["{{ tailscale_admin_login }}:22", "tag:dev-wsl:22"],
+		},
+	],
+
+	"sshTests": [
+		{
+			"src": "{{ tailscale_admin_login }}",
+			"dst": ["tag:dev-wsl"],
+			"check": ["{{ dev_wsl_user }}"],
+			"deny": ["root"],
 		},
 	],
 {% endif %}
