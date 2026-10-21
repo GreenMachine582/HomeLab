@@ -232,6 +232,19 @@
         # /etc/ssh/sshd_config.d and /etc/pam.d/sshd don't exist yet: the
         # tasks that edit them skip instead of failing (when: below).
 
+        # `sshd -t` (the drop-in's validate) refuses to run without its
+        # privilege separation dir, which ssh.service only creates when it
+        # starts; on a fresh install it hasn't yet. /run is tmpfs, so this
+        # just recreates what the service makes at every start.
+        - name: "Controller | sshd privilege separation dir (for sshd -t)"
+          ansible.builtin.file:
+            path: /run/sshd
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when: not (ansible_check_mode and _wsl_pkgs is changed)
+
         # "00-" so it beats any other drop-in: sshd takes the first value of
         # each keyword. Both methods are required, in this order. ClientAlive*
         # drops a session about 3 min after its laptop is cut off the tailnet;
