@@ -18,13 +18,17 @@
       https://pkgs.tailscale.com/stable/{{ tailscale_repo_distro }} {{ ansible_distribution_release }} main
     filename: tailscale
     state: present
+  register: _ts_repo
   tags: [tailscale, install]
 
+# --check on a fresh host only pretends to add the repo above, so apt has no
+# tailscale package and no tailscaled unit yet: skip both rather than fail.
 - name: "Tailscale | Install"
   ansible.builtin.apt:
     name: tailscale
     state: present
     update_cache: true
+  when: not (ansible_check_mode and _ts_repo | default({}) is changed)
   tags: [tailscale, install]
 
 - name: "Tailscale | Enable and start daemon"
@@ -32,6 +36,7 @@
     name: tailscaled
     enabled: true
     state: started
+  when: not (ansible_check_mode and _ts_repo | default({}) is changed)
   tags: [tailscale]
 
 - name: "Tailscale | Check current connection state"
