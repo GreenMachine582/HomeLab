@@ -11,7 +11,9 @@
 # Per node: addresses, routes to the other nodes, UFW status; warns when a
 # node has more than one address on the LAN (it may send cluster traffic
 # from one the others don't trust). From the control plane: nodes, Cilium
-# nodes, pods, cilium status. connectivity_test=true also runs
+# nodes, pods, cilium status, Gateway API. From the controller: that
+# whoami.home.green-tech-hub.com resolves to the Gateway and answers over
+# HTTPS with a trusted cert. connectivity_test=true also runs
 # `cilium connectivity test` (it deploys test pods, then removes them);
 # connectivity_test_only passes a --test filter (regex) to run just those.
 # See docs/K8S_CLUSTER.md.
@@ -638,3 +640,41 @@
             kubectl get ns -o name | grep '^namespace/cilium-test' |
             xargs -r kubectl delete --wait=false
           changed_when: false
+
+# What the PC sees: the *.home.green-tech-hub.com Cloudflare record (DNS
+# only, homelab-cluster docs/M4_PLATFORM.md "Cloudflare setup") and the
+# Gateway behind it. Resolves with WSL's resolver, which may differ from
+# Windows'; compare with `nslookup` on Windows if a browser disagrees.
+- name: "Status | Gateway from the controller"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    gateway_lan_ip: 192.168.50.240
+    gateway_test_host: whoami.home.green-tech-hub.com
+
+  tasks:
+    - name: "Status | Resolve the test host and fetch it"
+      ansible.builtin.shell: |
+        echo "resolves to: $(getent ahostsv4 {{ gateway_test_host }} | awk 'NR==1 {print $1}')"
+        echo "https (code, cert verify): $(curl -sS -o /dev/null -m 10 -w '%{http_code} %{ssl_verify_result}' https://{{ gateway_test_host }} 2>&1)"
+        echo "http (expect 301): $(curl -sS -o /dev/null -m 10 -w '%{http_code}' http://{{ gateway_test_host }} 2>&1)"
+      register: _gateway_client
+      changed_when: false
+      failed_when: false
+
+    - name: "Status | Gateway from the controller report"
+      ansible.builtin.debug:
+        msg: "{{ _gateway_client.stdout_lines + _gateway_client.stderr_lines }}"
+
+    - name: "Status | Warn about the Gateway from the controller"
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: expected {{ gateway_test_host }} → {{ gateway_lan_ip }}, https 200 with
+          a verified cert (0) and http 301. Check the Cloudflare *.home record, the
+          Gateway (kubectl -n gateway get gateway,certificate) and the site route.
+      when: >-
+        ('resolves to: ' ~ gateway_lan_ip) not in _gateway_client.stdout_lines
+        or 'https (code, cert verify): 200 0' not in _gateway_client.stdout_lines
+        or 'http (expect 301): 301' not in _gateway_client.stdout_lines
