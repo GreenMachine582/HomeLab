@@ -653,13 +653,24 @@
   vars:
     gateway_lan_ip: 192.168.50.240
     gateway_test_host: whoami.home.green-tech-hub.com
+    # From home the site LAN is only reachable while laptop-01's subnet route
+    # is approved (docs/K8S_SITE_MOVE.md § Site LAN). Probe the API on its LAN
+    # IP to tell "route off" from "Gateway broken".
+    _site_probe_ip: "{{ hostvars[groups['k8s_control_plane'][0]]['node_ip'] }}"
 
   tasks:
     - name: "Status | Resolve the test host and fetch it"
       ansible.builtin.shell: |
+        if timeout 3 bash -c '</dev/tcp/{{ _site_probe_ip }}/6443' 2>/dev/null; then
+          echo "site LAN ({{ _site_probe_ip }}:6443): reachable"
+        else
+          echo "site LAN ({{ _site_probe_ip }}:6443): unreachable"
+        fi
         echo "resolves to: $(getent ahostsv4 {{ gateway_test_host }} | awk 'NR==1 {print $1}')"
-        echo "https (code, cert verify): $(curl -sS -o /dev/null -m 10 -w '%{http_code} %{ssl_verify_result}' https://{{ gateway_test_host }} 2>&1)"
-        echo "http (expect 301): $(curl -sS -o /dev/null -m 10 -w '%{http_code}' http://{{ gateway_test_host }} 2>&1)"
+        echo "https (code, cert verify): $(curl -s -o /dev/null -m 10 -w '%{http_code} %{ssl_verify_result}' https://{{ gateway_test_host }})"
+        echo "http (expect 301): $(curl -s -o /dev/null -m 10 -w '%{http_code}' http://{{ gateway_test_host }})"
+      args:
+        executable: /bin/bash
       register: _gateway_client
       changed_when: false
       failed_when: false
@@ -668,13 +679,22 @@
       ansible.builtin.debug:
         msg: "{{ _gateway_client.stdout_lines + _gateway_client.stderr_lines }}"
 
+    - name: "Status | Warn that the site LAN is unreachable"
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: the site LAN doesn't answer from here, so the Gateway can't either.
+          Approve laptop-01's 192.168.50.0/24 subnet route in the Tailscale console
+          (and disable it again afterwards), then re-run.
+      when: "'unreachable' in _gateway_client.stdout"
+
     - name: "Status | Warn about the Gateway from the controller"
       ansible.builtin.debug:
         msg: >-
           WARNING: expected {{ gateway_test_host }} → {{ gateway_lan_ip }}, https 200 with
-          a verified cert (0) and http 301. Check the Cloudflare *.home record, the
-          Gateway (kubectl -n gateway get gateway,certificate) and the site route.
+          a verified cert (0) and http 301. Check the Cloudflare *.home record and the
+          Gateway (kubectl -n gateway get gateway,certificate).
       when: >-
-        ('resolves to: ' ~ gateway_lan_ip) not in _gateway_client.stdout_lines
-        or 'https (code, cert verify): 200 0' not in _gateway_client.stdout_lines
-        or 'http (expect 301): 301' not in _gateway_client.stdout_lines
+        'unreachable' not in _gateway_client.stdout
+        and (('resolves to: ' ~ gateway_lan_ip) not in _gateway_client.stdout_lines
+             or 'https (code, cert verify): 200 0' not in _gateway_client.stdout_lines
+             or 'http (expect 301): 301' not in _gateway_client.stdout_lines)
