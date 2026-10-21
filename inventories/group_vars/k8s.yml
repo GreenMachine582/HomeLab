@@ -79,6 +79,15 @@ flux_path: clusters/prod
 sops_age_key_file: "{{ lookup('env', 'HOME') }}/.config/sops/age/keys.txt"
 sops_age_recipient: age19k96we2u9cytex9zru4r0yaskqc88aryvh2mw5d7m2etjqschevqgyvrs5
 
+# cloudflared CLI on the controller (M4), for the locally managed tunnel:
+# tunnel login/create/route dns. Keep the same version as the image in
+# homelab-cluster's infrastructure/configs/cloudflared/deployment.yaml.
+# Checksums from the release notes (they match GitHub's asset digests).
+cloudflared_version: "2026.10.1"
+cloudflared_sha256:
+  amd64: 3bfc539f45d2620c71debb7a86be0efa737ed5ccbad9eb85c787116900e5c586
+  arm64: 2c65dfabf616c40efc7545d107d7a57ad5e21377e2964b7e88af19a238074a46
+
 # Database taint on k8s_data nodes. Off until rpi-01/02 join as general
 # workers; with it on now, general pods would have nowhere to run.
 k8s_data_taint_enabled: false

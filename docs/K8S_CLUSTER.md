@@ -142,7 +142,7 @@ path `clusters/prod`. Flux is installed from manifests committed there (`cluster
 through PRs, so Flux's own manifests arrive by PR like everything else.
 
 ```bash
-ansible-playbook playbooks/controller.yml -K --tags client   # flux, sops, age on the controller
+ansible-playbook playbooks/controller.yml -K --tags client   # flux, sops, age, cloudflared on the controller
 ansible-playbook playbooks/flux_bootstrap.yml                 # install / repair Flux
 flux get kustomizations
 ```
@@ -165,6 +165,11 @@ Re-running it is also the recovery step when Flux is broken or was deleted.
 **Upgrading Flux:** bump `flux_version` in `group_vars/k8s.yml` (HomeLab PR). In a homelab-cluster PR, replace
 `gotk-components.yaml` with that release's `install.yaml`. Flux applies its own upgrade once that PR is merged. Then
 re-run `controller.yml --tags flux` for the CLI.
+
+**cloudflared CLI:** used only for the locally managed tunnel (homelab-cluster `docs/M4_PLATFORM.md`, "Cloudflare
+setup"). Its version and the per-architecture SHA-256 from the release notes are pinned in `group_vars/k8s.yml`.
+Keep the version the same as the cloudflared image in homelab-cluster. Install or upgrade with
+`controller.yml -K --tags cloudflared`.
 
 ## etcd backups
 
