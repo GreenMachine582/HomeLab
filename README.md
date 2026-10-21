@@ -151,7 +151,8 @@ HomeLab/
 5. 🔐 **Secrets:** Ansible Vault and `overrides.yml` stay on the controller and are never committed. Cluster
    secrets are SOPS + age in homelab-cluster.
 6. 💻 **Remote access to WSL:** tailnet-only (admins' approved devices), then an SSH key and a TOTP code on every
-   login. No public ports.
+   login, with Discord login alerts. No public ports. The PC's Windows client is tagged so your devices reach only
+   the dev ports you list (`dev_pc_ports`).
 7. 🔀 **Change control:** protected `main`, signed commits, PRs, `commit-style` check.
 
 ---
