@@ -12,7 +12,7 @@ break-glass). Site steps pending.
 | Situation                       | How you get in                                                                        |
 |---------------------------------|----------------------------------------------------------------------------------------|
 | Normal                          | Tailscale MagicDNS: Ansible (`<node>.<tailnet>.ts.net`), kubectl (`k8s-api` → laptop-01's Tailscale IP) |
-| Device not on the tailnet       | laptop-01's **subnet route** to the site LAN (router UI, a freshly imaged node)        |
+| Device not on the tailnet       | laptop-01's **subnet route** to the site LAN (router UI, a freshly imaged node). Approve it in the console per use, then disable it ([Router UI](#router-ui)) |
 | Tailscale down for the node     | **Break-glass certificate**: RDP to the site PC, SSH over the LAN with a 1-hour cert   |
 | laptop-01 off                   | `playbooks/wake.yml` (Wake-on-LAN from a Pi); the Pis also do this after every boot     |
 | Node hung                       | Argon button (Pis) / site power cycle; Pis boot by themselves, then wake laptop-01     |
@@ -45,7 +45,7 @@ break-glass). Site steps pending.
    - only admins tag nodes as `tag:homelab`;
    - your own devices can reach each other;
    - admins reach nodes on `ssh_port`, 22 and 6443;
-   - the site route is admins-only and auto-approved for `tag:homelab`;
+   - the site route is admins-only and never auto-approved: you approve it per use;
    - nodes can't connect to your devices.
 4. **Break-glass CA**: creates `.ssh/homelab-user-ca`. Back it up offline next to the age key.
    ```bash
@@ -88,8 +88,8 @@ break-glass). Site steps pending.
    within a few minutes. That's the first real-world wake test. If it doesn't come, run `wake.yml` or press the
    laptop's power button. Nodes take a DHCP address from the site router and come back on Tailscale by themselves.
    Check with `ansible-playbook playbooks/cluster_status.yml`, or `tailscale status` on the PC.
-2. Find out the site LAN (router UI through the RDP PC): subnet, gateway, and the **DHCP pool range**. Pick static
-   addresses **outside the pool**.
+2. Find out the site LAN (router UI, see [Router UI](#router-ui)): subnet, gateway, and the **DHCP pool range**.
+   Pick static addresses **outside the pool**. Current values are under [Site LAN](#site-lan).
 3. **`overrides.yml`**:
    ```yaml
    lan_subnet: "<site subnet>/24"       # must not overlap home_lan_subnet
@@ -105,7 +105,8 @@ break-glass). Site steps pending.
    ansible-playbook playbooks/bootstrap.yml
    ```
    This sets the static IPs (each node reboots once, and the play reconnects over Tailscale), turns the laptop's Wi-Fi
-   off, starts the subnet route (auto-approved by the policy), and re-applies UFW for the new `lan_subnet`.
+   off, advertises the subnet route (it stays unapproved until you approve it), and re-applies UFW for the new
+   `lan_subnet`.
 5. Push the policy again, because it now includes the site route, then rebuild the cluster:
    ```bash
    ansible-playbook playbooks/tailscale_admin.yml -e confirm=true
@@ -115,6 +116,30 @@ break-glass). Site steps pending.
    ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true
    kubectl get nodes -o wide                                          # from home, over the tailnet
    ```
+
+## Site LAN
+
+| What                  | Range                          | Notes                                                        |
+|-----------------------|--------------------------------|--------------------------------------------------------------|
+| Router DHCP pool      | `192.168.50.30–192.168.50.239` | Shrunk from `.2–.254` on 21 Oct 2026. The router can't reserve |
+| Node static IPs       | `.10`, `.11`, `.12`, `.21`     | `ip_*` in `overrides.yml`, set by `roles/node_network`       |
+| Cilium LB-IPAM pool   | `192.168.50.240–192.168.50.250`| homelab-cluster `infrastructure/configs/cilium/`             |
+
+Keep new static addresses below `.30` and LoadBalancer IPs at `.240` and above.
+
+## Router UI
+
+The router UI is reached from home over laptop-01's subnet route. The policy doesn't auto-approve the route, so it's
+off until you turn it on:
+
+1. Tailscale admin console → **Machines** → laptop-01 → **Edit route settings**: approve the `lan_subnet` route.
+2. On the home PC, browse to `http://<lan_gateway>`. The router sees laptop-01's LAN address, so it treats this as a
+   local login.
+3. When you're done, untick the route again in the same dialog.
+
+SSH tunnels (`ssh -L`) through a node don't work: the nodes have `AllowTcpForwarding no` (`base_hardening`,
+`ssh_allow_tcp_forwarding`), so the route is the only way in and the console is the single on/off switch. The
+fallback, if Tailscale is down, is the RDP PC at the site.
 
 ## Break-glass, when Tailscale is down
 

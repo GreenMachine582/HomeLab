@@ -139,6 +139,7 @@
     - { regexp: '^#?ChallengeResponseAuthentication', line: 'ChallengeResponseAuthentication no' }
     - { regexp: '^#?UsePAM',                       line: 'UsePAM yes' }
     - { regexp: '^#?X11Forwarding',                line: 'X11Forwarding no' }
+    - { regexp: '^#?AllowTcpForwarding',           line: "AllowTcpForwarding {{ ssh_allow_tcp_forwarding }}" }
     - { regexp: '^#?MaxAuthTries',                 line: "MaxAuthTries {{ ssh_max_auth_tries }}" }
     - { regexp: '^#?ClientAliveInterval',          line: "ClientAliveInterval {{ ssh_client_alive_interval }}" }
     - { regexp: '^#?ClientAliveCountMax',          line: "ClientAliveCountMax {{ ssh_client_alive_count_max }}" }
@@ -212,6 +213,7 @@
           - _sshd_effective_map['pubkeyauthentication'] == (ssh_pubkey_authentication | lower)
           - _sshd_effective_map['maxauthtries'] == (ssh_max_auth_tries | string)
           - _sshd_effective_map['port'] == (ssh_port | string)
+          - _sshd_effective_map['allowtcpforwarding'] == (ssh_allow_tcp_forwarding | lower)
         fail_msg: >-
           sshd -T (the actual merged/effective config) does not match intended
           hardening — something in /etc/ssh/sshd_config.d/*.conf, or a duplicate

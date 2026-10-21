@@ -103,8 +103,8 @@ It prompts once, hidden, for the install user's password, if any targeted node i
 7. **`tailscale`**: installs it from the Debian repo, then joins the tailnet with a freshly minted, single-use,
    tagged auth key. It also applies `tailscale_advertise_routes` (laptop-01's site subnet route).
    > **Subnet route approval.** Advertising the route doesn't enable it: it shows as *Awaiting Approval* under the
-   > machine's **Subnets** in the Tailscale admin console until someone approves it. It's left unapproved on
-   > purpose while nothing needs it. Everything here reaches the nodes by MagicDNS name, and an unapproved route
+   > machine's **Subnets** in the Tailscale admin console until someone approves it. The policy never
+   > auto-approves it, and it's left unapproved while nothing needs it (see "Router UI" in K8S_SITE_MOVE.md). Everything here reaches the nodes by MagicDNS name, and an unapproved route
    > exposes less of the site LAN. Approve it only when a tailnet device at home has to reach site LAN IPs
    > (`192.168.50.x`) directly, and check that no Tailscale client *on the site LAN* accepts routes (Windows and
    > macOS do by default), or it would send local LAN traffic via laptop-01. The k8s nodes don't accept routes

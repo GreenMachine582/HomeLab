@@ -18,19 +18,13 @@
 {% if tailscale_site_route %}
 
 		// Admins reach the site LAN through laptop-01's subnet route (router
-		// UI, nodes not yet on the tailnet).
+		// UI, nodes not yet on the tailnet). Deliberately not auto-approved:
+		// approve the route in the console when needed and disable it after,
+		// so site LAN access is off by default (docs/K8S_SITE_MOVE.md).
 		{"action": "accept", "src": ["autogroup:admin"], "dst": ["{{ tailscale_site_route }}:*"]},
 {% endif %}
 		// Nothing else: homelab nodes can't initiate connections to your devices.
 	],
-{% if tailscale_site_route %}
-
-	"autoApprovers": {
-		"routes": {
-			"{{ tailscale_site_route }}": ["tag:homelab"],
-		},
-	},
-{% endif %}
 {% if tailscale_admin_login | default('') | length > 0 %}
 
 	"tests": [

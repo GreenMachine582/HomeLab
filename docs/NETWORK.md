@@ -268,7 +268,9 @@ console: the next push overwrites it. Summary:
 | `autogroup:admin`   | site `lan_subnet` (route)    | all                      | Router UI, nodes not on the tailnet yet  |
 | (everything else)   |                              |                          | Denied: nodes can't reach your devices   |
 
-`tag:homelab` is owned by `autogroup:admin`, and laptop-01's site route is auto-approved for `tag:homelab`. The site
+`tag:homelab` is owned by `autogroup:admin`. laptop-01's site route is **not** auto-approved: approve it in the console
+when you need the site LAN and disable it afterwards, so that access is off by default. SSH port forwarding is off on
+the nodes (`ssh_allow_tcp_forwarding`), which leaves the route as the only way in. The site
 route must never overlap the home LAN; the `tailscale` role refuses to advertise `home_lan_subnet`. See
 [K8S_SITE_MOVE.md](./K8S_SITE_MOVE.md) for the remote-site access paths, including break-glass SSH certificates.
 

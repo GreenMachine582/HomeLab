@@ -7,6 +7,10 @@ PubkeyAuthentication {{ ssh_pubkey_authentication }}
 ChallengeResponseAuthentication no
 UsePAM yes
 X11Forwarding no
+AllowTcpForwarding {{ ssh_allow_tcp_forwarding }}
+AllowStreamLocalForwarding no
+AllowAgentForwarding no
+PermitTunnel no
 MaxAuthTries {{ ssh_max_auth_tries }}
 ClientAliveInterval {{ ssh_client_alive_interval }}
 ClientAliveCountMax {{ ssh_client_alive_count_max }}

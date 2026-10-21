@@ -31,6 +31,10 @@ ssh_pubkey_authentication: "yes"
 ssh_max_auth_tries: 3
 ssh_client_alive_interval: 300
 ssh_client_alive_count_max: 2
+# No port forwarding (-L/-R/-D, ProxyJump). The site LAN is reached only through
+# laptop-01's Tailscale subnet route, approved in the console per use, so access
+# can be switched off centrally. Ansible needs session channels only.
+ssh_allow_tcp_forwarding: "no"
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 notify_script_dir: /usr/local/lib/homelab/notify
