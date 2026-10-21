@@ -1,12 +1,13 @@
 ---
 # roles/k8s_client/tasks/gitops.yml
-# flux CLI and sops, checksum-verified and versioned under /opt like
-# cilium-cli, plus age from apt. Used for homelab-cluster (Flux, SOPS secrets).
+# flux CLI, sops and cloudflared, checksum-verified and versioned under /opt
+# like cilium-cli, plus age from apt. Used for homelab-cluster (Flux, SOPS
+# secrets, the Cloudflare tunnel).
 
 - name: "Client | Work out the architecture"
   ansible.builtin.set_fact:
     _gitops_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
-  tags: [client, flux, sops]
+  tags: [client, flux, sops, cloudflared]
 
 - name: "Client | age"
   ansible.builtin.apt:
@@ -26,7 +27,8 @@
   loop:
     - "/opt/flux/v{{ flux_version }}"
     - "/opt/sops/v{{ sops_version }}"
-  tags: [client, flux, sops]
+    - "/opt/cloudflared/v{{ cloudflared_version }}"
+  tags: [client, flux, sops, cloudflared]
 
 - name: "Client | Download flux {{ flux_version }}"
   ansible.builtin.get_url:
@@ -52,7 +54,16 @@
     mode: "0755"
   tags: [client, sops]
 
-- name: "Client | Put flux and sops on the PATH"
+# No checksums file is published; the pinned sums come from the release notes.
+- name: "Client | Download cloudflared {{ cloudflared_version }}"
+  ansible.builtin.get_url:
+    url: "https://github.com/cloudflare/cloudflared/releases/download/{{ cloudflared_version }}/cloudflared-linux-{{ _gitops_arch }}"
+    checksum: "sha256:{{ cloudflared_sha256[_gitops_arch] }}"
+    dest: "/opt/cloudflared/v{{ cloudflared_version }}/cloudflared"
+    mode: "0755"
+  tags: [client, cloudflared]
+
+- name: "Client | Put flux, sops and cloudflared on the PATH"
   ansible.builtin.file:
     src: "{{ item.src }}"
     dest: "/usr/local/bin/{{ item.name }}"
@@ -61,6 +72,7 @@
   loop:
     - { name: flux, src: "/opt/flux/v{{ flux_version }}/flux" }
     - { name: sops, src: "/opt/sops/v{{ sops_version }}/sops" }
+    - { name: cloudflared, src: "/opt/cloudflared/v{{ cloudflared_version }}/cloudflared" }
   loop_control:
     label: "{{ item.name }}"
-  tags: [client, flux, sops]
+  tags: [client, flux, sops, cloudflared]

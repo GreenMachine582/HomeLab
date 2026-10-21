@@ -1,7 +1,7 @@
 ---
 # roles/k8s_client/tasks/main.yml
 # Cluster tooling for the Ansible controller (WSL on the main PC): kubectl
-# and cilium-cli at the cluster's versions, flux and sops for homelab-cluster,
+# and cilium-cli at the cluster's versions, flux, sops and cloudflared for homelab-cluster,
 # k8s-api resolution, KUBECONFIG.
 # Reuses the node roles' task files so versions and repos never drift.
 
@@ -31,9 +31,9 @@
     tasks_from: cli
   tags: [client, cilium]
 
-- name: "Client | flux, sops, age"
+- name: "Client | flux, sops, age, cloudflared"
   ansible.builtin.include_tasks: gitops.yml
-  tags: [client, flux, sops]
+  tags: [client, flux, sops, cloudflared]
 
 # WSL regenerates /etc/hosts from Windows on every start, which would drop
 # the k8s-api line. Keep the current file instead.
