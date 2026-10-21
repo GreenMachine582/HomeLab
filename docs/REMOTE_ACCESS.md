@@ -331,11 +331,16 @@ Back at the PC:
 
 ## 🧪 Tests
 
-All of these must pass before you retire Chrome Remote Desktop:
+All of these must pass before you retire Chrome Remote Desktop. Start with the script: from the laptop, with the PC
+awake and WSL running, it checks the items marked 🤖 and lists the rest.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\laptop\Test-RemoteAccess.ps1   # -DevPcPorts 8096 by default
+```
 
 - [ ] A new device shows **Needs approval** and can't reach anything until you approve it.
 - [ ] `ssh dev-wsl` asks for the TOTP code every time, and a wrong code is refused.
-- [ ] Without the key (`ssh -o PubkeyAuthentication=no dev-wsl`) you're refused before the TOTP prompt.
+- [ ] 🤖 Without the key (`ssh -o PubkeyAuthentication=no dev-wsl`) you're refused before the TOTP prompt.
 - [ ] `ssh root@dev-wsl` and any other user are refused.
 - [ ] `cluster_status.yml` from WSL still reaches every node.
 - [ ] WSL starts only on demand: after a reboot, `dev-wsl` stays offline until something starts WSL, then
@@ -345,7 +350,8 @@ All of these must pass before you retire Chrome Remote Desktop:
 - [ ] `ssh -A dev-wsl` gets no forwarded agent (`ssh-add -l` inside says it can't connect).
 - [ ] Every login to dev-wsl posts a Discord alert naming `dev-wsl`.
 - [ ] `wslinfo --networking-mode` in WSL prints `nat`.
-- [ ] From the laptop, Windows answers only on `dev_pc_ports`: `nc -zv dev-pc <port>` works for a listed port, and
+- [ ] 🤖 `dev-wsl` and `dev-pc` are online with their tags, and `dev-wsl:22` is open.
+- [ ] 🤖 From the laptop, Windows answers only on `dev_pc_ports`: `nc -zv dev-pc <port>` works for a listed port, and
   445 / 3389 time out.
 - [ ] With both clients up, `ssh <node>.<tailnet>.ts.net` from WSL still resolves and connects.
 
