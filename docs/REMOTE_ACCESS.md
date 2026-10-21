@@ -82,6 +82,9 @@ ansible-playbook playbooks/tailscale_admin.yml                  # validate + dif
 ansible-playbook playbooks/tailscale_admin.yml -e confirm=true  # apply
 ```
 
+The live policy only changes when you push it. After pulling any change to `tailscale/policy.hujson.j2`, run this
+step again.
+
 </details>
 
 <details>
@@ -134,7 +137,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/dev-wsl -C "laptop → dev-wsl"
 ```
 
 Append `~/.ssh/dev-wsl.pub` to `~/.ssh/authorized_keys` in WSL (mode `600`, `~/.ssh` mode `700`). Then on the
-laptop, in `~/.ssh/config`:
+laptop, in `~/.ssh/config`, with `User` set to `dev_wsl_user`:
 
 ```text
 Host dev-wsl
@@ -146,6 +149,13 @@ Host dev-wsl
   AddKeysToAgent 1h
   ForwardAgent no
 ```
+
+> [!NOTE]
+> **Windows laptop:** the config lives in `C:\Users\<you>\.ssh\config`. The Windows `ssh-agent` service keeps added
+> keys **across reboots** (in the registry), and it may refuse the `1h` lifetime (`agent refused operation`). Use
+> `AddKeysToAgent no` instead and leave the `ssh-agent` service disabled (`Get-Service ssh-agent` shows
+> `Stopped`/`Disabled`). You then type the key's passphrase on every connection, and nothing stays unlocked on the
+> laptop.
 
 Keep the TOTP secret and scratch codes off the laptop's disk (your password manager is fine).
 
@@ -181,8 +191,11 @@ Sign in as yourself, then approve the device in the admin console if asked.
 - `--unattended` keeps the client running with **no one signed in to Windows**, which is the normal state after a
   remote wake. Without it, MagicDNS for WSL and your dev ports vanish until someone logs in.
 - `--reset` is needed because Windows' `tailscale up` otherwise insists you restate every flag set before.
-  Afterwards, re-tick **Use Tailscale DNS** in the tray menu if it's off (WSL depends on it). Set `dev_pc_ports` to the dev ports your devices should reach, and
-push the policy again (step 1). See [🪟 Windows and WSL on the tailnet](#-windows-and-wsl-on-the-tailnet).
+- Afterwards, re-tick **Use Tailscale DNS** in the tray menu if it's off (WSL depends on it).
+- Set `dev_pc_ports` to the dev ports your devices should reach, and push the policy again (step 1). See
+  [🪟 Windows and WSL on the tailnet](#-windows-and-wsl-on-the-tailnet).
+- `requested tags [tag:dev-pc] are invalid or not permitted` means the live policy predates `tag:dev-pc`. Pull,
+  push the policy again (step 1), then retry.
 
 </details>
 
@@ -255,7 +268,8 @@ hand). A dropped, expired or closed SSH session never shuts down the PC or WSL.
 ssh dev-wsl
 ```
 
-1. Unlock the key (its passphrase, or your SSH agent).
+1. Unlock the key: its passphrase, or your SSH agent within its hour. A Windows laptop with no agent asks for the
+   passphrase every time ([step 4](#-setup)).
 2. Enter the current code from your authenticator app when asked for `Verification code:`.
 
 With the relay, a full session is:
