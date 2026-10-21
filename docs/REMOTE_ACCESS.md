@@ -5,8 +5,9 @@ can reach it, and every login needs **your SSH key and a TOTP code**. No ports a
 router changes are needed.
 
 > [!NOTE]
-> **The PC is off by default.** It's woken and WSL is started **on demand**: by you today, and later by a
-> Wake-on-LAN relay on its LAN (a Pi Zero W, not bought yet) that also shuts it down when idle. See
+> **The PC is off by default.** It's woken, WSL is started, and both are stopped again **on demand**: by you today,
+> and later from the laptop through a Wake-on-LAN relay on the PC's LAN (a Pi Zero W, not bought yet). Nothing
+> shuts down automatically. See
 > [🖥️ Starting WSL on demand](#️-starting-wsl-on-demand) and [🛰️ Relay design](#️-relay-design-pi-zero-w-not-bought-yet).
 
 **Quick links:** [🗺️ How it works](#️-how-it-works) · [✅ Prerequisites](#-prerequisites) ·
@@ -36,7 +37,7 @@ Homelab nodes (tag:homelab)
 | Login | OpenSSH in WSL: `AuthenticationMethods publickey,keyboard-interactive`, PAM `pam_google_authenticator` | A fresh second factor on every login; a stolen key alone gets nowhere |
 | Policy | `tailscale/policy.hujson.j2`, pushed by `tailscale_admin.yml` | Policy as code; console edits get overwritten |
 | WSL setup | `controller.yml --tags dev_wsl`; you run `tailscale up` and the TOTP enrolment | WSL is the controller, so you join it by hand and the TOTP secret never touches Ansible |
-| Power | PC off by default; woken and WSL started on demand, never at boot | The PC only runs while it's in use |
+| Power | PC off by default; woken, started and stopped on demand, never at boot and never automatically | The PC only runs while you want it to, and a dropped session never kills your work |
 
 > [!NOTE]
 > **Why not Tailscale SSH check mode?** On this plan, check mode re-asks at most every 12h (`checkPeriod` other than
@@ -168,7 +169,10 @@ Nothing starts WSL at boot, and the PC isn't kept awake. Two things have to happ
 | | Wake the PC | Start WSL and hold it open |
 |---|---|---|
 | **Today** | You: at the PC, or Chrome Remote Desktop | Open a WSL terminal and leave it open (or run `wsl.exe -d <Distro> --exec sleep infinity` in a minimised window) |
-| **With the relay** | `wake-pc` on the Pi sends Wake-on-LAN | `wake-pc` runs `start-wsl.ps1` on Windows, which starts the on-demand task "HomeLab WSL" ([Relay design](#️-relay-design-pi-zero-w-not-bought-yet)) |
+| **With the relay** | `ssh -t wol-relay pc-start` | `ssh -t wol-relay wsl-open`, which starts the on-demand task "HomeLab WSL" ([Relay design](#️-relay-design-pi-zero-w-not-bought-yet)) |
+
+**Stopping** is also explicit: `wsl-close`, `pc-shutdown`, `pc-sleep` or `pc-restart` through the relay (today: by
+hand). A dropped, expired or closed SSH session never shuts down the PC or WSL.
 
 > [!WARNING]
 > The relay's task has to run with **"Run whether user is logged on or not"**, because no one logs in after a remote
@@ -203,13 +207,16 @@ All of these must pass before you retire Chrome Remote Desktop:
 - [ ] After you remove the laptop from the tailnet, it can't reach `dev-wsl:22`. Existing sessions are **not** killed
   automatically, so end them by hand.
 
-Once the relay exists:
+Once the relay exists (all from offsite, not just the LAN):
 
-- [ ] `wake-pc` wakes the PC from a **full shutdown**, tested from offsite, not just the LAN.
-- [ ] `wake-pc` reports WSL ready, and `ssh dev-wsl` works with no Windows login.
-- [ ] The PC shuts itself down after the idle period, and doesn't while an SSH session is open.
-- [ ] The Pi's trigger key can't run anything on Windows except `start-wsl.ps1`.
+- [ ] `pc-start` wakes the PC from a **full shutdown** and from **sleep**.
+- [ ] `wsl-open` reports WSL ready, and `ssh dev-wsl` works with no Windows login.
+- [ ] `wsl-close`, `pc-sleep`, `pc-restart` and `pc-shutdown` each do what they say.
+- [ ] A dropped or closed SSH session leaves the PC and WSL running.
+- [ ] The Pi's trigger key is refused for anything outside `pc-control.ps1`'s allow-list (e.g. `ssh … whoami`).
+- [ ] The PC is still found after its IP address changes.
 - [ ] After a power cut, the relay rejoins the tailnet by itself and does **not** wake the PC.
+- [ ] A hung Pi reboots itself (hardware watchdog).
 
 ---
 
@@ -223,72 +230,149 @@ Once the relay exists:
    `%UserProfile%\.wslconfig`.
 3. **Break-glass desktop access:** built-in Windows RDP allowed only from the Tailscale interface, or none at all.
 
-**Relay (decide before building it):**
+4. **Relay: `wsl.exe` from a Windows OpenSSH session.** `wsl-open` checks WSL is ready with short
+   `wsl.exe --exec systemctl is-active` calls. Run the test below. If Windows refuses `wsl.exe` in an SSH session,
+   `wsl-open` only starts the task and the laptop retries `ssh dev-wsl`.
 
-4. **`wsl.exe` from a Windows OpenSSH session:** `start-wsl.ps1` checks WSL is ready with short
-   `wsl.exe --exec systemctl is-active` calls. If Windows refuses `wsl.exe` in an SSH session, drop the check and let
-   the laptop retry `ssh dev-wsl`.
-5. **Finding the PC on the LAN:** DHCP reservations on the home router for the PC and the Pi, or discover the PC
-   another way (mDNS `<pc>.local`).
-6. **Windows account type:** an admin account reads keys from `C:\ProgramData\ssh\administrators_authorized_keys`;
-   a standard account uses its own `~\.ssh\authorized_keys`.
-7. **Ansible to the relay:** should the controller skip TOTP when it comes from the PC's LAN IP only
-   (`Match User <user> Address <pc ip>/32` → `AuthenticationMethods publickey`)? Without it, every Ansible run on
-   the relay needs a TOTP code.
-8. **Idle rules:** are 30 min idle after a 20 min boot grace right, and should someone signed in at the console block
-   the shutdown?
-9. **Disable flag:** a Windows file (`C:\HomeLab\idle-shutdown.disabled`) or `/etc/idle-shutdown.disabled` in WSL.
-10. **Relay reboots:** should the Pi ever wake the PC on its own after a power cut? Proposed: no
-    (`wol_wake_at_boot: false`).
+<details>
+<summary><b>Test <code>wsl.exe</code> over Windows SSH</b></summary>
+
+On the PC, in **admin PowerShell**, run a throwaway Windows OpenSSH server on 2222:
+
+```powershell
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+(Get-Content C:\ProgramData\ssh\sshd_config) -replace '^#?Port 22$','Port 2222' | Set-Content C:\ProgramData\ssh\sshd_config
+New-NetFirewallRule -Name sshd-2222-test -DisplayName "sshd 2222 (test)" -Direction Inbound -Protocol TCP -LocalPort 2222 -RemoteAddress LocalSubnet -Action Allow
+Start-Service sshd
+ipconfig    # note the PC's IPv4 address for the test
+```
+
+From the laptop, on the **same LAN**:
+
+```bash
+ssh -p 2222 <winuser>@<pc ip> "hostname"                                         # sshd answers
+ssh -p 2222 <winuser>@<pc ip> "wsl.exe -l -v"                                    # the session can see the distro
+ssh -p 2222 <winuser>@<pc ip> "wsl.exe -d <Distro> --exec systemctl is-active tailscaled ssh"
+ssh -p 2222 <winuser>@<pc ip> "wsl.exe -l --running"                             # still running after that call?
+```
+
+- **Pass:** your distro is listed, and the `systemctl` line prints `active` or `inactive` for each service.
+- **Fail:** `Access is denied`, or an empty list.
+- No password on your account (Windows Hello only)? Password login won't work: put the laptop's public key in
+  `C:\ProgramData\ssh\administrators_authorized_keys` first (see [Relay design](#️-relay-design-pi-zero-w-not-bought-yet)
+  for its permissions).
+
+Clean up:
+
+```powershell
+Stop-Service sshd; Set-Service sshd -StartupType Manual; Remove-NetFirewallRule -Name sshd-2222-test
+```
+
+</details>
+
+**Relay decisions (settled):**
+
+- **Finding the PC:** by its **MAC address** only. There's no router access, so no DHCP reservations; the MAC is
+  needed for Wake-on-LAN anyway. Each command looks up the PC's current IP with `arp-scan --localnet`.
+- **Windows account:** admin, so the Pi's key goes in `C:\ProgramData\ssh\administrators_authorized_keys`.
+- **Ansible to the relay:** TOTP is skipped **only from the home LAN** (`Match User <relay user> Address
+  <home_lan_subnet>` → key only). Over the tailnet it's key + TOTP.
+- **No automatic shutdown:** the laptop stops WSL and the PC explicitly. A dropped session never shuts anything down.
+- **Relay reboots never wake the PC** (`wol_wake_at_boot: false`), and the Pi is kept always on
+  ([Keeping the relay on](#keeping-the-relay-on)).
 
 ---
 
 ## 🛰️ Relay design (Pi Zero W, not bought yet)
 
-The design so far. Nothing here is built yet; settle the [relay open questions](#-open-questions) first.
+The design so far. Nothing here is built yet; [open question 4](#-open-questions) is waiting on its test.
 
 ```text
 Laptop
-  │  ssh -t wol-relay wake-pc ── tailnet ACL: admins → tag:wol-relay:22; key + TOTP
+  │  ssh -t wol-relay <command> ── tailnet ACL: admins → tag:wol-relay:22; key + TOTP
   ▼
 wol-relay (Pi Zero W, tag:wol-relay, home LAN, Wi-Fi)
-  │  1. Wake-on-LAN magic packets → main PC; poll its LAN IP until Windows answers on 2222
-  │  2. ssh -i ~/.ssh/pc-trigger -p 2222 <winuser>@<pc ip>   (LAN only, key forced to one script)
+  │  pc-start: Wake-on-LAN magic packets → PC's MAC; poll until Windows answers on 2222
+  │  others:   find the PC's IP by MAC (arp-scan), then
+  │            ssh -i ~/.ssh/pc-trigger -p 2222 <winuser>@<pc ip> <action>   (LAN only)
   ▼
-Windows OpenSSH (port 2222) → start-wsl.ps1
-  │  starts the on-demand task "HomeLab WSL", waits until tailscaled and sshd are active, reports back
+Windows OpenSSH (port 2222) → pc-control.ps1 (forced command, allow-listed actions only)
+  │  wsl-open / wsl-close / sleep / restart / shutdown
   ▼
 Laptop: ssh dev-wsl ── key + TOTP
 ```
+
+### The six commands
+
+Run from the laptop as `ssh -t wol-relay <command>`:
+
+| Command | What it does | How |
+|---|---|---|
+| `pc-start` | Wake the PC | Wake-on-LAN to the PC's MAC, then poll until Windows answers on 2222. Never touches Windows itself |
+| `pc-shutdown` | Shut down | `shutdown /s /t 60` |
+| `pc-restart` | Restart | `shutdown /r /t 60`. WSL isn't started afterwards: run `wsl-open` |
+| `pc-sleep` | Sleep | `rundll32 powrprof.dll,SetSuspendState 0,1,0`. Needs hibernation off (`powercfg /h off`), or it hibernates instead. `pc-start` wakes it |
+| `wsl-open` | Start WSL and keep it running | Starts the on-demand task "HomeLab WSL", waits until `tailscaled` and `sshd` are active, reports |
+| `wsl-close` | Stop WSL cleanly | Stops the task, then `wsl.exe --terminate <Distro>` |
+
+Typical session: `pc-start`, `wsl-open`, `ssh dev-wsl` … then `wsl-close` and `pc-shutdown` (or `pc-sleep`).
+
+> [!TIP]
+> Each `ssh wol-relay` asks for a TOTP code. Reuse one connection for a run of commands with this in the laptop's
+> `~/.ssh/config`:
+>
+> ```text
+> Host wol-relay
+>   ControlMaster auto
+>   ControlPath ~/.ssh/cm-%r@%h:%p
+>   ControlPersist 10m
+> ```
+>
+> `ssh dev-wsl` still asks separately.
+
+### The pieces
 
 - **Is the relay up?** From the laptop: `tailscale ping wol-relay`, or `tailscale status`.
 - **The relay:**
   - Raspberry Pi OS Lite 32-bit (ARMv6), on Wi-Fi. Tailscale tagged `tag:wol-relay`, joined by hand
     (`tailscale up`, then approve), the same way as WSL.
-  - The same key + TOTP sshd as WSL, through a shared role extracted from `controller.yml`.
+  - The same key + TOTP sshd as WSL, through a shared role extracted from `controller.yml`, plus the home-LAN
+    key-only exception for Ansible.
   - Its own `oob` inventory group, outside every Kubernetes group. It never joins the cluster.
-  - `roles/wake_on_lan`, generalised so it can target the PC: the target list, ports and subnet become variables,
-    and the nodes' behaviour doesn't change.
+  - The six commands in `/usr/local/bin`, sharing one helper: find the PC's IP by MAC (`arp-scan --localnet`), then
+    call `pc-control` with the trigger key. `pc-start` reuses the Wake-on-LAN logic in `roles/wake_on_lan`.
   - A trigger keypair generated on the Pi, so the private key never leaves it.
-  - `unattended-upgrades`, a small journald, and nothing else.
 - **Windows:**
-  - OpenSSH Server on **port 2222**, key-only, with its firewall rule scoped to the Pi's IP. Not 22: WSL's localhost
-    forwarding would clash with a Windows sshd on 22.
-  - The Pi's key in `authorized_keys` as
-    `restrict,from="<pi ip>",command="powershell -NoProfile -File C:\HomeLab\start-wsl.ps1" ssh-ed25519 …`, so it
-    can run that one script and nothing else.
-  - The **"HomeLab WSL"** task: no trigger (started only by `start-wsl.ps1`), runs `wsl-session.ps1` as the distro
-    owner with "run whether logged on or not".
-  - `start-wsl.ps1` and `wsl-session.ps1` live in the repo under `scripts/windows/`, and `controller.yml` copies them
-    to `C:\HomeLab` through `/mnt/c`. The task, OpenSSH Server and firewall rule are set up by hand, because they need
-    your Windows password.
-- **Idle shutdown, on the Windows side:**
-  - `wsl-session.ps1` holds WSL open with `wsl.exe -d <Distro> --exec sleep infinity`.
-  - Every 5 minutes it counts SSH sessions into WSL.
-  - After a 20-minute boot grace period, once it has been idle for 30 minutes, with no one at the console and no
-    disable flag, it runs `shutdown /s /t 120`.
-  - It logs each decision to `C:\HomeLab\wsl-session.log`.
-- **PC prep for Wake-on-LAN:**
-  - BIOS: turn on Wake on LAN / "Power On by PCI-E", and turn ErP / deep sleep off.
-  - NIC: "Wake on Magic Packet" on, and allow it to wake the PC.
-  - Use wired Ethernet, and record the PC's MAC address.
+  - OpenSSH Server on **port 2222**, key-only, with its firewall rule limited to `-RemoteAddress LocalSubnet`. Not
+    22: WSL's localhost forwarding would clash with a Windows sshd on 22.
+  - The Pi's key in `C:\ProgramData\ssh\administrators_authorized_keys` (admin account) as
+    `restrict,from="<home LAN CIDR>",command="powershell -NoProfile -File C:\HomeLab\pc-control.ps1" ssh-ed25519 …`.
+    The file must be readable only by Administrators and SYSTEM, or sshd ignores it:
+    `icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F"`.
+  - `pc-control.ps1` reads the requested action from `$env:SSH_ORIGINAL_COMMAND` and runs only `wsl-open`,
+    `wsl-close`, `sleep`, `restart` or `shutdown`. Anything else is refused and logged to `C:\HomeLab\pc-control.log`.
+  - The **"HomeLab WSL"** task: no trigger (started only by `wsl-open`), runs `wsl.exe -d <Distro> --exec sleep
+    infinity` as the distro owner with "run whether logged on or not".
+  - `pc-control.ps1` lives in the repo under `scripts/windows/`, and `controller.yml` copies it to `C:\HomeLab`
+    through `/mnt/c`. The task, OpenSSH Server and firewall rule are set up by hand, because they need your Windows
+    password.
+
+### Keeping the relay on
+
+The Pi has no case and no power button: it runs whenever it has power, and boots by itself when power returns.
+
+- **Power:** its own always-on USB supply. **Never a USB port on the PC**: it goes dead when the PC is off.
+- **Hangs:** the hardware watchdog (`RuntimeWatchdogSec=15` in systemd) reboots a hung Pi.
+- **Wi-Fi:** power-save off on `wlan0`, or a dozing Pi Zero W drops off the tailnet. Tailscale reconnects by itself
+  after a reboot.
+- **SD card:** journald capped, to limit wear and corruption from power cuts. Optional: raspi-config's read-only
+  overlay for more protection, at the cost of harder updates.
+- **Updates:** `unattended-upgrades` for security fixes, rebooting at 04:00 when needed. A reboot never wakes the PC.
+- **Placement:** somewhere ventilated, off anything conductive. A case is cheap and recommended, but not required.
+
+### PC prep for Wake-on-LAN
+
+- **BIOS:** turn on Wake on LAN / "Power On by PCI-E", and turn ErP / deep sleep off.
+- **NIC:** "Wake on Magic Packet" on, and allow it to wake the PC (Device Manager → the adapter → Power Management).
+- **Windows:** Fast Startup off; hibernation off (`powercfg /h off`) so `pc-sleep` sleeps rather than hibernates.
+- **Network:** wired Ethernet. Record the PC's MAC address (`getmac /v`): the relay finds and wakes the PC by it.
