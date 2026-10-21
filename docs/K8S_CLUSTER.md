@@ -80,7 +80,11 @@ ansible-playbook playbooks/cluster.yml     # re-run: no changes
   - cloud-init's `manage_etc_hosts`
   - the last kubelet errors;
 - from the control plane: nodes, Cilium nodes, all pods, `cilium status`, and the deployed Cilium Helm values
-  (what homelab-cluster's HelmRelease must match).
+  (what homelab-cluster's HelmRelease must match), plus the Gateway API state;
+- from the controller (WSL): that `whoami.home.green-tech-hub.com` resolves to the Gateway (`192.168.50.240`)
+  through the Cloudflare `*.home` record, that HTTPS returns 200 with a verified certificate, and that HTTP returns
+  the 301 redirect. It warns if any of these fail. The record is set by hand; see homelab-cluster
+  `docs/M4_PLATFORM.md` "Cloudflare setup".
 
 With `connectivity_test=true` it also runs `cilium connectivity test` and removes the test namespaces afterwards.
 Its pods only go to nodes labelled `homelab/l7-proxy=supported` (see "Envoy and the Pi 4s" below), and with the
