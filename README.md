@@ -179,8 +179,8 @@ Restore steps: [K8S_CLUSTER.md › etcd backups](./docs/K8S_CLUSTER.md#-etcd-bac
 | M2 | kubeadm + Cilium, etcd snapshot restore tested | ✅ |
 | M3 | Flux, SOPS, branch protection, Cilium adopted | ✅ |
 | M4 | Gateway, LB-IPAM, cert-manager, storage, cloudflared, backup NFS | 🚧 Backup target left |
-| M5 | Prometheus, Grafana, Loki, Alloy, Uptime Kuma | ⏳ |
-| M6 | BottleBot, GreenTechHub, Postgres, Authentik | ⏳ |
+| M5 | gth-ui playground, Postgres, Authentik, Grafana + minimal alerting | 🚧 Playground live |
+| M6 | BottleBot, GreenTechHub (multi-arch GHCR builds) | ⏳ |
 | M7 | Jellyfin and the rest | ⏳ |
 | M8 | Cutover from Compose (legacy deleted here), full DR rebuild test | ⏳ |
 
