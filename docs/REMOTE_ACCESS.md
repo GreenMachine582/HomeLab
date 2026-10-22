@@ -288,11 +288,22 @@ ssh dev-wsl                        # work                    (key + TOTP)
 
 Run these through `powershell -ExecutionPolicy Bypass -File …` if your execution policy blocks scripts.
 
+`pc: <MAC> not found on this network` means one of three things: the PC is off, the laptop isn't on the home LAN,
+or the MAC in `pc.json` belongs to an adapter that isn't connected right now (for example, Ethernet unplugged).
+
 <details>
 <summary><b>One-time setup</b></summary>
 
 1. **The PC's Wake-on-LAN prep:** BIOS and NIC settings in [PC prep for Wake-on-LAN](#pc-prep-for-wake-on-lan).
-   Note its MAC address (`getmac /v`, the wired adapter).
+   The Ethernet cable has to be **plugged in and connected**: in `getmac /v`, the Ethernet line shows a MAC, not
+   `Media disconnected`. Note that MAC. `pc.ps1` finds the PC by its MAC, so `"mac"` in `pc.json` must belong to
+   an adapter that's connected right now.
+
+   > [!NOTE]
+   > **Wi-Fi stopgap (no cable yet):** put the Wi-Fi adapter's MAC in `pc.json` instead. `status`, `wsl-open`,
+   > `wsl-close`, `sleep`, `restart` and `shutdown` all work, but `start` can't wake the PC: Wake-on-LAN needs the
+   > wired connection. After `sleep` or `shutdown`, wake the PC by hand. Once the cable is in, switch `"mac"` back
+   > to the Ethernet MAC.
 2. **On the laptop**, make a key just for this, with a strong passphrase:
 
    ```powershell
@@ -432,15 +443,20 @@ All of these must pass before you retire Chrome Remote Desktop:
 
 From the home LAN (`pc.ps1`):
 
-- [ ] `start` wakes the PC from a **full shutdown** and from **sleep**.
-- [ ] `wsl-open` reports WSL ready with **no one logged in to Windows** (the S4U task works), and `ssh dev-wsl`
+- [ ] `start` wakes the PC from a **full shutdown** and from **sleep** (needs the PC on Ethernet).
+- [x] `wsl-open` reports WSL ready with **no one logged in to Windows** (the S4U task works), and `ssh dev-wsl`
   then connects.
-- [ ] `status`, `wsl-close`, `sleep`, `restart` and `shutdown` each do what they say.
-- [ ] A dropped or closed SSH session leaves the PC and WSL running.
-- [ ] The `pc-lan` key is refused for anything off the allow-list: `ssh -p 2222 -i ~/.ssh/pc-lan <user>@<pc ip>
+- [x] `wsl-open` reports WSL ready while logged in to Windows, and `ssh dev-wsl` then connects.
+- [x] `status` reports the PC up and WSL running or stopped.
+- [x] `wsl-close` stops WSL.
+- [x] `shutdown` shuts the PC down after 60 seconds.
+- [x] `sleep` sleeps the PC.
+- [x] `restart` restarts the PC, and `wsl-open` works afterwards.
+- [x] A dropped or closed SSH session leaves the PC and WSL running.
+- [x] The `pc-lan` key is refused for anything off the allow-list: `ssh -p 2222 -i ~/.ssh/pc-lan <user>@<pc ip>
   whoami` prints `refused`, and the attempt shows in `C:\HomeLab\pc-control.log`.
-- [ ] Windows sshd on 2222 refuses password logins (`ssh -o PubkeyAuthentication=no -p 2222 <user>@<pc ip>`).
-- [ ] From the laptop over the tailnet, `dev-pc:2222` is closed.
+- [x] Windows sshd on 2222 refuses password logins (`ssh -o PubkeyAuthentication=no -p 2222 <user>@<pc ip>`).
+- [x] From the laptop over the tailnet, `dev-pc:2222` is closed.
 
 Once the relay exists (all from offsite, not just the LAN):
 
@@ -460,17 +476,15 @@ Once the relay exists (all from offsite, not just the LAN):
 
 ## ❓ Open questions
 
-1. **The on-demand task while logged off:** "HomeLab WSL" is registered as S4U, which needs no stored password.
-   If WSL won't start that way, re-run the installer with `-StoredPassword` (add a password to the account, or use a
-   dedicated local account). The first logged-off `pc.ps1 wsl-open` decides.
+1. ~~The on-demand task while logged off~~ **Settled:** S4U works. With no one logged in to Windows,
+   `pc.ps1 wsl-open` reported WSL ready, so `-StoredPassword` isn't needed.
 2. ~~Tailscale on both Windows and WSL~~ **Settled:** both stay on, Windows tagged `tag:dev-pc`, WSL in NAT mode.
    See [🪟 Windows and WSL on the tailnet](#-windows-and-wsl-on-the-tailnet).
 3. **Break-glass desktop access:** built-in Windows RDP allowed only from the Tailscale interface, or none at all.
 
-4. **`wsl.exe` from a Windows OpenSSH session.** `wsl-open` checks WSL is ready with short
-   `wsl.exe --exec systemctl is-active` calls from inside the SSH session. The first `pc.ps1 wsl-open` answers this:
-   `ready` means it works. `task started, but … not confirmed` while `ssh dev-wsl` still connects means Windows
-   refuses `wsl.exe` in an SSH session, and `wsl-open` stays start-only (the laptop just retries `ssh dev-wsl`).
+4. ~~`wsl.exe` from a Windows OpenSSH session~~ **Settled:** it works. The first `pc.ps1 wsl-open` printed
+   `ready (tailscaled and ssh active)`, so `wsl-open`'s `wsl.exe --exec systemctl is-active` checks from inside the
+   SSH session confirm readiness; it doesn't need to be start-only.
 
 **Relay decisions (settled):**
 
@@ -580,7 +594,10 @@ The Pi has no case and no power button: it runs whenever it has power, and boots
 - **NIC:** "Wake on Magic Packet" on, and allow it to wake the PC (Device Manager → the adapter → Power Management).
 - **Windows:** Fast Startup and hibernation off (`powercfg /h off`, done by the installer), so `sleep` sleeps rather
   than hibernates.
-- **Network:** wired Ethernet. Record the PC's MAC address (`getmac /v`): the relay finds and wakes the PC by it.
+- **Network:** wired Ethernet, **plugged in and connected**. Waking the PC from sleep or shutdown only works through
+  the connected wired adapter; Wi-Fi isn't supported. Record the Ethernet adapter's MAC address (`getmac /v`): the
+  relay finds and wakes the PC by it. Without a cable, see the Wi-Fi stopgap in
+  [One-time setup](#-from-the-home-lan-until-the-relay).
 
 ### To build
 
