@@ -42,14 +42,13 @@ infisical_seed_folders:
   - greentechhub
   - deploy
   - network
-  - semaphore
   - tailscale
   - uptime_kuma
   - portainer
 
 # Project role slug — ⚠️ verify against the deployed Infisical version; this is
 # a built-in project role name and may differ across releases. read-only:
-# Phase 2+ playbooks (and Semaphore) resolve application secrets at runtime —
+# Phase 2+ playbooks resolve application secrets at runtime —
 # nothing else needs a persisted machine identity. The one-time application
 # secret seed authenticates with the bootstrap call's own instance-admin token
 # (see bootstrap_instance.yml) — nothing to provision, persist, or revoke for it.
@@ -62,7 +61,7 @@ infisical_seed_identities:
 # resolve application secrets from Infisical without vault.yml ever being copied
 # there. In the homelab user's home dir (not /opt/infisical — that's Infisical's
 # OWN operational secrets; this is the credential Ansible itself authenticates
-# with, mirroring how it's also injected into Semaphore's .env).
+# with).
 infisical_runtime_auth_path: /home/homelab/.infisical_runtime_auth.yml
 
 # Reachable over loopback on the edge itself — Phase 2+ playbooks run locally

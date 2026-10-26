@@ -11,18 +11,16 @@
 # Loaded via include_vars by roles/infisical/tasks/lookup.yml so deploy_edge.yml
 # (and future Phase 2+ playbooks) can resolve application secrets straight from
 # Infisical without ever needing a copy of vault.yml here — see CLAUDE.md
-# "Secrets". Semaphore reads this exact same file directly, the same way
-# (roles/semaphore/tasks/main.yml), to authenticate its own Ansible runs.
+# "Secrets".
 #
 # READ-ONLY by design: this identity can only read secrets, never
-# create/edit/delete/manage projects. A leaked copy of this file is no worse
-# than a leaked Semaphore token.
+# create/edit/delete/manage projects.
 #
 # This file IS the source of truth — there is no second copy to keep in sync.
 # To rotate: generate a fresh client secret for the "runtime" identity
 # (Infisical UI -> Access Control -> Identities -> runtime -> Universal Auth —
 # the client ID stays the same), then edit this file directly on the node
-# (keep mode 0600) and restart Semaphore — see docs/TROUBLESHOOTING.md.
+# (keep mode 0600) — see docs/TROUBLESHOOTING.md.
 
 infisical_runtime_client_id:     "{{ _runtime_client_id }}"
 infisical_runtime_client_secret: "{{ _runtime_client_secret }}"

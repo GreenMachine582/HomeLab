@@ -1,8 +1,8 @@
 ---
 # playbooks/backup.yml
 #
-# Runs database backups across all svc nodes plus homelab-edge (Infisical and
-# Semaphore each carry their own Postgres database — see docker-compose.edge.yml).
+# Runs database backups across all svc nodes plus homelab-edge (Infisical
+# carries its own Postgres database — see docker-compose.edge.yml).
 # Backups are stored locally on the node and can be pulled off via rsync/scp.
 #
 # Usage:
@@ -48,8 +48,8 @@
       tags: [postgres]
       changed_when: true
 
-    # ── PostgreSQL backup (homelab-edge: Infisical + Semaphore DBs) ───────────
-    # Each DB has its own dedicated Postgres container with no host bind mount
+    # ── PostgreSQL backup (homelab-edge: Infisical DB) ────────────────────────
+    # Infisical has its own dedicated Postgres container with no host bind mount
     # for backups (deliberately — keeps the secret-holding containers' filesystem
     # surface minimal). Stream pg_dump straight through gzip into postgres_backup_dir
     # instead, so nothing ever needs to be written inside the container.
@@ -76,18 +76,6 @@
       tags: [postgres]
       changed_when: true
       no_log: true   # Suppress output (may contain connection strings)
-
-    - name: "Backup | Postgres | Dump and compress Semaphore database (edge)"
-      ansible.builtin.shell:
-        cmd: >
-          set -o pipefail &&
-          docker exec semaphore-db pg_dump -U semaphore semaphore
-          | gzip -f > {{ postgres_backup_dir }}/semaphore_{{ backup_timestamp }}.sql.gz
-        executable: /bin/bash
-      when: inventory_hostname == 'homelab-edge'
-      tags: [postgres]
-      changed_when: true
-      no_log: true
 
     # ── Cleanup old backups ───────────────────────────────────────────────────
     - name: "Backup | Cleanup | Remove backups older than {{ backup_retain_days }} days"
