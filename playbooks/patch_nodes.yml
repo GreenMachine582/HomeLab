@@ -5,7 +5,7 @@
 # and if the node needs a reboot, drain, reboot, wait for Ready, uncordon.
 # Run from WSL. See docs/K8S_PATCHING.md.
 #
-#   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml -e patch_report_only=true
+#   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml --tags report
 #   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml
 #   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml -e patch_nodes=rpi-01
 #   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml -e patch_force_reboot=true
@@ -16,8 +16,9 @@
 # untouched. kubelet, kubeadm, kubectl and containerd.io are held (decision
 # 27), so this never changes the cluster's versions.
 #
+# --tags report lists pending upgrades on every node and changes nothing.
+#
 # Extra vars:
-#   patch_report_only=true     list pending upgrades on every node, change nothing
 #   patch_force_reboot=true    reboot every node even if nothing asks for it
 #   patch_allow_unhealthy=true skip the pre-flight health gate
 #   patch_nodes=rpi-01,rpi-02  patch only these nodes. Not --limit: kubectl
@@ -49,10 +50,12 @@
         quiet: true
       run_once: true
 
+# The only tagged play: --tags report runs it (and the probe) alone.
 - name: "Patch | Pending upgrades"
   hosts: k8s
   become: true
   gather_facts: false
+  tags: [report]
 
   tasks:
     - name: "Patch | Update the apt cache"
@@ -71,10 +74,6 @@
     - name: "Patch | Report"
       ansible.builtin.debug:
         msg: "{{ _pending.stdout_lines }}"
-
-    - name: "Patch | Stop here in report-only mode"
-      ansible.builtin.meta: end_playbook
-      when: patch_report_only | default(false) | bool
 
 - name: "Patch | Pre-flight cluster health"
   hosts: k8s_control_plane
