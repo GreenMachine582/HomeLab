@@ -118,6 +118,7 @@ the old one.
   what you saw). Read-only playbooks (`cluster_status.yml`) are safe any time.
 - [ ] 📌 Versions are pinned in `group_vars/k8s.yml`, with checksums where the download has them. A version Renovate
   should track gets a `# renovate: datasource=… depName=…` comment on the line above (`.github/renovate.json5`).
+  A held version also gets a `packageRules` entry with `dependencyDashboardApproval: true` and a description saying why.
 - [ ] 🔐 Never commit `vault.yml`, `.vault_pass`, `overrides.yml`, keys or tokens. They're gitignored. Keep it that
   way.
 

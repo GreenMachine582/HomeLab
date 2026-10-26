@@ -1,12 +1,11 @@
-// Renovate (GitHub App): PRs for the controller tool versions in
+// Renovate (GitHub App): PRs for the versions in
 // inventories/group_vars/k8s.yml and for GitHub Actions. Minor and patch
 // updates automerge once a release is 3 days old, on weekday working hours,
 // Sydney time; majors and 0.x wait for review. See CONTRIBUTING.md.
 //
-// Tracked vars carry a "# renovate:" comment. Not tracked, on purpose:
-// k8s_version and containerd_version (held, decision 27: cluster.yml PRs),
-// cilium_version (held at 1.20.1 for kernel BTF; follows homelab-cluster's
-// HelmRelease). The legacy stack (compose, deploy-service) isn't scanned.
+// Tracked vars carry a "# renovate:" comment. The held ones (k8s, containerd,
+// cilium) open a PR only when ticked on the Dependency Dashboard issue. The
+// legacy stack (compose, deploy-service) isn't scanned: it goes at M8.
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: ["config:recommended", ":dependencyDashboard"],
@@ -48,11 +47,28 @@
       ],
     },
     {
-      description: "cloudflared_sha256 is pinned by hand (no checksums file)",
+      description: "cloudflared_sha256 has no checksums file: cloudflared-sums.yml commits it from the asset digests, and is a required check",
       matchDepNames: ["cloudflare/cloudflared"],
+      prBodyNotes: [
+        "`cloudflared-sums` adds the checksum commit to this PR; it merges after that. Keep the version the same as homelab-cluster's cloudflared image.",
+      ],
+    },
+    {
+      description: "Held (decision 27): Kubernetes and containerd minors are deliberate cluster.yml upgrades",
+      matchDepNames: ["kubernetes/kubernetes", "containerd/containerd"],
+      dependencyDashboardApproval: true,
       automerge: false,
       prBodyNotes: [
-        "Before merging, put the release's `cloudflared-linux-amd64` and `cloudflared-linux-arm64` sha256 sums (release notes, or the asset digests) in `cloudflared_sha256`. Keep the version the same as homelab-cluster's cloudflared image.",
+        "Held. Kubernetes: stay inside Cilium's tested matrix, then upgrade with `cluster.yml`. containerd: a new minor goes through `cluster.yml`; patch releases already move with `patch_nodes.yml -e patch_held=true`.",
+      ],
+    },
+    {
+      description: "Held at 1.20.1: 1.20.2 needs kernel BTF, which the Raspberry Pi OS kernels lack",
+      matchDepNames: ["cilium/cilium"],
+      dependencyDashboardApproval: true,
+      automerge: false,
+      prBodyNotes: [
+        "Held for kernel BTF. Check `/sys/kernel/btf/vmlinux` on the Pis first. Keep the same as homelab-cluster's Cilium HelmRelease, which upgrades the running cluster; this is the fresh-install seed.",
       ],
     },
   ],
