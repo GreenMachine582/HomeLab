@@ -52,7 +52,7 @@ The in-progress polyrepo migration strategy (how future service repos are split,
 
 - `inventories/bootstrap.ini` — Phase 1 only; connects as `admin`; `ansible_host`/`ansible_port` are probe-injected at runtime by `bootstrap_edge.yml` — no manual editing required
 - `inventories/prod.yml` — Phase 2+; connects as `homelab` (passwordless sudo); YAML format supports Jinja2 so `ansible_host`/`ansible_port` resolve from `group_vars/all/main.yml` by default
-- `playbooks/resolve_node_ips.yml` — shared preamble, imported via `import_playbook` at the top of `healthcheck.yml`, `apply_firewall.yml`, `update_all.yml`, `backup.yml`, and `rollback.yml` (and any future playbook targeting observe/svc nodes, e.g. `deploy_svc.yml` when it's created). Overrides `ansible_host` for observe/svc nodes at runtime with a live fetch from Infisical's `/prod/network/IP_*` secrets (via `roles/infisical/tasks/lookup.yml`, `connection: local` on `homelab-edge`, then `add_host`) instead of the static value in `overrides.yml`. `ip_edge` is never resolved this way — Phase 1 bootstraps the edge node before Infisical exists, so it must stay a static value.
+- `playbooks/resolve_node_ips.yml` — shared preamble, imported via `import_playbook` at the top of `healthcheck.yml`, `apply_firewall.yml`, `backup.yml`, and `rollback.yml` (and any future playbook targeting observe/svc nodes, e.g. `deploy_svc.yml` when it's created). Overrides `ansible_host` for observe/svc nodes at runtime with a live fetch from Infisical's `/prod/network/IP_*` secrets (via `roles/infisical/tasks/lookup.yml`, `connection: local` on `homelab-edge`, then `add_host`) instead of the static value in `overrides.yml`. `ip_edge` is never resolved this way — Phase 1 bootstraps the edge node before Infisical exists, so it must stay a static value.
 - `inventories/group_vars/all/main.yml` — applied to all nodes (users, SSH, Docker config, observability agents); IPs are `EDIT_BEFORE_USE` placeholders
 - `inventories/group_vars/all/overrides.yml` — gitignored; holds real IPs/subnet. `ip_edge` here is authoritative; `ip_observe`/`ip_svc_01-03` here are only a fallback for ad-hoc commands that bypass a playbook (e.g. `ansible observe -m ping`) — every playbook resolves those live from Infisical instead (see `resolve_node_ips.yml` above). Copy from `overrides.yml.example`.
 - `inventories/group_vars/all/vault.yml` — Ansible Vault encrypted; never committed in plaintext (auto-loaded alongside `main.yml`)
@@ -87,7 +87,7 @@ The in-progress polyrepo migration strategy (how future service repos are split,
 
 ### Secrets
 
-`inventories/group_vars/all/vault.yml` (Ansible Vault) lives **only on the WSL/PC control host** — it is never copied to any node, not even `homelab-edge` (see "Important Constraints"). The vault password file is `.vault_pass` (gitignored, also WSL-only). It still backs Phase 1 bootstrap (`bootstrap_edge.yml`, run from WSL — a single pass, see below) and every Stage 3+ playbook (`deploy_svc.yml`, `healthcheck.yml`, `update_all.yml`, `backup.yml`, `rollback.yml`, `apply_firewall.yml`), which still read `{{ vault_* }}` directly — converting these is **deferred**, see `docs/TROUBLESHOOTING.md` "Vault → Infisical conversion status".
+`inventories/group_vars/all/vault.yml` (Ansible Vault) lives **only on the WSL/PC control host** — it is never copied to any node, not even `homelab-edge` (see "Important Constraints"). The vault password file is `.vault_pass` (gitignored, also WSL-only). It still backs Phase 1 bootstrap (`bootstrap_edge.yml`, run from WSL — a single pass, see below) and every Stage 3+ playbook (`deploy_svc.yml`, `healthcheck.yml`, `backup.yml`, `rollback.yml`, `apply_firewall.yml`), which still read `{{ vault_* }}` directly — converting these is **deferred**, see `docs/TROUBLESHOOTING.md` "Vault → Infisical conversion status".
 
 `deploy_edge.yml` (Phase 2 — runs on `homelab-edge` itself, which never receives `vault.yml`) is the first **converted** playbook: its `pre_tasks` resolve `discord/ALERTS_WEBHOOK` and `tailscale/OAUTH_CLIENT_ID`/`OAUTH_CLIENT_SECRET` at runtime from Infisical via `roles/infisical/tasks/lookup.yml` (exposed as the matching `vault_*` facts for the `fail2ban`/`tailscale` roles it runs), authenticating with a node-local, read-only Universal Auth identity. That identity is created via Infisical's REST API during Phase 1 bootstrap, and its credentials are written *directly* — the moment they're minted — to `/home/homelab/.infisical_runtime_auth.yml` (`roles/infisical/tasks/bootstrap_instance.yml`); they never exist as `vault_*` values and never round-trip through `vault.yml` at all. This is the reference implementation for the rest of the `secret_backend: infisical | vault` helper abstraction, which remains **deferred** for Stage 3+ roles. (Container secrets like `cloudflare/TUNNEL_TOKEN`/`pihole/WEB_PASSWORD` are injected separately, by `deploy-service`'s own independent Infisical client for docker-compose env — not by this Ansible lookup task at all.)
 
@@ -129,12 +129,6 @@ ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 
 # Update firewall rules (after adding services or once ip_observe is set)
 ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge
-
-# OS package upgrades + Docker image pulls across all nodes
-ansible-playbook playbooks/update_all.yml
-
-# Pull and restart containers (opt-in)
-ansible-playbook playbooks/update_all.yml --tags docker,restart
 
 # Health check all services
 ansible-playbook playbooks/healthcheck.yml

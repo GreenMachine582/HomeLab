@@ -212,7 +212,7 @@ Phase 4:  GitHub push ──► n8n/Camunda ──► edge     (automated deploy
 **Legacy files:**
 - Inventories: `inventories/bootstrap.ini`, `inventories/prod.yml`, `topology.yml`, `group_vars/{edge,observe,data}.yml`.
 - Playbooks: `bootstrap_edge.yml`, `bootstrap_node.yml`, `deploy_edge.yml`, `apply_firewall.yml`,
-  `resolve_node_ips.yml`, `update_all.yml`, `backup.yml`, `rollback.yml`, `healthcheck.yml`.
+  `resolve_node_ips.yml`, `backup.yml`, `rollback.yml`, `healthcheck.yml`.
 - Roles: `docker`, `docker_compose`, `fail2ban`, `unbound`, `alloy`, `infisical`, `semaphore`.
 - Other: `docker-compose.edge.yml`, `docker-compose.svc01.yml`, `deploy-service/`, `services.yml`,
   `scripts/deploy.sh`, `.github/workflows/deploy.yml`.

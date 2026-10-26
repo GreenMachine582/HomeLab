@@ -514,7 +514,7 @@ own independent Infisical client for docker-compose env, not by this task.
 
 **Everything else remains unconverted** — Stage 1 (`bootstrap_edge.yml`, run
 from WSL where `vault.yml` lives) and every Stage 3+ playbook
-(`deploy_svc.yml`, `healthcheck.yml`, `update_all.yml`,
+(`deploy_svc.yml`, `healthcheck.yml`,
 `backup.yml`, `rollback.yml`, `apply_firewall.yml`) still resolve every
 `{{ vault_<service>_<field> }}` lookup straight from the vault, exactly as
 before this migration. The full `secret_backend` helper abstraction mentioned

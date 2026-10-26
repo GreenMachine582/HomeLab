@@ -14,8 +14,7 @@
 # hosts: all + connection: local (not hosts: localhost / hosts: homelab-edge)
 # so --limit <node> still matches this play — same reasoning as
 # bootstrap_node.yml's probe play. tags: [always] on every task so this
-# always runs even under --tags-scoped invocations (e.g. update_all.yml
-# --tags docker).
+# always runs even under --tags-scoped invocations.
 #
 # ip_edge is NOT resolved here and never will be — Phase 1 bootstrap needs
 # it before Infisical exists to be queried, and deploy_edge.yml's own play
