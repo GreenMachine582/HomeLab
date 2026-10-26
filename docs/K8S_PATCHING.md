@@ -30,7 +30,7 @@ monthly manual run with a reminder.
 cd ~/homelab && git pull
 
 # 1. What's pending on each node. Changes nothing.
-ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml -e patch_report_only=true
+ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml --tags report
 
 # 2. Patch everything.
 ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml
@@ -39,9 +39,10 @@ ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml
 ansible-playbook -i inventories/k8s.yml playbooks/cluster_status.yml
 ```
 
+`--tags report` lists upgradable and held packages, kernel and uptime per node, then stops.
+
 | Extra var | Effect |
 | --- | --- |
-| `patch_report_only=true` | List upgradable and held packages, kernel and uptime per node, then stop |
 | `patch_nodes=rpi-01,rpi-02` | Patch only these nodes. Use this, not `--limit`: kubectl runs on laptop-01, so it must stay in the run |
 | `patch_force_reboot=true` | Reboot every patched node even if nothing asks for it (e.g. a fix that only applies after a restart of a long-running service) |
 | `patch_allow_unhealthy=true` | Skip the pre-flight health gate |
@@ -52,7 +53,7 @@ From home, the nodes are reached over Tailscale (the probe picks the endpoint), 
 ## ⚙️ What it does
 
 1. **Probe**: finds each node's SSH endpoint, as `cluster_status.yml` does.
-2. **Pending upgrades**: `apt update`, then a per-node report. `patch_report_only` stops here.
+2. **Pending upgrades**: `apt update`, then a per-node report. `--tags report` stops here.
 3. **Pre-flight**: every node Ready and every pod Running or Completed. Otherwise it stops before touching anything.
 4. **Patch, one node at a time**: rpi-01 and rpi-02, then rpi-03 (data node), then laptop-01 (control plane). Each
    node gets `apt dist-upgrade` with autoremove. It reboots when any of these apply:
