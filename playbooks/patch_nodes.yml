@@ -9,17 +9,21 @@
 #   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml
 #   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml -e patch_nodes=rpi-01
 #   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml -e patch_force_reboot=true
+#   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml -e patch_held=true
 #
 # Order: the plain workers, then the data node (rpi-03: Postgres and
 # Authentik stop while it reboots), then the control plane (the API is gone
 # for a few minutes). A failure stops the run with the remaining nodes
 # untouched. kubelet, kubeadm, kubectl and containerd.io are held (decision
-# 27), so this never changes the cluster's versions.
+# 27). Only -e patch_held=true moves containerd.io, and only within its
+# pinned minor (containerd_version); Kubernetes versions never change here.
 #
 # --tags report lists pending upgrades on every node and changes nothing.
 #
 # Extra vars:
 #   patch_force_reboot=true    reboot every node even if nothing asks for it
+#   patch_held=true            also upgrade containerd.io to the newest
+#                              containerd_version patch release (reboots)
 #   patch_allow_unhealthy=true skip the pre-flight health gate
 #   patch_nodes=rpi-01,rpi-02  patch only these nodes. Not --limit: kubectl
 #                              runs on the control plane, which must stay in
@@ -67,6 +71,8 @@
         echo "upgradable: $(apt list --upgradable 2>/dev/null | grep -c /)"
         apt list --upgradable 2>/dev/null | grep / | cut -d' ' -f1,2 | sed 's/^/  /'
         echo "held: $(apt-mark showhold | tr '\n' ' ')"
+        pending_held=$(apt list --upgradable 2>/dev/null | grep / | cut -d/ -f1 | grep -xF "$(apt-mark showhold)" | tr '\n' ' ')
+        [ -n "$pending_held" ] && echo "held with updates: ${pending_held}(containerd.io: -e patch_held=true; kube*: cluster.yml k8s_version)"
         echo "kernel: $(uname -r), up since $(uptime -s)"
       register: _pending
       changed_when: false

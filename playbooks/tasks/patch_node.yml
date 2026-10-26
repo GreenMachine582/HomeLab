@@ -25,6 +25,31 @@
     autoclean: true
   register: _upgrade
 
+# containerd.io is held (decision 27). patch_held moves it to the newest
+# release of its pinned minor (containerd_version), never past it.
+# kubelet, kubeadm and kubectl only move with k8s_version (cluster.yml).
+- name: "Patch | Held packages (patch_held)"
+  when: patch_held | default(false) | bool
+  block:
+    - name: "Patch | Newest containerd.io in {{ containerd_version }}"
+      ansible.builtin.shell: >-
+        apt-cache madison containerd.io
+        | awk -v v="{{ containerd_version }}." 'index($3, v) == 1 {print $3; exit}'
+      register: _containerd_target
+      changed_when: false
+
+    - name: "Patch | Upgrade containerd.io"
+      ansible.builtin.apt:
+        name: "containerd.io={{ _containerd_target.stdout }}"
+        state: present
+        allow_change_held_packages: true
+      when: _containerd_target.stdout | length > 0
+
+    - name: "Patch | Keep containerd.io held"
+      ansible.builtin.dpkg_selections:
+        name: containerd.io
+        selection: hold
+
 - name: "Patch | Packages after"
   ansible.builtin.command: dpkg-query -W -f '${Package} ${Version}\n'
   register: _pkgs_after
@@ -53,8 +78,9 @@
             | select('match', patch_reboot_packages) | map('regex_replace', ' .*', '') | list) }}
   vars:
     # Packages whose fix only applies after a reboot (kernel, firmware,
-    # bootloader, libc, systemd, crypto libraries).
-    patch_reboot_packages: "^(linux-image|raspi-firmware|raspberrypi-|rpi-eeprom|firmware-|grub|libc6|libc-bin|systemd|libsystemd|udev|libssl|openssl|dbus)"
+    # bootloader, libc, systemd, crypto libraries), plus containerd.io:
+    # running pods keep the old shims until the node is drained.
+    patch_reboot_packages: "^(linux-image|raspi-firmware|raspberrypi-|rpi-eeprom|firmware-|grub|libc6|libc-bin|systemd|libsystemd|udev|libssl|openssl|dbus|containerd\\.io)"
 
 - name: "Patch | Upgrade result"
   ansible.builtin.debug:
@@ -62,8 +88,14 @@
       - "{{ _patch_changed | length }} packages changed"
       - "reboot: {{ _patch_reboot_reasons | join(', ') if _patch_reboot_reasons else 'not needed' }}"
 
+# This file is the last task of its play, so ending the host here skips
+# only the reboot; the summary plays still run for it. Not a when: on the
+# block below: reset_connection ignores it (and warns).
+- name: "Patch | No reboot needed"
+  ansible.builtin.meta: end_host
+  when: _patch_reboot_reasons | length == 0
+
 - name: "Patch | Drain, reboot, uncordon"
-  when: _patch_reboot_reasons | length > 0
   vars:
     _cp: "{{ groups['k8s_control_plane'][0] }}"
   block:

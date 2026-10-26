@@ -17,9 +17,12 @@ Everything runs from **WSL on the main PC**, in the `~/homelab` clone, like [K8S
 | --- | --- | --- |
 | Debian security updates | `unattended-upgrades`, daily, set by `base_hardening` | Never |
 | Everything else, Raspberry Pi OS kernel and firmware included | `patch_nodes.yml`, monthly or on an advisory | When needed |
-| kubelet, kubeadm, kubectl, containerd.io | Held (decision 27). Never moved by either of the above | n/a |
+| containerd.io | Held (decision 27). `patch_nodes.yml -e patch_held=true` moves it to the newest patch release of `containerd_version` (`group_vars/k8s.yml`), never to a new minor | Yes |
+| kubelet, kubeadm, kubectl | Held (decision 27). Never moved by patching | n/a |
 
-Kubernetes upgrades are a separate, deliberate PR (`cluster.yml` with a new `k8s_version`), not part of patching.
+Kubernetes upgrades are a separate, deliberate PR (`cluster.yml` with a new `k8s_version`), not part of patching:
+kubeadm has to upgrade the control plane before any kubelet moves, which apt can't order. The same goes for a new
+containerd minor (bump `containerd_version`).
 
 No cron runs this. A reboot of the only control plane or of the data node should have someone watching, so it's a
 monthly manual run with a reminder: a CronJob posts the commands to Discord `#homelab-deploys` on the first
@@ -41,12 +44,14 @@ ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml
 ansible-playbook -i inventories/k8s.yml playbooks/cluster_status.yml
 ```
 
-`--tags report` lists upgradable and held packages, kernel and uptime per node, then stops.
+`--tags report` lists upgradable and held packages, kernel and uptime per node, then stops. A `held with updates:` line
+means a held package has a newer version: for containerd.io, add `-e patch_held=true` to step 2.
 
 | Extra var | Effect |
 | --- | --- |
 | `patch_nodes=rpi-01,rpi-02` | Patch only these nodes. Use this, not `--limit`: kubectl runs on laptop-01, so it must stay in the run |
 | `patch_force_reboot=true` | Reboot every patched node even if nothing asks for it (e.g. a fix that only applies after a restart of a long-running service) |
+| `patch_held=true` | Also upgrade the held containerd.io within `containerd_version` (re-held afterwards). A containerd change always reboots the node |
 | `patch_allow_unhealthy=true` | Skip the pre-flight health gate |
 | `patch_drain_timeout=600s` | Longer drain timeout (default `300s`) |
 
@@ -58,9 +63,11 @@ From home, the nodes are reached over Tailscale (the probe picks the endpoint), 
 2. **Pending upgrades**: `apt update`, then a per-node report. `--tags report` stops here.
 3. **Pre-flight**: every node Ready and every pod Running or Completed. Otherwise it stops before touching anything.
 4. **Patch, one node at a time**: rpi-01 and rpi-02, then rpi-03 (data node), then laptop-01 (control plane). Each
-   node gets `apt dist-upgrade` with autoremove. It reboots when any of these apply:
+   node gets `apt dist-upgrade` with autoremove, and with `patch_held=true` the newest containerd.io in
+   `containerd_version`. It reboots when any of these apply:
    - a new kernel was installed (`/lib/modules` changed),
-   - a package that only applies at boot changed (kernel, firmware, bootloader, libc, systemd, udev, OpenSSL, D-Bus),
+   - a package that only applies at boot changed (kernel, firmware, bootloader, libc, systemd, udev, OpenSSL, D-Bus,
+     containerd.io),
    - `/var/run/reboot-required` exists (Debian 13 and Raspberry Pi OS don't usually write it),
    - `patch_force_reboot=true`.
 
