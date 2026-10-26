@@ -93,8 +93,8 @@ sops_age_recipient: age19k96we2u9cytex9zru4r0yaskqc88aryvh2mw5d7m2etjqschevqgyvr
 # renovate: datasource=github-releases depName=cloudflare/cloudflared
 cloudflared_version: "2026.10.4"
 cloudflared_sha256:
-  amd64: 3bfc539f45d2620c71debb7a86be0efa737ed5ccbad9eb85c787116900e5c586
-  arm64: 2c65dfabf616c40efc7545d107d7a57ad5e21377e2964b7e88af19a238074a46
+  amd64: ae5e8add7884b0531d66bbca4570d1de491ff6da51e4ebe7eb160cdf241d9e42
+  arm64: 2b7203b4fb0ba28a0c1e12f8855ce2c25f76d266a8d5edafac5540b6812acff6
 
 # Database taint on k8s_data nodes. Off until rpi-01/02 join as general
 # workers; with it on now, general pods would have nowhere to run.
