@@ -130,7 +130,8 @@ ansible-playbook playbooks/bootstrap_node.yml --limit homelab-observe
 # Update firewall rules (after adding services or once ip_observe is set)
 ansible-playbook playbooks/apply_firewall.yml --limit homelab-edge
 
-# OS package upgrades + Docker image pulls across all nodes
+# OS package upgrades + Docker image pulls across all nodes (legacy stack only;
+# the k8s nodes use playbooks/patch_nodes.yml, see docs/K8S_PATCHING.md)
 ansible-playbook playbooks/update_all.yml
 
 # Pull and restart containers (opt-in)

@@ -1,0 +1,162 @@
+---
+# playbooks/tasks/patch_node.yml
+#
+# Upgrades one node and, if it needs it, drains, reboots and uncordons it.
+# Included by patch_nodes.yml from serial: 1 plays; kubectl runs on the
+# control plane. Debian 13 and Raspberry Pi OS don't write
+# /var/run/reboot-required, so a reboot is also due when a new kernel was
+# installed or a package that only takes effect on boot changed.
+
+- name: "Patch | Packages before"
+  ansible.builtin.command: dpkg-query -W -f '${Package} ${Version}\n'
+  register: _pkgs_before
+  changed_when: false
+
+- name: "Patch | Kernels before"
+  ansible.builtin.find:
+    paths: /lib/modules
+    file_type: directory
+  register: _kernels_before
+
+- name: "Patch | Upgrade (held packages stay put)"
+  ansible.builtin.apt:
+    upgrade: dist
+    autoremove: true
+    autoclean: true
+  register: _upgrade
+
+- name: "Patch | Packages after"
+  ansible.builtin.command: dpkg-query -W -f '${Package} ${Version}\n'
+  register: _pkgs_after
+  changed_when: false
+
+- name: "Patch | Kernels after"
+  ansible.builtin.find:
+    paths: /lib/modules
+    file_type: directory
+  register: _kernels_after
+
+- name: "Patch | Reboot-required flag"
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: _reboot_flag
+
+- name: "Patch | Work out whether to reboot"
+  ansible.builtin.set_fact:
+    _patch_changed: "{{ _pkgs_after.stdout_lines | difference(_pkgs_before.stdout_lines) }}"
+    _patch_reboot_reasons: >-
+      {{ (['forced'] if patch_force_reboot | default(false) | bool else [])
+         + (['reboot-required flag'] if _reboot_flag.stat.exists else [])
+         + (['new kernel installed'] if (_kernels_after.files | map(attribute='path') | sort)
+                                        != (_kernels_before.files | map(attribute='path') | sort) else [])
+         + (_pkgs_after.stdout_lines | difference(_pkgs_before.stdout_lines)
+            | select('match', patch_reboot_packages) | map('regex_replace', ' .*', '') | list) }}
+  vars:
+    # Packages whose fix only applies after a reboot (kernel, firmware,
+    # bootloader, libc, systemd, crypto libraries).
+    patch_reboot_packages: "^(linux-image|raspi-firmware|raspberrypi-|rpi-eeprom|firmware-|grub|libc6|libc-bin|systemd|libsystemd|udev|libssl|openssl|dbus)"
+
+- name: "Patch | Upgrade result"
+  ansible.builtin.debug:
+    msg:
+      - "{{ _patch_changed | length }} packages changed"
+      - "reboot: {{ _patch_reboot_reasons | join(', ') if _patch_reboot_reasons else 'not needed' }}"
+
+- name: "Patch | Drain, reboot, uncordon"
+  when: _patch_reboot_reasons | length > 0
+  vars:
+    _cp: "{{ groups['k8s_control_plane'][0] }}"
+  block:
+    - name: "Patch | Drain {{ inventory_hostname }}"
+      ansible.builtin.command: >-
+        kubectl drain {{ inventory_hostname }} --ignore-daemonsets --delete-emptydir-data
+        --timeout={{ patch_drain_timeout | default('300s') }}
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      delegate_to: "{{ _cp }}"
+      changed_when: true
+
+    # Not ansible.builtin.reboot: its SSH session (over Tailscale, or a
+    # ControlPersist socket) can hang on the dying node. Same as argon_case.
+    - name: "Patch | Boot ID before"
+      ansible.builtin.slurp:
+        src: /proc/sys/kernel/random/boot_id
+      register: _boot_before
+
+    - name: "Patch | Reboot in a few seconds"
+      ansible.builtin.command: systemd-run --on-active=5 systemctl reboot
+      changed_when: true
+
+    - name: "Patch | Drop the old connection"
+      ansible.builtin.meta: reset_connection
+
+    - name: "Patch | Wait for the node to come back"
+      ansible.builtin.wait_for_connection:
+        delay: 30
+        timeout: 900
+
+    - name: "Patch | Boot ID after"
+      ansible.builtin.slurp:
+        src: /proc/sys/kernel/random/boot_id
+      register: _boot_after
+
+    - name: "Patch | Assert it rebooted"
+      ansible.builtin.assert:
+        that: _boot_after.content != _boot_before.content
+        fail_msg: "{{ inventory_hostname }} answered but didn't reboot; reboot it and re-run."
+        quiet: true
+
+    - name: "Patch | Record the reboot"
+      ansible.builtin.set_fact:
+        _patch_rebooted: true
+
+    # The API itself is down for a while when the control plane reboots.
+    - name: "Patch | Wait for {{ inventory_hostname }} to be Ready"
+      ansible.builtin.command: kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=30s
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      delegate_to: "{{ _cp }}"
+      register: _ready
+      until: _ready.rc == 0
+      retries: 30
+      delay: 20
+      changed_when: false
+
+    - name: "Patch | Uncordon {{ inventory_hostname }}"
+      ansible.builtin.command: kubectl uncordon {{ inventory_hostname }}
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      delegate_to: "{{ _cp }}"
+      changed_when: true
+
+    - name: "Patch | Wait for Cilium on {{ inventory_hostname }}"
+      ansible.builtin.command: >-
+        kubectl -n kube-system wait pod -l k8s-app=cilium
+        --field-selector=spec.nodeName={{ inventory_hostname }}
+        --for=condition=Ready --timeout=30s
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      delegate_to: "{{ _cp }}"
+      register: _cilium_ready
+      until: _cilium_ready.rc == 0
+      retries: 20
+      delay: 15
+      changed_when: false
+
+  rescue:
+    # Leave nothing cordoned behind a failed drain or reboot; the run stops
+    # here (any_errors_fatal) with the other nodes untouched.
+    - name: "Patch | Uncordon after a failure"
+      ansible.builtin.command: kubectl uncordon {{ inventory_hostname }}
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      delegate_to: "{{ _cp }}"
+      changed_when: true
+      failed_when: false
+
+    - name: "Patch | Stop"
+      ansible.builtin.fail:
+        msg: >-
+          Patching {{ inventory_hostname }} failed at "{{ ansible_failed_task.name }}":
+          {{ ansible_failed_result.msg | default(ansible_failed_result.stderr | default('see above')) }}.
+          Check the node with cluster_status.yml before re-running.

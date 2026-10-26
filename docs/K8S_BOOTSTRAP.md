@@ -103,7 +103,8 @@ It prompts once, hidden, for the install user's password, if any targeted node i
      connects as `homelab`. Otherwise it records the host key and connects as `bootstrap_user` with the password.
 2. **Hostname**: set to the inventory name, and `/etc/hosts` updated to match.
 3. **`users`**: creates `admin` (your key, sudo with password) and `homelab` (Ansible key, passwordless sudo).
-4. **`base_hardening`**: package upgrades, chrony, unattended upgrades, sysctls, auditd, Discord notifications. It also
+4. **`base_hardening`**: package upgrades, chrony, unattended upgrades (security only, no reboots: monthly patching is
+   [K8S_PATCHING.md](./K8S_PATCHING.md)), sysctls, auditd, Discord notifications. It also
    moves sshd to `ssh_port` and switches it to **key-only with no root login** and asserts the effective `sshd -T` matches. The play then
    reconnects as `homelab` with the key.
 5. **`nvme_storage`**: `k8s_data` nodes, only when `nvme_enabled: true`.

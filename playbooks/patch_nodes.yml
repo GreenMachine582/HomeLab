@@ -1,0 +1,183 @@
+---
+# playbooks/patch_nodes.yml
+#
+# Monthly OS patching for the cluster nodes, one node at a time: upgrade,
+# and if the node needs a reboot, drain, reboot, wait for Ready, uncordon.
+# Run from WSL. See docs/K8S_PATCHING.md.
+#
+#   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml -e patch_report_only=true
+#   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml
+#   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml -e patch_nodes=rpi-01
+#   ansible-playbook -i inventories/k8s.yml playbooks/patch_nodes.yml -e patch_force_reboot=true
+#
+# Order: the plain workers, then the data node (rpi-03: Postgres and
+# Authentik stop while it reboots), then the control plane (the API is gone
+# for a few minutes). A failure stops the run with the remaining nodes
+# untouched. kubelet, kubeadm, kubectl and containerd.io are held (decision
+# 27), so this never changes the cluster's versions.
+#
+# Extra vars:
+#   patch_report_only=true     list pending upgrades on every node, change nothing
+#   patch_force_reboot=true    reboot every node even if nothing asks for it
+#   patch_allow_unhealthy=true skip the pre-flight health gate
+#   patch_nodes=rpi-01,rpi-02  patch only these nodes. Not --limit: kubectl
+#                              runs on the control plane, which must stay in
+#                              the run (and be probed).
+
+- name: "Probe | Discover each node's SSH endpoint"
+  hosts: k8s
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        apply:
+          tags: [always]
+      tags: [always]
+      vars:
+        probe_allow_fresh: false
+
+    - name: "Probe | Control plane is in the run"
+      ansible.builtin.assert:
+        that: groups['k8s_control_plane'][0] in ansible_play_hosts_all
+        fail_msg: >-
+          --limit left out {{ groups['k8s_control_plane'][0] }}, where kubectl runs.
+          Use -e patch_nodes=<node>[,<node>] instead of --limit.
+        quiet: true
+      run_once: true
+
+- name: "Patch | Pending upgrades"
+  hosts: k8s
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Patch | Update the apt cache"
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: "Patch | List upgradable and held packages"
+      ansible.builtin.shell: |
+        echo "upgradable: $(apt list --upgradable 2>/dev/null | grep -c /)"
+        apt list --upgradable 2>/dev/null | grep / | cut -d' ' -f1,2 | sed 's/^/  /'
+        echo "held: $(apt-mark showhold | tr '\n' ' ')"
+        echo "kernel: $(uname -r), up since $(uptime -s)"
+      register: _pending
+      changed_when: false
+
+    - name: "Patch | Report"
+      ansible.builtin.debug:
+        msg: "{{ _pending.stdout_lines }}"
+
+    - name: "Patch | Stop here in report-only mode"
+      ansible.builtin.meta: end_playbook
+      when: patch_report_only | default(false) | bool
+
+- name: "Patch | Pre-flight cluster health"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+  tasks:
+    # Not Ready nodes, and pods that are neither Running nor Completed
+    # (cilium connectivity test leftovers ignored).
+    - name: "Patch | Nodes and pods"
+      ansible.builtin.shell: |
+        kubectl get nodes --no-headers | awk '$2 != "Ready" {print "node " $1 " is " $2}'
+        kubectl get pods -A --no-headers \
+          | awk '$1 !~ /^cilium-test/ && $4 != "Running" && $4 != "Completed" {print "pod " $1 "/" $2 " is " $4}'
+      register: _health
+      changed_when: false
+
+    - name: "Patch | Fail on an unhealthy cluster"
+      ansible.builtin.fail:
+        msg: >-
+          The cluster isn't healthy before patching: {{ _health.stdout_lines | join('; ') }}.
+          Fix it first (cluster_status.yml), or re-run with -e patch_allow_unhealthy=true.
+      when:
+        - _health.stdout_lines | length > 0
+        - not (patch_allow_unhealthy | default(false) | bool)
+
+- name: "Patch | Workers"
+  hosts: k8s_workers:!k8s_data
+  become: true
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+
+  tasks:
+    - name: "Patch | Upgrade, and reboot if needed"
+      ansible.builtin.include_tasks: tasks/patch_node.yml
+      when: patch_nodes is not defined or inventory_hostname in patch_nodes.split(',')
+
+- name: "Patch | Data node"
+  hosts: k8s_data
+  become: true
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+
+  tasks:
+    - name: "Patch | Upgrade, and reboot if needed"
+      ansible.builtin.include_tasks: tasks/patch_node.yml
+      when: patch_nodes is not defined or inventory_hostname in patch_nodes.split(',')
+
+- name: "Patch | Control plane"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+
+  tasks:
+    - name: "Patch | Upgrade, and reboot if needed"
+      ansible.builtin.include_tasks: tasks/patch_node.yml
+      when: patch_nodes is not defined or inventory_hostname in patch_nodes.split(',')
+
+- name: "Patch | Summary"
+  hosts: k8s
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Patch | Node state"
+      ansible.builtin.shell: |
+        echo "kernel $(uname -r), up since $(uptime -s), $(apt list --upgradable 2>/dev/null | grep -c /) still upgradable"
+      register: _after
+      changed_when: false
+
+    - name: "Patch | Summary"
+      ansible.builtin.debug:
+        msg:
+          - "{{ _after.stdout }}"
+          - "packages changed: {{ _patch_changed | default([]) | length }}"
+          - "rebooted: {{ _patch_rebooted | default(false) }}"
+
+- name: "Patch | Cluster after"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+  tasks:
+    - name: "Patch | Nodes and unhealthy pods"
+      ansible.builtin.shell: |
+        kubectl get nodes -o wide
+        echo "-- pods not Running or Completed"
+        kubectl get pods -A --no-headers \
+          | awk '$4 != "Running" && $4 != "Completed" {print $1 "/" $2 " " $4}'
+      register: _cluster_after
+      changed_when: false
+      failed_when: false
+
+    - name: "Patch | Cluster report"
+      ansible.builtin.debug:
+        msg: "{{ _cluster_after.stdout_lines + ['Next: ansible-playbook -i inventories/k8s.yml playbooks/cluster_status.yml'] }}"

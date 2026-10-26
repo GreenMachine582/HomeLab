@@ -2,6 +2,8 @@
 # playbooks/update_all.yml
 #
 # OS package upgrades and Docker image pulls across all nodes.
+# Legacy Docker stack only (prod.yml). The Kubernetes nodes are patched by
+# playbooks/patch_nodes.yml (docs/K8S_PATCHING.md).
 # Container restarts are opt-in — services keep running old images until
 # --tags restart is explicitly passed.
 #
