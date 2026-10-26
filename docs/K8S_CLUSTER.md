@@ -25,8 +25,7 @@ Runs from **WSL on the main PC**, in `~/homelab`, like the bootstrap.
 | Workers           | `rpi-03`, labelled `homelab/role=data`, `homelab/storage=nvme`; `rpi-01`, `rpi-02` (Pi 4, no Envoy: `homelab/l7-proxy=unsupported`) | `roles/k8s_node_config`   |
 
 Why these versions: 1.37 is out, but Cilium 1.20 is only tested on Kubernetes 1.33–1.36. Debian 13 ships containerd
-1.7, and Kubernetes 1.36 needs 2.x. Bumping any of them is a PR that edits `group_vars/k8s.yml` (and
-`roles/containerd/defaults`).
+1.7, and Kubernetes 1.36 needs 2.x. Bumping any of them is a PR that edits `group_vars/k8s.yml`.
 
 > [!NOTE]
 > The **database taint** on rpi-03 is off (`k8s_data_taint_enabled: false`). rpi-01/02 have joined, so general

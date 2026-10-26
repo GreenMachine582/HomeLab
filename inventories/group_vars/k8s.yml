@@ -48,6 +48,10 @@ wol_report: "{{ inventory_hostname == groups['k8s_workers'] | first }}"
 # Packages are held; upgrading is a deliberate PR that bumps these.
 k8s_version: "1.36.5"
 k8s_minor: "{{ k8s_version.split('.')[:2] | join('.') }}"
+# containerd 2.x from Docker's apt repo: Debian 13 only ships 1.7, and
+# Kubernetes 1.36 needs containerd 2.x. A minor, held; patch_nodes.yml
+# -e patch_held=true moves it to the newest patch release of this minor.
+containerd_version: "2.4"
 k8s_api_name: k8s-api
 k8s_api_port: 6443
 k8s_pod_cidr: 10.244.0.0/16

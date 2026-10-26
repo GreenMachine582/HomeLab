@@ -1,6 +1,0 @@
----
-# roles/containerd/defaults/main.yml
-
-# containerd 2.x from Docker's apt repo: Debian 13 only ships 1.7, and
-# Kubernetes 1.36 needs containerd 2.x. Held; bump deliberately.
-containerd_version: "2.4"
