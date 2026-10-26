@@ -189,7 +189,7 @@ Restore steps: [K8S_CLUSTER.md › etcd backups](./docs/K8S_CLUSTER.md#-etcd-bac
 ## 🗄️ Legacy Compose stack (removed at M8)
 
 > [!WARNING]
-> Everything below describes the Docker Compose era: homelab-edge, Infisical, Semaphore, deploy-service and the
+> Everything below describes the Docker Compose era: homelab-edge, Infisical, deploy-service and the
 > polyrepo split. None of it runs on the Kubernetes nodes, and it's all deleted at the M8 cutover. Don't extend
 > it.
 
@@ -213,7 +213,7 @@ Phase 4:  GitHub push ──► n8n/Camunda ──► edge     (automated deploy
 - Inventories: `inventories/bootstrap.ini`, `inventories/prod.yml`, `topology.yml`, `group_vars/{edge,observe,data}.yml`.
 - Playbooks: `bootstrap_edge.yml`, `bootstrap_node.yml`, `deploy_edge.yml`, `apply_firewall.yml`,
   `resolve_node_ips.yml`, `backup.yml`, `rollback.yml`, `healthcheck.yml`.
-- Roles: `docker`, `docker_compose`, `fail2ban`, `unbound`, `alloy`, `infisical`, `semaphore`.
+- Roles: `docker`, `docker_compose`, `fail2ban`, `unbound`, `alloy`, `infisical`.
 - Other: `docker-compose.edge.yml`, `docker-compose.svc01.yml`, `deploy-service/`, `services.yml`,
   `scripts/deploy.sh`, `.github/workflows/deploy.yml`.
 

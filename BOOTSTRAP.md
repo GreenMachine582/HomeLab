@@ -338,7 +338,7 @@ You will need the Client ID and Client secret in §1.9.
 1. Scroll to **HTTPS Certificates**
 2. Click **Enable HTTPS**
 
-This allows nodes to run `tailscale cert` to obtain a browser-trusted Let's Encrypt certificate for their MagicDNS hostname (`<node>.<tailnet>.ts.net`). The edge node uses this to serve Infisical and Semaphore over HTTPS on ports 8443/8444 with a real green-padlock certificate instead of a self-signed one.
+This allows nodes to run `tailscale cert` to obtain a browser-trusted Let's Encrypt certificate for their MagicDNS hostname (`<node>.<tailnet>.ts.net`). The edge node uses this to serve Infisical over HTTPS on port 8443 with a real green-padlock certificate instead of a self-signed one.
 
 > You will also need your **tailnet name** (the short name shown on this same DNS page, e.g. `mango-beaver`) for `overrides.yml` in §1.9.
 
@@ -370,7 +370,6 @@ Populate it using `inventories/group_vars/all/vault.yml.example` as a reference.
 
 > - `vault_infisical_admin_email` / `vault_infisical_admin_password` — **set these to REAL values now, not `"changeme"`.** Unlike everything else in this block, the bootstrap playbook's one-shot `POST /v1/admin/bootstrap` call (see [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does)) uses these to create Infisical's actual admin account — they become real, permanent login credentials, and the playbook's preflight will refuse to run if they're still placeholders. Use a strong, unique password; this account has full control over every secret in the homelab.
 > - `vault_infisical_encryption_key` — generate with `openssl rand -hex 16`. This one is also REAL-value-required and PERMANENT (a changed key can't decrypt the existing Postgres volume).
-> - `vault_semaphore_admin_*` — yours to set directly; Semaphore comes up at the end of the same bootstrap run.
 >
 > Notice what's *not* in this list: there are no `vault_infisical_bootstrap_client_*`/`vault_infisical_runtime_client_*` placeholders to fill in, before the run or after. The bootstrap playbook provisions Infisical's one machine identity (read-only `runtime`) via its REST API and writes its credentials straight to a node-local file the instant they're minted — nothing is ever printed for you to copy into this vault. See [What the Bootstrap Playbook Does](#what-the-bootstrap-playbook-does) and [Secrets](./CLAUDE.md#secrets).
 
@@ -400,11 +399,9 @@ Edit `overrides.yml` and fill in your actual IPs, `lan_subnet`, and `tailscale_t
 
 One playbook, one pass, zero manual steps in between. It brings Infisical up
 and fully provisions **and seeds** it via its REST API (org, admin account,
-`homelab` project, `production` environment, the nine application folders, the
+`homelab` project, `production` environment, the application folders, the
 read-only `runtime` machine identity, and every application secret from
-`vault.yml`), configures the firewall, and brings Semaphore online — reading
-its own Infisical runtime credentials straight from the node-local file the
-provisioning step just wrote. Nothing is printed for you to transcribe
+`vault.yml`), then configures the firewall. Nothing is printed for you to transcribe
 anywhere. See [What the Bootstrap Playbook
 Does](#what-the-bootstrap-playbook-does) for the full breakdown.
 
@@ -429,7 +426,7 @@ for its API port — adds several minutes over a pre-Infisical bootstrap; most
 of that time is image pulls and container start/health-wait).
 
 The playbook ends with a debug message confirming Infisical is up, fully
-provisioned, fully seeded, and that Semaphore is online too — see [What the
+provisioned and fully seeded — see [What the
 Bootstrap Playbook Does](#what-the-bootstrap-playbook-does) for the full
 breakdown of what just happened. Nothing is printed for you to copy anywhere;
 Phase 1 is simply done. Continue straight to [Phase
@@ -452,7 +449,7 @@ afterward.
 | Create `homelab` user      | Ansible automation, passwordless sudo      |
 | Create `deploy` user       | Webhook/SSH trigger, restricted sudo       |
 | Install Docker             |                                            |
-| Install Tailscale          | Brought up here (not Phase 2) — `tailscale_up: true` — so Infisical and Semaphore are reachable over the tailnet by the end of Phase 1. See the [Mode](./docs/NETWORK.md#mode) note in NETWORK.md. |
+| Install Tailscale          | Brought up here (not Phase 2) — `tailscale_up: true` — so Infisical is reachable over the tailnet by the end of Phase 1. See the [Mode](./docs/NETWORK.md#mode) note in NETWORK.md. |
 | Install Ansible            | Edge becomes a control node                |
 | Install Git                |                                            |
 | Clone repo                 | `/opt/homelab`, owned by `homelab`         |
@@ -461,8 +458,7 @@ afterward.
 | Harden SSH                 | Key-only auth, no root login; port changed to `ssh_port` via async restart only if sshd is not already listening there (probe-first, idempotent on re-runs); subsequent tasks reconnect on new port automatically |
 | Bring up Infisical         | Renders `/opt/infisical/.env` (node-generated secrets), starts `infisical-db`/`infisical-redis`/`infisical`, waits for the API port (8222) to accept connections |
 | Provision and seed Infisical | Drives Infisical's REST API (`roles/infisical/tasks/bootstrap_instance.yml`) — in one pass, over loopback, before the firewall locks the port down — to create the org, admin account, `homelab` project, `prod` environment, application folders, and the read-only `runtime` machine identity; push every `[seed → ...]` application secret from the WSL-local `vault.yml` into its mapped `/prod/<folder>/<KEY>` path (additive — existing keys untouched); and write the `runtime` identity's freshly-minted credentials straight to `/home/homelab/.infisical_runtime_auth.yml`. All of it authenticated with the one-shot bootstrap call's own instance-admin token — no separate write-capable identity is ever created, persisted, printed, or revoked. See that task's header comment for the full rationale. |
-| Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp, 53/udp+tcp (Pi-hole DNS, LAN only), 8222/tcp + 3010/tcp (Infisical/Semaphore direct, **Tailscale CGNAT range only**); SSH reachability verified before play completes. Ports 80/8443/8444 (Caddy) opened in Phase 2 via `apply_firewall.yml`. |
-| Bring up Semaphore         | Renders `/opt/semaphore/.env` — node-generated Postgres password, `vault_semaphore_admin_*`, and the `runtime` identity's credentials loaded straight from `/home/homelab/.infisical_runtime_auth.yml` (never `vault.yml`, which never holds them) — then starts `semaphore-db`/`semaphore` |
+| Configure firewall         | UFW default-deny inbound; allow `ssh_port`/tcp, 53/udp+tcp (Pi-hole DNS, LAN only), 8222/tcp (Infisical direct, **Tailscale CGNAT range only**); SSH reachability verified before play completes. Ports 80/8443 (Caddy) opened in Phase 2 via `apply_firewall.yml`. |
 | Enable unattended upgrades |                                            |
 
 **Sudo rules created:**
@@ -486,14 +482,13 @@ full design rationale, including why no write-capable identity is ever created.
 
 | Identity  | Access level                                       | Used by                                                          |
 |-----------|----------------------------------------------------|------------------------------------------------------------------|
-| `runtime` | **Read-only** access to the `homelab` project (all folders, `production` env) | `deploy_edge.yml` and Semaphore — both read it from `/home/homelab/.infisical_runtime_auth.yml`, never `vault.yml` |
+| `runtime` | **Read-only** access to the `homelab` project (all folders, `production` env) | `deploy_edge.yml` — reads it from `/home/homelab/.infisical_runtime_auth.yml`, never `vault.yml` |
 
-The playbook ends with Infisical running, fully provisioned, fully seeded, and
-Semaphore online — all reachable over Tailscale (the firewall restricts ports
-8222/3010/8443/8444 to the Tailscale CGNAT range). Confirm with `tailscale status`
+The playbook ends with Infisical running, fully provisioned and fully seeded,
+reachable over Tailscale (the firewall restricts ports 8222/8443 to the Tailscale CGNAT range). Confirm with `tailscale status`
 (should list `homelab-edge`). Direct access to both is available immediately —
 see [Phase 2 → Direct access](#2️⃣-phase-2-edge--self-deploy) for the URL table
-(Tailscale HTTPS on 8443/8444 is added once Phase 2 deploys Caddy); see also
+(Tailscale HTTPS on 8443 is added once Phase 2 deploys Caddy); see also
 [docs/NETWORK.md](./docs/NETWORK.md#tailscale).
 
 Now run Phase 2 — `deploy_edge.yml` resolves its application secrets
@@ -570,7 +565,6 @@ sudo /opt/homelab/scripts/deploy.sh
 |---|---|---|
 | Pi-hole admin | `http://<ip_edge>:8080/admin` | Password: auto-generated at deploy time, see Infisical `pihole/WEB_PASSWORD` |
 | Infisical | `https://homelab-edge.<tailnet>.ts.net:8443` | Tailscale HTTPS (browser-trusted); or `http://<edge-tailscale-ip>:8222` (non-browser) |
-| Semaphore | `https://homelab-edge.<tailnet>.ts.net:8444` | Tailscale HTTPS (browser-trusted); or `http://<edge-tailscale-ip>:3010` (non-browser) |
 | Portainer Agent | `http://<ip_edge>:9001` | Portainer Server connects here in Phase 3 |
 | node-exporter metrics | `http://<ip_edge>:9100/metrics` | Scraped by Prometheus in Phase 3 |
 | pihole-exporter metrics | `http://<ip_edge>:9617/metrics` | Scraped by Prometheus in Phase 3 |

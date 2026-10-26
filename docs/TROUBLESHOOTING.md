@@ -2,7 +2,7 @@
 
 Common issues, diagnostic commands, and recovery procedures. Organised by area.
 
-**Quick links:** [🩺 General Diagnostics](#-general-diagnostics) · [🔑 SSH & Connectivity](#-ssh--connectivity) · [⚙️ Ansible](#-ansible) · [🐳 Docker & Containers](#-docker--containers) · [🧭 DNS](#-dns-pi-hole--unbound) · [🔒 Tailscale](#-tailscale) · [🔐 Infisical & Semaphore](#-infisical--semaphore) · [☁️ Cloudflare Tunnel](#-cloudflare-tunnel) · [📊 Monitoring Stack](#-monitoring-stack) · [🗄️ Databases](#-databases) · [🚀 Automated Deploys (Phase 4)](#-automated-deploys-phase-4) · [🚨 Disaster Recovery](#disaster-recovery)
+**Quick links:** [🩺 General Diagnostics](#-general-diagnostics) · [🔑 SSH & Connectivity](#-ssh--connectivity) · [⚙️ Ansible](#-ansible) · [🐳 Docker & Containers](#-docker--containers) · [🧭 DNS](#-dns-pi-hole--unbound) · [🔒 Tailscale](#-tailscale) · [🔐 Infisical](#-infisical) · [☁️ Cloudflare Tunnel](#-cloudflare-tunnel) · [📊 Monitoring Stack](#-monitoring-stack) · [🗄️ Databases](#-databases) · [🚀 Automated Deploys (Phase 4)](#-automated-deploys-phase-4) · [🚨 Disaster Recovery](#disaster-recovery)
 
 <details>
 <summary>Full outline</summary>
@@ -31,7 +31,7 @@ Common issues, diagnostic commands, and recovery procedures. Organised by area.
     * [Node not appearing in Tailscale admin console](#node-not-appearing-in-tailscale-admin-console)
     * [Play fails with "A Tailscale device named '<host>' already exists in the tailnet"](#play-fails-with-a-tailscale-device-named-host-already-exists-in-the-tailnet)
     * [Cannot reach a node over Tailscale](#cannot-reach-a-node-over-tailscale)
-  * [🔐 Infisical & Semaphore](#-infisical--semaphore)
+  * [🔐 Infisical](#-infisical)
     * [Bootstrap playbook reports Infisical already initialised — nothing provisioned or seeded](#bootstrap-playbook-reports-infisical-already-initialised--nothing-provisioned-or-seeded)
     * [Bootstrap instance/seed step fails with an authentication or 4xx/5xx error](#bootstrap-instanceseed-step-fails-with-an-authentication-or-4xx5xx-error)
     * [Vault → Infisical conversion status](#vault--infisical-conversion-status)
@@ -357,7 +357,7 @@ hostname is missing:
 
 ## 🔒 Tailscale
 
-> See [NETWORK.md](./NETWORK.md#tailscale) for firewall rules, ACL policy, and Tailscale access URLs for Infisical/Semaphore.
+> See [NETWORK.md](./NETWORK.md#tailscale) for firewall rules, ACL policy, and Tailscale access URLs for Infisical.
 
 ### Node not appearing in Tailscale admin console
 
@@ -431,11 +431,11 @@ node has its own Tailscale IP — ensure ACL rules reference node IPs or tags di
 
 ---
 
-## 🔐 Infisical & Semaphore
+## 🔐 Infisical
 
-Both run on `homelab-edge`, **Tailscale-only** (no Pi-hole hostname — see [NETWORK.md](./NETWORK.md#tailscale) for firewall rules and access URLs).
-Browser access: `https://homelab-edge.<tailnet>.ts.net:8443` (Infisical) / `:8444` (Semaphore).
-Direct non-browser access: `http://<edge-tailscale-ip>:8222` / `:3010`.
+Runs on `homelab-edge`, **Tailscale-only** (no Pi-hole hostname — see [NETWORK.md](./NETWORK.md#tailscale) for firewall rules and access URLs).
+Browser access: `https://homelab-edge.<tailnet>.ts.net:8443`.
+Direct non-browser access: `http://<edge-tailscale-ip>:8222`.
 If you can't reach either path, start with the [Tailscale](#-tailscale) checks above — connectivity issues here are almost 
 always "the requesting device isn't on the tailnet" or "ACL/firewall blocks the port," not the containers themselves.
 
@@ -483,7 +483,7 @@ ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
 Likely causes:
 - **Project/environment/folder slug mismatch** — `infisical_seed_project_slug` / `infisical_seed_environment` / `infisical_seed_folders` (`roles/infisical/defaults/main.yml`, default `homelab` / `prod` / the 14 folders in the "Secret naming convention" block in `vault.yml.example`) drive *both* what `bootstrap_instance.yml` provisions and what the lookup tasks expect — they should always agree by construction now. A mismatch here would mean one of those defaults was edited without the other, or Infisical's instance was provisioned by some other means.
 - **API shape drift** — `bootstrap_instance.yml`'s endpoint paths, payload shapes, and response field paths (the one-shot bootstrap call, project/environment/folder/identity creation, Universal Auth attach + client-secret generation, and the `/v3/secrets/raw/...` seed routes) are all version-pinned assumptions, flagged with a `⚠️` comment at the top of that file. Check them against the deployed Infisical version's API reference if errors mention unexpected fields or 404s on routes that should exist.
-- **Mid-run failure leaves a half-provisioned instance** — because the whole block runs at most once (gated on the one-shot bootstrap call returning `200`), a failure partway through (e.g. folders created but identity creation fails) can't simply be retried with a second `ansible-playbook` run — the next attempt sees an already-initialised instance and skips everything, then fails at Semaphore with a confusing error. The bootstrap playbook will now `fail:` immediately at the Infisical step with the exact recovery command. Recovery: re-run Phase 1 with `--extra-vars infisical_reset=true`:
+- **Mid-run failure leaves a half-provisioned instance** — because the whole block runs at most once (gated on the one-shot bootstrap call returning `200`), a failure partway through (e.g. folders created but identity creation fails) can't simply be retried with a second `ansible-playbook` run — the next attempt sees an already-initialised instance and skips everything, then fails later with a confusing error. The bootstrap playbook will now `fail:` immediately at the Infisical step with the exact recovery command. Recovery: re-run Phase 1 with `--extra-vars infisical_reset=true`:
   ```bash
   ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml \
     --extra-vars infisical_reset=true
@@ -528,7 +528,7 @@ scope for this change. Until that lands:
   WSL-side seed/fallback source for Infisical
 - Infisical holds a parallel, additive copy of application secrets — useful as
   a browsable secret store, an emergency fallback if `vault.yml`/`.vault_pass`
-  are lost, the live runtime source for `deploy_edge.yml`/Semaphore, and the
+  are lost, the live runtime source for `deploy_edge.yml`, and the
   foundation for the eventual full conversion
 - Adding a new application secret means adding it to `vault.yml` **and** to
   `_infisical_seed_map` in `roles/infisical/tasks/bootstrap_instance.yml`
@@ -541,7 +541,7 @@ scope for this change. Until that lands:
 
 ### Outstanding hardening tasks (not yet implemented)
 
-These were in scope for the original Infisical/Semaphore design but explicitly
+These were in scope for the original Infisical design but explicitly
 deferred. Tracked here so they have a permanent home.
 
 1. **Disaster-recovery test** — the full `deploy → seed → backup → destroy →
@@ -557,7 +557,7 @@ deferred. Tracked here so they have a permanent home.
    scrape addition, and new Alertmanager rules.
 
 3. **Negative connectivity test** — a script asserting that Infisical (port 8222)
-   and Semaphore (port 3010) are unreachable from outside the Tailscale network.
+   is unreachable from outside the Tailscale network.
    The UFW enforcement (`tailscale_cgnat_range` source rules) is in place; nothing
    automatically verifies it. Add to `scripts/test_connectivity.sh`.
 
@@ -695,13 +695,13 @@ docker compose start <service>
 docker exec -it postgres psql -U <db-user> -d <db-name> -c "\dt"
 ```
 
-**Edge node (Infisical / Semaphore):** these each have their own dedicated
-Postgres container (no shared `postgres`) and their dumps are gzip-compressed
+**Edge node (Infisical):** it has its own dedicated
+Postgres container (no shared `postgres`) and its dumps are gzip-compressed
 straight off `pg_dump` into `{{ postgres_backup_dir }}` (`/opt/backups/postgres`
 — see `playbooks/backup.yml`), so the restore pipes through `gunzip` first:
 
 ```bash
-docker compose stop infisical          # or: semaphore
+docker compose stop infisical
 
 gunzip -c /opt/backups/postgres/infisical_<date>.sql.gz \
   | docker exec -i infisical-db psql -U infisical -d infisical
@@ -794,7 +794,7 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
 - **LAN SSH also works** — connect directly to `ip_observe`, `ip_svc_01` etc. from any device on the same network
 - **Internal DNS is down** — `.homelab.local` hostnames won't resolve; use IPs directly until the edge is restored
 - **External services are down** — Cloudflare Tunnel runs on the edge; public hostnames will be unreachable
-- **Infisical and Semaphore are down** — both run only on the edge. `deploy_edge.yml` cannot run during this window either: it executes locally on the edge *and* depends on Infisical for its runtime secret lookups (see [Vault → Infisical conversion status](#vault--infisical-conversion-status)). There is no automatic fallback to `vault.yml` for converted lookups — recovery is via re-bootstrapping (below), which brings Infisical back up before Phase 2 runs. (Stage 3+ playbooks are unaffected by Infisical being down — they still read `{{ vault_* }}` directly from the WSL-side `vault.yml`.)
+- **Infisical is down** — it runs only on the edge. `deploy_edge.yml` cannot run during this window either: it executes locally on the edge *and* depends on Infisical for its runtime secret lookups (see [Vault → Infisical conversion status](#vault--infisical-conversion-status)). There is no automatic fallback to `vault.yml` for converted lookups — recovery is via re-bootstrapping (below), which brings Infisical back up before Phase 2 runs. (Stage 3+ playbooks are unaffected by Infisical being down — they still read `{{ vault_* }}` directly from the WSL-side `vault.yml`.)
 
 **Recovery steps:**
 
@@ -804,7 +804,7 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
    ```bash
    ansible-playbook -i inventories/bootstrap.ini playbooks/bootstrap_edge.yml
    ```
-   This single pass brings Infisical (and Semaphore) back up, and handles
+   This single pass brings Infisical back up, and handles
    either recovery path automatically — no credentials to copy anywhere
    either way:
    - **If you still have a usable Postgres backup** (and
@@ -815,7 +815,7 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
      `POST /v1/admin/bootstrap` call (`roles/infisical/tasks/bootstrap_instance.yml`)
      detects the non-empty instance, skips provisioning and seeding entirely
      (confirmed by a `debug` message), and leaves the existing node-local
-     runtime credentials file untouched — Semaphore and Phase 2+ keep working
+     runtime credentials file untouched — Phase 2+ keeps working
      with no further action.
    - **Otherwise**, let the playbook run through against the fresh, empty
      instance: the bootstrap call returns `200`, and in one pass it
@@ -823,9 +823,8 @@ The edge node is the Ansible control node and runs DNS, the Cloudflare Tunnel, a
      project, environment, folders, the read-only `runtime` identity),
      re-seeds every application secret straight from `vault.yml` (the
      canonical fallback source for every seeded secret), and writes fresh
-     runtime credentials to `/home/homelab/.infisical_runtime_auth.yml` —
-     which the same play's Semaphore step then reads to come back up
-     authenticated. See [What the Bootstrap Playbook
+     runtime credentials to `/home/homelab/.infisical_runtime_auth.yml`.
+     See [What the Bootstrap Playbook
      Does](../BOOTSTRAP.md#what-the-bootstrap-playbook-does).
 4. Run Phase 2 to restore edge services:
    ```bash

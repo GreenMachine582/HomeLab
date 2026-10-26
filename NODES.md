@@ -56,7 +56,7 @@ Per-node hardware specifications and deployed services.
 | Service             | Purpose                                                                                    |
 |---------------------|--------------------------------------------------------------------------------------------|
 | Tailscale           | Subnet-router mode; exposes homelab to VPN                                                 |
-| ufw / nftables      | Firewall: allow `ssh_port` (any), 53 (LAN only), 8443/8444 (Tailscale CGNAT — Caddy HTTPS for Infisical/Semaphore), 8222/3010 (Tailscale CGNAT — direct non-browser access); 80/443 not needed with Cloudflare Tunnel |
+| ufw / nftables      | Firewall: allow `ssh_port` (any), 53 (LAN only), 8443 (Tailscale CGNAT — Caddy HTTPS for Infisical), 8222 (Tailscale CGNAT — direct non-browser access); 80/443 not needed with Cloudflare Tunnel |
 | fail2ban            | SSH (3 failures) and HTTP (10 failures) banning                                   |
 | SSH hardening       | Key-only, no root, no password auth                                               |
 | Unattended upgrades | Automatic security patches                                                        |
@@ -72,7 +72,6 @@ Per-node hardware specifications and deployed services.
 | `node-exporter` | Host metrics for Prometheus                                                                                                                                        |
 | Grafana Alloy   | Log shipping to Loki on `homelab-observe`                                                                                                                          |
 | Infisical (+ Postgres, Redis) | Self-hosted secrets manager — canonical store for application secrets (seeded from `vault.yml` during Phase 1, see `roles/infisical`). **Tailscale-only**: no Pi-hole DNS entry; Caddy HTTPS on port 8443 at `homelab-edge.<tailnet>.ts.net:8443` (browser); direct port 8222 for non-browser clients — both firewalled to the Tailscale CGNAT range |
-| Semaphore (+ Postgres) | Web UI over the playbooks in this repo, with the repo bind-mounted read-only and a separate writable workspace volume (`roles/semaphore`). **Tailscale-only**: no Pi-hole DNS entry; Caddy HTTPS on port 8444 at `homelab-edge.<tailnet>.ts.net:8444` (browser); direct port 3010 for non-browser clients — both firewalled to the Tailscale CGNAT range |
 
 **Pi-hole DNS mappings** (source: `pihole_custom_dns` in `group_vars/edge.yml`):
 
@@ -91,7 +90,7 @@ Per-node hardware specifications and deployed services.
 
 Clients access services directly at `http://<hostname>:<port>`. Internal traffic travels over Tailscale (encrypted) so a separate TLS layer is not required.
 
-> 🔒 Infisical and Semaphore are deliberately absent from this table — see the Dockerized Services rows above for their Tailscale-only access URLs, and [docs/NETWORK.md](./docs/NETWORK.md) for the firewall rules that enforce it.
+> 🔒 Infisical is deliberately absent from this table — see the Dockerized Services rows above for its Tailscale-only access URLs, and [docs/NETWORK.md](./docs/NETWORK.md) for the firewall rules that enforce it.
 
 ---
 

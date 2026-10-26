@@ -6,8 +6,7 @@
 # edge"). Authenticates with the READ-ONLY runtime machine identity — its
 # Universal Auth credentials are loaded from the node-local
 # infisical_runtime_auth_path (written once during Phase 1 bootstrap from the
-# WSL vault.yml; see templates/runtime_auth.yml.j2 and tasks/main.yml — the same
-# identity Semaphore's own .env carries) — and resolves each `<folder>/<KEY>`
+# WSL vault.yml; see templates/runtime_auth.yml.j2 and tasks/main.yml) — and resolves each `<folder>/<KEY>`
 # path in `infisical_lookup_keys` to its current value.
 #
 # Call via `include_role: { name: infisical, tasks_from: lookup.yml }` (not

@@ -87,9 +87,7 @@ Tailscale IPs are assigned by the coordination server and stable per device. Upd
 | Redis             | `homelab-data-01` | 6379  |
 | Pi-hole admin     | `homelab-edge`    | 80    |
 | Infisical — Caddy HTTPS (Tailscale only)  | `homelab-edge` | 8443 |
-| Semaphore — Caddy HTTPS (Tailscale only)  | `homelab-edge` | 8444 |
 | Infisical direct (Tailscale only, non-browser) | `homelab-edge` | 8222 |
-| Semaphore direct (Tailscale only, non-browser) | `homelab-edge` | 3010 |
 | SSH (all nodes)   | all               | `ssh_port` |
 
 ---
@@ -106,7 +104,6 @@ All nodes use `ufw` with a default-deny inbound policy. Rules are applied by the
 | 53   | TCP/UDP  | LAN     | Pi-hole DNS (LAN only)                                         |
 | 80   | TCP      | LAN     | Pi-hole admin UI (LAN only)                                    |
 | 8443 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Infisical (Tailscale) |
-| 8444 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Semaphore (Tailscale) |
 | 3000 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Grafana (Tailscale) |
 | 9090 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Prometheus (Tailscale) |
 | 9093 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Alertmanager (Tailscale) |
@@ -114,14 +111,13 @@ All nodes use `ufw` with a default-deny inbound policy. Rules are applied by the
 | 9000 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — Portainer (Tailscale) |
 | 8085 | TCP      | `tailscale_cgnat_range` | Caddy HTTPS — ntfy (Tailscale) |
 | 8222 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Infisical direct port (Tailscale only — non-browser clients) |
-| 3010 | TCP      | `tailscale_cgnat_range` (`100.64.0.0/10`) | Semaphore direct port (Tailscale only — non-browser clients) |
 
 No ports are forwarded from the router. Cloudflare Tunnel connects outbound — all external traffic enters through it.
 
 > 🔒 **All `tailscale_cgnat_range` rows above are Tailscale-only**, served as
 > `https://homelab-edge.<tailnet>.ts.net:<port>` via Caddy (browser-trusted
 > Let's Encrypt cert from `tailscale cert`) — no Pi-hole DNS involved. Ports
-> 8222/3010 are the equivalent direct (non-Caddy) ports for non-browser
+> 8222 is the equivalent direct (non-Caddy) port for non-browser
 > clients. Don't widen any of these beyond `tailscale_cgnat_range` — see
 > `group_vars/all/main.yml`. Request path: [Tailscale-Only Service
 > Access](#tailscale-only-service-access).
@@ -244,10 +240,10 @@ manage any other node over VPN. LAN access (direct IP on `ssh_port`) remains ava
 
 > **`homelab-edge` joins the tailnet during Phase 1** (not Phase 2, as every
 > other node does) — `bootstrap_edge.yml` brings Tailscale up before Infisical,
-> because both Infisical and Semaphore (provisioned, seeded, and brought up
-> later in that same single-pass play — see [What the Bootstrap Playbook
-> Does](../BOOTSTRAP.md#what-the-bootstrap-playbook-does)) are Tailscale-only
-> services that must be reachable for the operator by the time Phase 1
+> because Infisical (provisioned and seeded later in that same single-pass
+> play — see [What the Bootstrap Playbook
+> Does](../BOOTSTRAP.md#what-the-bootstrap-playbook-does)) is a Tailscale-only
+> service that must be reachable for the operator by the time Phase 1
 > finishes. (The provisioning-and-seed step itself doesn't need Tailscale at
 > all — it runs over loopback, pre-firewall, in the one window where
 > `127.0.0.1:8222` is reachable unauthenticated; see
@@ -295,9 +291,9 @@ handles service-level `.homelab.local` resolution for LAN clients.
 `homelab-edge` provisions a browser-trusted Let's Encrypt certificate for its MagicDNS FQDN 
 (`homelab-edge.<tailnet>.ts.net`) via the `tailscale cert` command. Tailscale acts as the DNS-01 ACME proxy — no public 
 port exposure required. The cert is written to `/var/lib/tailscale/certs/` and mounted read-only into the Caddy 
-container, which serves it on ports 8443/8444 for Infisical and Semaphore respectively.
+container, which serves it on port 8443 for Infisical.
 
-This gives Tailscale-connected browsers a green padlock at `https://homelab-edge.<tailnet>.ts.net:8443/8444` with no 
+This gives Tailscale-connected browsers a green padlock at `https://homelab-edge.<tailnet>.ts.net:8443` with no 
 per-device trust setup. LAN access via `*.homelab.local` uses plain HTTP — no TLS on the LAN path (ACME cannot issue
 certs for `.local` domains and Caddy's local CA requires per-device trust installation).
 
@@ -333,13 +329,13 @@ Ports and services covered by this pattern are listed in [Firewall Rules → `ho
 
 **Browser (Tailscale):**
 ```
-Admin device (on tailnet) → https://homelab-edge.<tailnet>.ts.net:{8443,8444,...}
+Admin device (on tailnet) → https://homelab-edge.<tailnet>.ts.net:{8443,...}
     → ufw allows 100.64.0.0/10 on that port → Caddy → container on homelab-edge
 ```
 
 **Non-browser / API (Tailscale):**
 ```
-Admin device (on tailnet) → http://<edge-tailscale-ip>:{8222,3010}
+Admin device (on tailnet) → http://<edge-tailscale-ip>:8222
     → ufw allows 100.64.0.0/10 on that port → container on homelab-edge
 ```
 
