@@ -22,7 +22,9 @@ Everything runs from **WSL on the main PC**, in the `~/homelab` clone, like [K8S
 Kubernetes upgrades are a separate, deliberate PR (`cluster.yml` with a new `k8s_version`), not part of patching.
 
 No cron runs this. A reboot of the only control plane or of the data node should have someone watching, so it's a
-monthly manual run with a reminder.
+monthly manual run with a reminder: a CronJob posts the commands to Discord `#homelab-deploys` on the first
+Saturday of the month, 09:00 Sydney time (homelab-cluster
+`infrastructure/configs/flux-notifications/patch-reminder.yaml`).
 
 ## ▶️ Run
 
