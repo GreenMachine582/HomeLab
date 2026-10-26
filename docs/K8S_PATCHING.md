@@ -19,6 +19,7 @@ Everything runs from **WSL on the main PC**, in the `~/homelab` clone, like [K8S
 | Everything else, Raspberry Pi OS kernel and firmware included | `patch_nodes.yml`, monthly or on an advisory | When needed |
 | containerd.io | Held (decision 27). `patch_nodes.yml -e patch_held=true` moves it to the newest patch release of `containerd_version` (`group_vars/k8s.yml`), never to a new minor | Yes |
 | kubelet, kubeadm, kubectl | Held (decision 27). Never moved by patching | n/a |
+| Cluster images and charts, controller tools (sops, cilium-cli, flux, cloudflared) | Renovate PRs in homelab-cluster and HomeLab. Minor and patch automerge after 3 days, weekdays 09:00–17:00; majors, 0.x, flux and the cloudflared CLI wait for review | Never (pods roll) |
 
 Kubernetes upgrades are a separate, deliberate PR (`cluster.yml` with a new `k8s_version`), not part of patching:
 kubeadm has to upgrade the control plane before any kubelet moves, which apt can't order. The same goes for a new

@@ -116,7 +116,8 @@ the old one.
 - [ ] 🧪 Diagnostics and checks go into playbooks (`cluster_status.yml`), not one-off command lists in docs.
 - [ ] 📝 Say in the PR what a changing playbook will do to the nodes and how it was tested (`--check`, which nodes,
   what you saw). Read-only playbooks (`cluster_status.yml`) are safe any time.
-- [ ] 📌 Versions are pinned in `group_vars/k8s.yml`, with checksums where the download has them.
+- [ ] 📌 Versions are pinned in `group_vars/k8s.yml`, with checksums where the download has them. A version Renovate
+  should track gets a `# renovate: datasource=… depName=…` comment on the line above (`.github/renovate.json5`).
 - [ ] 🔐 Never commit `vault.yml`, `.vault_pass`, `overrides.yml`, keys or tokens. They're gitignored. Keep it that
   way.
 

@@ -68,12 +68,15 @@ k8s_control_plane_ip: "{{ hostvars[groups['k8s_control_plane'][0]].node_ip }}"
 # infrastructure/controllers/cilium/helmrelease.yaml, and this is the version a
 # fresh cluster is installed with, so keep it the same as the HelmRelease.
 cilium_version: "1.20.1"
+# renovate: datasource=github-releases depName=cilium/cilium-cli
 cilium_cli_version: "v0.20.1"
 
 # GitOps (homelab-cluster, M3). flux_version must match the release whose
 # install.yaml is committed as clusters/prod/flux-system/gotk-components.yaml;
 # bumping it is a PR in both repos. The CLI and sops live on the controller.
+# renovate: datasource=github-releases depName=fluxcd/flux2 extractVersion=^v(?<version>.+)$
 flux_version: "2.9.6"
+# renovate: datasource=github-releases depName=getsops/sops extractVersion=^v(?<version>.+)$
 sops_version: "3.13.3"
 flux_repo_url: https://github.com/GreenMachine582/homelab-cluster
 flux_branch: main
@@ -87,6 +90,7 @@ sops_age_recipient: age19k96we2u9cytex9zru4r0yaskqc88aryvh2mw5d7m2etjqschevqgyvr
 # tunnel login/create/route dns. Keep the same version as the image in
 # homelab-cluster's infrastructure/configs/cloudflared/deployment.yaml.
 # Checksums from the release notes (they match GitHub's asset digests).
+# renovate: datasource=github-releases depName=cloudflare/cloudflared
 cloudflared_version: "2026.10.4"
 cloudflared_sha256:
   amd64: 3bfc539f45d2620c71debb7a86be0efa737ed5ccbad9eb85c787116900e5c586

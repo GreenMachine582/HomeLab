@@ -1,0 +1,59 @@
+// Renovate (GitHub App): PRs for the controller tool versions in
+// inventories/group_vars/k8s.yml and for GitHub Actions. Minor and patch
+// updates automerge once a release is 3 days old, on weekday working hours,
+// Sydney time; majors and 0.x wait for review. See CONTRIBUTING.md.
+//
+// Tracked vars carry a "# renovate:" comment. Not tracked, on purpose:
+// k8s_version and containerd_version (held, decision 27: cluster.yml PRs),
+// cilium_version (held at 1.20.1 for kernel BTF; follows homelab-cluster's
+// HelmRelease). The legacy stack (compose, deploy-service) isn't scanned.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended", ":dependencyDashboard"],
+  timezone: "Australia/Sydney",
+  // build(deps): ..., which passes commit-style.
+  semanticCommits: "enabled",
+  semanticCommitType: "build",
+  semanticCommitScope: "deps",
+  // Commits through the GitHub API, signed by GitHub: main requires signatures.
+  platformCommit: "enabled",
+  minimumReleaseAge: "3 days",
+  enabledManagers: ["custom.regex", "github-actions"],
+  customManagers: [
+    {
+      customType: "regex",
+      description: "Pinned versions in group_vars/k8s.yml, marked with # renovate:",
+      managerFilePatterns: ["/^inventories/group_vars/k8s\\.yml$/"],
+      matchStrings: [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\s*\\n\\w+: \"?(?<currentValue>[^\"\\s]+)\"?",
+      ],
+    },
+  ],
+  packageRules: [
+    {
+      description: "Automerge minor and patch, except 0.x (where a minor can break)",
+      matchUpdateTypes: ["minor", "patch"],
+      matchCurrentVersion: "!/^v?0\\./",
+      automerge: true,
+      automergeType: "pr",
+      platformAutomerge: true,
+      automergeSchedule: ["* 9-16 * * 1-5"],
+    },
+    {
+      description: "flux_version must match homelab-cluster's gotk-components.yaml",
+      matchDepNames: ["fluxcd/flux2"],
+      automerge: false,
+      prBodyNotes: [
+        "Regenerate `clusters/prod/flux-system/gotk-components.yaml` in homelab-cluster with `flux install --export` at this version, in a matching PR.",
+      ],
+    },
+    {
+      description: "cloudflared_sha256 is pinned by hand (no checksums file)",
+      matchDepNames: ["cloudflare/cloudflared"],
+      automerge: false,
+      prBodyNotes: [
+        "Before merging, put the release's `cloudflared-linux-amd64` and `cloudflared-linux-arm64` sha256 sums (release notes, or the asset digests) in `cloudflared_sha256`. Keep the version the same as homelab-cluster's cloudflared image.",
+      ],
+    },
+  ],
+}
