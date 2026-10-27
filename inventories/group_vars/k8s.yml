@@ -47,7 +47,7 @@ wol_report: "{{ inventory_hostname == groups['k8s_workers'] | first }}"
 # 1.36 is the newest minor in Cilium 1.20's tested matrix (decision 27).
 # Packages are held; upgrading is a deliberate PR that bumps these.
 # renovate: datasource=github-releases depName=kubernetes/kubernetes extractVersion=^v(?<version>.+)$
-k8s_version: "1.37.1"
+k8s_version: "1.36.5"
 k8s_minor: "{{ k8s_version.split('.')[:2] | join('.') }}"
 # containerd 2.x from Docker's apt repo: Debian 13 only ships 1.7, and
 # Kubernetes 1.36 needs containerd 2.x. A minor, held; patch_nodes.yml
@@ -70,7 +70,7 @@ k8s_control_plane_ip: "{{ hostvars[groups['k8s_control_plane'][0]].node_ip }}"
 # infrastructure/controllers/cilium/helmrelease.yaml, and this is the version a
 # fresh cluster is installed with, so keep it the same as the HelmRelease.
 # renovate: datasource=github-releases depName=cilium/cilium extractVersion=^v(?<version>.+)$
-cilium_version: "1.20.4"
+cilium_version: "1.20.1"
 # renovate: datasource=github-releases depName=cilium/cilium-cli
 cilium_cli_version: "v0.20.1"
 
