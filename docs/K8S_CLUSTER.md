@@ -23,15 +23,16 @@ Runs from **WSL on the main PC**, in `~/homelab`, like the bootstrap.
 | API endpoint      | `k8s-api:6443` (every node's `/etc/hosts` → control plane `node_ip`)   | `roles/k8s_prereqs`       |
 | Control plane     | `laptop-01`, keeps its `NoSchedule` taint                              | `inventories/k8s.yml`     |
 | Workers           | `rpi-03`, labelled `homelab/role=data`, `homelab/storage=nvme`; `rpi-01`, `rpi-02` (Pi 4, no Envoy: `homelab/l7-proxy=unsupported`) | `roles/k8s_node_config`   |
+| Local volumes     | `/mnt/nvme/k8s/<name>` on rpi-03 for the `local-nvme` PVs: `postgres`, `postgres-dumps`, `prometheus`, `grafana`, owned by the uid each image runs as | `roles/k8s_local_volumes` |
 
 Why these versions: 1.37 is out, but Cilium 1.20 is only tested on Kubernetes 1.33–1.36. Debian 13 ships containerd
 1.7, and Kubernetes 1.36 needs 2.x. Bumping any of them is a PR that edits `group_vars/k8s.yml`.
 
 > [!NOTE]
-> The **database taint** on rpi-03 is off (`k8s_data_taint_enabled: false`). rpi-01/02 have joined, so general
-> pods would have somewhere to go, but it stays off until the databases arrive (M6). rpi-03 is also the only worker
-> that can run Envoy, so L7/FQDN-policed workloads, cloudflared and anything behind the Gateway will need to
-> tolerate the taint.
+> rpi-03 has **no database taint**, by design (`k8s_data_taint_enabled: false`). The `local-nvme` PVs' node
+> affinity already pins stateful pods there. A taint would push general pods off the strongest worker, which is
+> also one of the two Envoy nodes, onto rpi-01 (2 GB) and rpi-02. Postgres is protected by Guaranteed QoS and a
+> PriorityClass instead. Revisit when pc-01 or another big worker joins.
 
 ---
 
@@ -68,6 +69,9 @@ The plays, in order:
    `/home/homelab/.kube/config` and fetched to WSL as `~/.kube/homelab.conf`. Then Cilium, waiting until it's healthy.
 4. **Workers**: `kubeadm join` via `k8s-api` with a 30-minute token.
 5. **Labels and taints**, once every node is Ready.
+6. **Local volumes** on `k8s_data` nodes: the PV directories under `/mnt/nvme/k8s`. The play refuses to run if the NVMe
+   isn't mounted. To add a directory, add an entry to `k8s_local_volumes`, then run
+   `ansible-playbook playbooks/cluster.yml --tags volumes --limit rpi-03`. Removing an entry never deletes data.
 
 Swap stays on (Debian swap partition, Pi OS zram): kubelet runs with `failSwapOn: false` and
 `swapBehavior: NoSwap`, so pods never swap. kubeadm's Swap preflight warning is expected and ignored.

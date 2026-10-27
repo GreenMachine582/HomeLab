@@ -1,0 +1,46 @@
+---
+# roles/k8s_local_volumes/tasks/main.yml
+#
+# Creates the directories behind the local-nvme PVs on k8s_data nodes. The
+# StorageClass has no provisioner, and the kubelet won't start a pod whose
+# local path is missing. Create-only: dropping an entry from
+# k8s_local_volumes leaves its directory and data in place.
+
+# Without the NVMe mounted, the directories would land on the SD card and
+# Postgres would start on it, empty.
+- name: "Volumes | Check the NVMe is mounted"
+  ansible.builtin.command: "findmnt --mountpoint {{ nvme_mount_point }}"
+  register: _volumes_mount
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [k8s, volumes]
+
+- name: "Volumes | Refuse to run without the NVMe"
+  ansible.builtin.assert:
+    that: _volumes_mount.rc == 0
+    fail_msg: >-
+      {{ nvme_mount_point }} isn't a mount point. Run bootstrap.yml --tags nvme
+      first (roles/nvme_storage).
+  tags: [k8s, volumes]
+
+- name: "Volumes | Root directory"
+  ansible.builtin.file:
+    path: "{{ k8s_local_volumes_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [k8s, volumes]
+
+- name: "Volumes | One directory per PV"
+  ansible.builtin.file:
+    path: "{{ k8s_local_volumes_root }}/{{ item.name }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ k8s_local_volumes }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.owner }}:{{ item.group }} {{ item.mode }})"
+  tags: [k8s, volumes]

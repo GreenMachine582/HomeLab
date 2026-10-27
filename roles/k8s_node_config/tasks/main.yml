@@ -45,8 +45,8 @@
   changed_when: "'not labeled' not in _label_l7.stdout"
   tags: [k8s, nodes]
 
-# Off until general workers exist (k8s_data_taint_enabled); turning it off
-# again removes the taint.
+# Off by design (k8s_data_taint_enabled, see group_vars/k8s.yml); while
+# it's off this removes any leftover taint.
 - name: "Nodes | Database taint on data nodes"
   ansible.builtin.command: >-
     kubectl taint node {{ item }}
