@@ -7,6 +7,12 @@
 #   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true
 #   ansible-playbook playbooks/cluster_status.yml -e connectivity_test=true \
 #     -e connectivity_test_only=echo-ingress-l7
+#   ansible-playbook playbooks/cluster_status.yml -e status_verbose=true
+#
+# Quiet by default: kubelet errors from the last 24h without the known
+# harmless ones, Cilium restarts from the last 24h with only their warn and
+# error lines, operator warnings only, and a UFW rule count.
+# status_verbose=true prints the full logs and the UFW table.
 #
 # Per node: addresses, routes to the other nodes, UFW status; warns when a
 # node has more than one address on the LAN (it may send cluster traffic
@@ -116,7 +122,7 @@
     # what did it last log. Swap back on or a stopped containerd keep it down.
     - name: "Status | Kubelet and containerd"
       ansible.builtin.shell: |
-        echo "boot: $(uptime -s), up $(uptime -p)"
+        echo "boot: $(uptime -s), $(uptime -p)"
         for u in containerd kubelet; do
           echo "service $u: $(systemctl is-active "$u") since $(systemctl show -p ActiveEnterTimestamp --value "$u")"
         done
@@ -139,9 +145,19 @@
           echo "cloud-init: installed, ${m:-manage_etc_hosts unset}"
         fi
         # kubelet logs through klog at journal priority info; errors start E<mmdd>.
-        echo "-- kubelet log (errors, last 15)"
-        journalctl -u kubelet --no-pager -o short-iso -n 2000 2>&1 \
-          | grep -E ' E[0-9]{4} ' | tail -15 | cut -c1-220
+        # Hidden unless VERBOSE: closed connections (from the exec and logs
+        # calls of this playbook), ContainerStatus NotFound and cgroup reads
+        # (pods being deleted), mirror pods at boot, exec/logs proxy errors.
+        label="known harmless hidden"
+        [ -z "$VERBOSE" ] || label=all
+        echo "-- kubelet errors (last 24h, $label)"
+        errs="$(journalctl -u kubelet --no-pager -o short-iso --since "24 hours ago" 2>&1 | grep -E ' E[0-9]{4} ')"
+        [ -n "$VERBOSE" ] || errs="$(printf '%s\n' "$errs" \
+          | grep -vE 'use of closed network connection|ContainerStatus from runtime service failed.*NotFound|failed to read (memory cgroup|memory.max|cpu.max)|Failed creating a mirror pod|Error proxying data')"
+        errs="$(printf '%s\n' "$errs" | grep . | tail -15 | cut -c1-220)"
+        echo "${errs:-none}"
+      environment:
+        VERBOSE: "{{ '1' if status_verbose | default(false) | bool else '' }}"
       register: _kubelet
       changed_when: false
 
@@ -153,10 +169,15 @@
           kernel_features: "{{ _kernel.stdout_lines }}"
           cilium_proxy_sysctl: "{{ _svm.stdout_lines }}"
           node_ip: "{{ node_ip }}"
-          interfaces: "{{ ansible_interfaces | sort }}"
+          # Without the per-pod lxc<id> veths; lxc_health stays.
+          interfaces: "{{ ansible_interfaces | reject('match', '^lxc[0-9a-f]{12}$') | sort }}"
           lan_addresses: "{{ _lan_addresses }}"
-          routes: "{{ _routes.results | map(attribute='stdout') | list }}"
-          ufw: "{{ _ufw.stdout_lines }}"
+          routes: "{{ _routes.results | map(attribute='stdout') | map('regex_search', '^[^\\n]*') | list }}"
+          ufw: >-
+            {{ _ufw.stdout_lines if status_verbose | default(false) | bool
+               else [(_ufw.stdout_lines | first | default('ufw: no output')) ~ ', '
+                     ~ (_ufw.stdout_lines | select('search', ' (ALLOW|DENY|LIMIT|REJECT) ') | list | length)
+                     ~ ' rules (status_verbose=true lists them)'] }}
 
     - name: "Status | Warn about extra LAN addresses"
       ansible.builtin.debug:
@@ -177,6 +198,22 @@
       when: >-
         'src_valid_mark: 1' in _svm.stdout_lines
         or 'keeper timer: active' not in _svm.stdout_lines
+
+    # Rules naming a 192.168.x address outside lan_subnet (a /24): most
+    # likely left from the old LAN, and they let that subnet in.
+    - name: "Status | Warn about UFW rules for another subnet"
+      vars:
+        _lan_prefix: "{{ lan_subnet.split('.')[:3] | join('.') ~ '.' }}"
+        _ufw_other: >-
+          {{ _ufw.stdout_lines | select('search', '192[.]168[.]')
+             | reject('search', _lan_prefix | regex_escape) | map('regex_replace', '\s+', ' ') | list }}
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: {{ inventory_hostname }} has {{ _ufw_other | length }} UFW
+          rules for addresses outside {{ lan_subnet }}, probably from the old
+          LAN ({{ _ufw_other | join('; ') }}). Remove them with ufw delete, and
+          from ufw_rules_extra or host_vars if roles/firewall still sets them.
+      when: _ufw_other | length > 0
 
 # laptop-01 runs closed at the site: lid ignored, never sleeps, battery
 # capped, power monitor and Wake-on-LAN running, Wi-Fi off.
@@ -251,12 +288,15 @@
 
   tasks:
     - name: "Status | kubectl and cilium"
-      ansible.builtin.command: "{{ item }}"
+      ansible.builtin.shell: "{{ item }}"
       loop:
         - kubectl get nodes -o wide
         - kubectl get ciliumnodes -o wide
         - kubectl get pods -A -o wide
-        - cilium status
+        # Without the colour codes and the logo.
+        - >-
+          cilium status 2>&1 | sed -E -e 's/\x1b\[[0-9;]*m//g' -e '/[A-Za-z]/!d'
+          -e 's/^[^A-Za-z]*(Cilium|Operator|Envoy DaemonSet|Hubble Relay|ClusterMesh):/\1:/'
       register: _cluster
       changed_when: false
       failed_when: false
@@ -269,23 +309,41 @@
     # binary needed). homelab-cluster's Cilium HelmRelease
     # (infrastructure/controllers/cilium/helmrelease.yaml) must match them.
     # Crash-looping Cilium or Envoy pods: node, restarts, last exit, and the
-    # end of the log from before the last restart.
+    # warn and error lines from before the last restart. Only restarts in the
+    # last 24h unless VERBOSE (then every restart, and the plain log tail): a
+    # node reboot counts as one, so older ones are usually just patching.
     - name: "Status | Restarting Cilium pods"
       ansible.builtin.shell: |
-        kubectl -n kube-system get pods -l 'k8s-app in (cilium, cilium-envoy)' \
-          -o jsonpath='{range .items[*]}{.metadata.name} {.spec.nodeName} {.status.containerStatuses[0].restartCount} {.status.containerStatuses[0].lastState.terminated.reason} {.status.containerStatuses[0].lastState.terminated.exitCode}{"\n"}{end}' \
-          | while read -r pod node restarts reason code; do
-              [ "${restarts:-0}" -gt 0 ] || continue
-              echo "== $pod on $node: $restarts restarts, last exit ${reason:-?} ($code)"
-              kubectl -n kube-system logs "$pod" --previous --tail=15 2>&1
-            done
+        cutoff=$(( $(date +%s) - 86400 ))
+        old=0
+        while IFS='|' read -r pod node restarts reason code finished; do
+          [ "${restarts:-0}" -gt 0 ] || continue
+          if [ -z "$VERBOSE" ] && [ -n "$finished" ] && [ "$(date -d "$finished" +%s)" -lt "$cutoff" ]; then
+            old=$((old + 1))
+            continue
+          fi
+          echo "== $pod on $node: $restarts restarts, last exit ${reason:-?} (${code:-?}) at ${finished:-?}"
+          if [ -n "$VERBOSE" ]; then
+            kubectl -n kube-system logs "$pod" --previous --tail=15 2>&1
+          else
+            lines="$(kubectl -n kube-system logs "$pod" --previous --tail=300 2>&1 \
+              | grep -E 'level=(warn|error|fatal)|\]\[(warning|error|critical)\]' | tail -10 | cut -c1-260)"
+            echo "${lines:-(no warn or error lines before the restart)}"
+          fi
+        done < <(kubectl -n kube-system get pods -l 'k8s-app in (cilium, cilium-envoy)' \
+          -o jsonpath='{range .items[*]}{.metadata.name}|{.spec.nodeName}|{.status.containerStatuses[0].restartCount}|{.status.containerStatuses[0].lastState.terminated.reason}|{.status.containerStatuses[0].lastState.terminated.exitCode}|{.status.containerStatuses[0].lastState.terminated.finishedAt}{"\n"}{end}')
+        [ "$old" -eq 0 ] || echo "$old pods last restarted more than 24h ago (status_verbose=true shows them)"
+      args:
+        executable: /bin/bash
+      environment:
+        VERBOSE: "{{ '1' if status_verbose | default(false) | bool else '' }}"
       register: _cilium_restarts
       changed_when: false
       failed_when: false
 
     - name: "Status | Restarting Cilium pods report"
       ansible.builtin.debug:
-        msg: "{{ _cilium_restarts.stdout_lines if _cilium_restarts.stdout_lines else ['none restarting'] }}"
+        msg: "{{ _cilium_restarts.stdout_lines if _cilium_restarts.stdout_lines else ['none restarting in the last 24h'] }}"
 
     # Each agent: its node label, whether its L7 proxy is on, and endpoints
     # not ready. The Pi 4s (l7-proxy=unsupported) run no Envoy, so their
@@ -396,9 +454,19 @@
           -o jsonpath='{range .items[*]}{.metadata.name} ({.spec.controllerName}):{range .status.conditions[*]} {.type}={.status} {.reason} {.message};{end}{"\n"}{end}' 2>&1
         echo "-- gateways"
         kubectl get gateway -A 2>&1
-        echo "-- operator log, gateway lines (last 2h)"
-        kubectl -n kube-system logs deploy/cilium-operator --since=2h 2>&1 \
-          | grep -iE 'gateway|gatewayclass' | tail -25 | cut -c1-260
+        # Reconciling lines repeat every few minutes; only warnings and errors
+        # unless VERBOSE.
+        if [ -n "$VERBOSE" ]; then
+          echo "-- operator log, gateway lines (last 2h)"
+          kubectl -n kube-system logs deploy/cilium-operator --since=2h 2>&1 \
+            | grep -iE 'gateway|gatewayclass' | tail -25 | cut -c1-260
+        else
+          lines="$(kubectl -n kube-system logs deploy/cilium-operator --since=2h 2>&1 \
+            | grep -iE 'gateway|gatewayclass' | grep -E 'level=(warn|error)' | tail -15 | cut -c1-260)"
+          echo "-- operator log, gateway warnings (last 2h): ${lines:-none}"
+        fi
+      environment:
+        VERBOSE: "{{ '1' if status_verbose | default(false) | bool else '' }}"
       register: _gateway
       changed_when: false
       failed_when: false
