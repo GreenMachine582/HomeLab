@@ -1,0 +1,13 @@
+---
+# roles/k8s_local_volumes/defaults/main.yml
+# Directories behind homelab-cluster's local-nvme PVs (M5). Each PV's
+# local.path is k8s_local_volumes_root/<name>. owner/group are the uid/gid
+# the image runs as, so the pod can write without an init container.
+
+k8s_local_volumes_root: "{{ nvme_mount_point }}/k8s"
+
+k8s_local_volumes:
+  - { name: postgres, owner: 999, group: 999, mode: "0700" }        # postgres (Debian image)
+  - { name: postgres-dumps, owner: 999, group: 999, mode: "0750" }  # pg_dump CronJob, same image
+  - { name: prometheus, owner: 1000, group: 2000, mode: "0750" }    # kube-prometheus-stack defaults
+  - { name: grafana, owner: 472, group: 472, mode: "0750" }         # grafana chart defaults

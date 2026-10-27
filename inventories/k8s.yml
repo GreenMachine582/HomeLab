@@ -39,8 +39,8 @@ all:
             rpi-02:
               node_ip: "{{ ip_rpi_02 }}"
 
-        # Database node: local PVs on its NVMe. Labelled in M2; the database
-        # taint waits for general workers (k8s_data_taint_enabled).
+        # Database node: local PVs on its NVMe (roles/k8s_local_volumes).
+        # Labelled, not tainted (k8s_data_taint_enabled).
         k8s_data:
           hosts:
             rpi-03:

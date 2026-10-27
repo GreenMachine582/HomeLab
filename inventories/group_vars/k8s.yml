@@ -106,8 +106,9 @@ cloudflared_sha256:
   amd64: ae5e8add7884b0531d66bbca4570d1de491ff6da51e4ebe7eb160cdf241d9e42
   arm64: 2b7203b4fb0ba28a0c1e12f8855ce2c25f76d266a8d5edafac5540b6812acff6
 
-# Database taint on k8s_data nodes. Off until rpi-01/02 join as general
-# workers; with it on now, general pods would have nowhere to run.
+# Database taint on k8s_data nodes. Off by design (M5): local PV node
+# affinity already pins stateful pods, and a taint would push general pods
+# onto the weaker Pis. Revisit when pc-01 or another big worker joins.
 k8s_data_taint_enabled: false
 
 # ── Firewall ──────────────────────────────────────────────────────────────────
