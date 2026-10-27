@@ -79,7 +79,7 @@ ansible-playbook playbooks/cluster_status.yml         # 🩺 read-only health re
 
 | Playbook | What it does |
 |---|---|
-| `controller.yml` | Controller toolchain at pinned versions, `k8s-api` hosts entry, `KUBECONFIG`. `--tags ssh_ca` makes the break-glass CA; `--tags dev_wsl` sets up key + TOTP SSH into WSL ([REMOTE_ACCESS.md](./docs/REMOTE_ACCESS.md)) |
+| `controller.yml` | Controller toolchain at pinned versions, `k8s-api` hosts entry, `KUBECONFIG`, SSH config for the nodes (`ssh rpi-03`). `--tags ssh_ca` makes the break-glass CA; `--tags dev_wsl` sets up key + TOTP SSH into WSL ([REMOTE_ACCESS.md](./docs/REMOTE_ACCESS.md)) |
 | `bootstrap.yml` | Fresh or hardened node → hardened, key-only, on the tailnet. Probes how to reach each node |
 | `cluster.yml` | kubeadm cluster, Cilium (fresh installs only, since Flux owns it), labels/taints, etcd snapshot timer |
 | `cluster_status.yml` | Read-only report: nodes, kubelet, Cilium, Gateway API, Gateway reachability from the controller. `-e connectivity_test=true` |
