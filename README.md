@@ -143,8 +143,9 @@ HomeLab/
 1. 🔑 **SSH:** key-only, no root login, non-standard port, `AllowTcpForwarding no`. `admin` (your key, sudo with a
    password) and `homelab` (the Ansible key, passwordless sudo).
 2. 🧱 **Firewall:** UFW default-deny inbound. SSH and the API only from the site LAN and the tailnet. Cilium and
-   kubelet ports only from the site LAN. Everything is trusted from the other nodes and the pod network. A 5-minute
-   auto-rollback guards against lockout.
+   kubelet ports only from the site LAN. Everything is trusted from the other nodes and the pod network. Rules for
+   any other source are removed, such as the old LAN after a site move. A 5-minute auto-rollback guards against
+   lockout.
 3. 🌐 **Tailscale:** nodes are tagged `tag:homelab` by admins only, can't connect to your devices, and never accept
    routes. The site subnet route is never auto-approved.
 4. 🆘 **Break-glass:** one-hour SSH certificates signed by an offline CA, for when Tailscale is down.

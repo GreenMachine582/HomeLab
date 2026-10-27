@@ -126,3 +126,7 @@ firewall_trusted_sources: >-
 
 # Pod traffic is routed through the host.
 firewall_routed_policy: allow
+
+# Remove rules for any other source, such as the home LAN from before the
+# site move: the role only adds rules, so a move would keep the old LAN open.
+firewall_prune_unmanaged_sources: true
