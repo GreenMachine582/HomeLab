@@ -24,3 +24,9 @@ firewall_trusted_sources: []
 
 # UFW routed/forward policy (allow, deny, reject). Empty leaves it untouched.
 firewall_routed_policy: ""
+
+# Delete rules whose IPv4 source is neither a firewall_rules src nor a
+# firewall_trusted_sources entry. The role only adds rules, so without this a
+# moved node keeps allowing its old LAN. Rules from Anywhere and IPv6 rules
+# are never touched. Off by default.
+firewall_prune_unmanaged_sources: false

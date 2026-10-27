@@ -200,7 +200,8 @@
         or 'keeper timer: active' not in _svm.stdout_lines
 
     # Rules naming a 192.168.x address outside lan_subnet (a /24): most
-    # likely left from the old LAN, and they let that subnet in.
+    # likely left from the old LAN (the home LAN before the site move), and
+    # they let that subnet in.
     - name: "Status | Warn about UFW rules for another subnet"
       vars:
         _lan_prefix: "{{ lan_subnet.split('.')[:3] | join('.') ~ '.' }}"
@@ -211,8 +212,8 @@
         msg: >-
           WARNING: {{ inventory_hostname }} has {{ _ufw_other | length }} UFW
           rules for addresses outside {{ lan_subnet }}, probably from the old
-          LAN ({{ _ufw_other | join('; ') }}). Remove them with ufw delete, and
-          from ufw_rules_extra or host_vars if roles/firewall still sets them.
+          LAN ({{ _ufw_other | join('; ') }}). cluster.yml --tags firewall
+          removes them (firewall_prune_unmanaged_sources).
       when: _ufw_other | length > 0
 
 # laptop-01 runs closed at the site: lid ignored, never sleeps, battery

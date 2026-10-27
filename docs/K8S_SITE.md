@@ -209,7 +209,7 @@ Gateway, the tunnel and the apps.
    ```
    This sets the static IPs (each node reboots once, and the play reconnects over Tailscale), turns the laptop's
    Wi-Fi off, advertises the new subnet route (unapproved until you approve it), and re-applies UFW for the new
-   `lan_subnet`.
+   `lan_subnet`, removing the old LAN's rules (`firewall_prune_unmanaged_sources`).
 5. **Update the site-specific values elsewhere** in PRs, before Flux comes back:
    - homelab-cluster: the LB-IPAM pool (`infrastructure/configs/cilium/lb-ipam-pool.yaml`), the Gateway's
      `spec.addresses`, and Cilium's `k8sServiceHost` (laptop-01's new LAN IP) in the HelmRelease.

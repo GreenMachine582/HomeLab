@@ -112,6 +112,41 @@
   loop: "{{ firewall_trusted_sources | default([]) }}"
   tags: [firewall]
 
+# Rules left from an earlier LAN (e.g. the home LAN before a site move).
+# Highest rule number first, so a delete never renumbers one still to come.
+# Runs in check mode too, as a dry run that only lists them. Inside the
+# rollback window above.
+- name: "Firewall | Remove rules for sources no longer managed"
+  ansible.builtin.shell: |
+    ufw status numbered \
+      | sed -nE 's/^\[ *([0-9]+)\] .* (ALLOW|DENY|REJECT|LIMIT) IN +([0-9.]+(\/[0-9]+)?)( .*)?$/\1 \3/p' \
+      | sort -rn \
+      | while read -r num src; do
+          case " $MANAGED " in *" $src "*) continue ;; esac
+          rule="$(ufw status numbered | grep -E "^\[ *$num\] " | tr -s " ")"
+          if [ -n "$DRY" ]; then
+            echo "would remove: $rule"
+          else
+            ufw --force delete "$num" >/dev/null && echo "removed: $rule"
+          fi
+        done
+  environment:
+    MANAGED: >-
+      {{ (firewall_rules | default([]) | map(attribute='src', default='any') | list
+          + firewall_trusted_sources | default([])) | join(' ') }}
+    DRY: "{{ '1' if ansible_check_mode else '' }}"
+  register: _ufw_pruned
+  changed_when: "'removed:' in _ufw_pruned.stdout"
+  check_mode: false
+  when: firewall_prune_unmanaged_sources | bool
+  tags: [firewall]
+
+- name: "Firewall | Rules removed"
+  ansible.builtin.debug:
+    msg: "{{ _ufw_pruned.stdout_lines }}"
+  when: _ufw_pruned.stdout_lines | default([]) | length > 0
+  tags: [firewall]
+
 - name: "Firewall | Enable ufw"
   community.general.ufw:
     state: enabled
