@@ -287,21 +287,23 @@
       ansible.builtin.debug:
         msg: "{{ _cilium_restarts.stdout_lines if _cilium_restarts.stdout_lines else ['none restarting'] }}"
 
-    # Each agent: its node label, proxy state, and endpoints not ready. The
-    # Pi 4s (l7-proxy=unsupported) run no Envoy, so their agents must have the
-    # L7 proxy off (homelab-cluster: the no-l7-proxy CiliumNodeConfig), or
-    # every endpoint update waits on an Envoy ACK and new pods stay Pending.
+    # Each agent: its node label, whether its L7 proxy is on, and endpoints
+    # not ready. The Pi 4s (l7-proxy=unsupported) run no Envoy, so their
+    # agents must have the L7 proxy off (homelab-cluster: the no-l7-proxy
+    # CiliumNodeConfig), or every endpoint update waits on an Envoy ACK and
+    # new pods stay Pending. Read it from the agent config: the status line
+    # says "Envoy: external" even with the proxy off.
     - name: "Status | Cilium agent per node"
       ansible.builtin.shell: |
         kubectl -n kube-system get pods -l k8s-app=cilium \
           -o jsonpath='{range .items[*]}{.metadata.name} {.spec.nodeName}{"\n"}{end}' \
           | while read -r pod node; do
               label=$(kubectl get node "$node" -L homelab/l7-proxy --no-headers | awk '{print $NF}')
-              proxy=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- cilium-dbg status 2>&1 \
-                | grep -m1 "Proxy Status" | sed "s/^Proxy Status: *//")
+              l7=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- cilium-dbg config -a 2>/dev/null \
+                | awk '$1 == "EnableL7Proxy" {print $3}')
               notready=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- cilium-dbg endpoint list 2>/dev/null \
                 | awk '$1 ~ /^[0-9]+$/ && $NF != "ready" {n++} END {print n+0}')
-              echo "$node l7-proxy=${label:-none} endpoints-not-ready=$notready proxy: ${proxy:-unknown}"
+              echo "$node l7-proxy=${label:-none} agent-l7-proxy=${l7:-unknown} endpoints-not-ready=$notready"
             done
       register: _cilium_agents
       changed_when: false
@@ -340,11 +342,11 @@
       ansible.builtin.debug:
         msg: >-
           WARNING: L7 proxy still on where Envoy can not run
-          ({{ _cilium_agents.stdout_lines | select('search', 'l7-proxy=unsupported .*Envoy: external') | join('; ') }}).
+          ({{ _cilium_agents.stdout_lines | select('search', 'l7-proxy=unsupported agent-l7-proxy=true') | join('; ') }}).
           Restart the cilium pod on that node so it reads the no-l7-proxy
           CiliumNodeConfig (homelab-cluster).
       when: >-
-        _cilium_agents.stdout_lines | select('search', 'l7-proxy=unsupported .*Envoy: external') | list | length > 0
+        _cilium_agents.stdout_lines | select('search', 'l7-proxy=unsupported agent-l7-proxy=true') | list | length > 0
 
     - name: "Status | Warn about stalled endpoints or pods"
       ansible.builtin.debug:
