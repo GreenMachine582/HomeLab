@@ -46,11 +46,13 @@ wol_report: "{{ inventory_hostname == groups['k8s_workers'] | first }}"
 # ── Kubernetes (playbooks/cluster.yml) ─────────────────────────────────────────
 # 1.36 is the newest minor in Cilium 1.20's tested matrix (decision 27).
 # Packages are held; upgrading is a deliberate PR that bumps these.
+# renovate: datasource=github-releases depName=kubernetes/kubernetes extractVersion=^v(?<version>.+)$
 k8s_version: "1.36.5"
 k8s_minor: "{{ k8s_version.split('.')[:2] | join('.') }}"
 # containerd 2.x from Docker's apt repo: Debian 13 only ships 1.7, and
 # Kubernetes 1.36 needs containerd 2.x. A minor, held; patch_nodes.yml
 # -e patch_held=true moves it to the newest patch release of this minor.
+# renovate: datasource=github-releases depName=containerd/containerd extractVersion=^v(?<version>\d+\.\d+)\.\d+$
 containerd_version: "2.4"
 k8s_api_name: k8s-api
 k8s_api_port: 6443
@@ -67,13 +69,17 @@ k8s_control_plane_ip: "{{ hostvars[groups['k8s_control_plane'][0]].node_ip }}"
 # upgrades go through homelab-cluster's
 # infrastructure/controllers/cilium/helmrelease.yaml, and this is the version a
 # fresh cluster is installed with, so keep it the same as the HelmRelease.
+# renovate: datasource=github-releases depName=cilium/cilium extractVersion=^v(?<version>.+)$
 cilium_version: "1.20.1"
+# renovate: datasource=github-releases depName=cilium/cilium-cli
 cilium_cli_version: "v0.20.1"
 
 # GitOps (homelab-cluster, M3). flux_version must match the release whose
 # install.yaml is committed as clusters/prod/flux-system/gotk-components.yaml;
 # bumping it is a PR in both repos. The CLI and sops live on the controller.
+# renovate: datasource=github-releases depName=fluxcd/flux2 extractVersion=^v(?<version>.+)$
 flux_version: "2.9.6"
+# renovate: datasource=github-releases depName=getsops/sops extractVersion=^v(?<version>.+)$
 sops_version: "3.13.3"
 flux_repo_url: https://github.com/GreenMachine582/homelab-cluster
 flux_branch: main
@@ -86,7 +92,9 @@ sops_age_recipient: age19k96we2u9cytex9zru4r0yaskqc88aryvh2mw5d7m2etjqschevqgyvr
 # cloudflared CLI on the controller (M4), for the locally managed tunnel:
 # tunnel login/create/route dns. Keep the same version as the image in
 # homelab-cluster's infrastructure/configs/cloudflared/deployment.yaml.
-# Checksums from the release notes (they match GitHub's asset digests).
+# Checksums are GitHub's asset digests (the same as the release notes); on a
+# Renovate PR, .github/workflows/cloudflared-sums.yml fills them in.
+# renovate: datasource=github-releases depName=cloudflare/cloudflared
 cloudflared_version: "2026.10.4"
 cloudflared_sha256:
   amd64: ae5e8add7884b0531d66bbca4570d1de491ff6da51e4ebe7eb160cdf241d9e42

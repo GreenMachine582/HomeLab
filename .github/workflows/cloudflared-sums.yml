@@ -1,0 +1,80 @@
+name: cloudflared sums
+
+# cloudflared publishes no checksums file, so cloudflared_sha256 in
+# group_vars/k8s.yml is pinned by hand, and a version bump without the sums
+# breaks controller.yml (#29). This checks the sums against GitHub's asset
+# digests for cloudflared_version on every PR. Required status check on the
+# main ruleset: cloudflared-sums.
+#
+# On a Renovate branch it fixes them instead: it commits the sums through the
+# GraphQL API (signed by GitHub; main requires signatures), then re-runs this
+# and commit-style on the new commit, since commits made with the workflow
+# token start no workflows themselves.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  cloudflared-sums:
+    name: cloudflared-sums
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Check cloudflared_sha256
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          f=inventories/group_vars/k8s.yml
+          v=$(sed -n 's/^cloudflared_version: "\(.*\)"$/\1/p' "$f")
+          digest() {
+            gh api "repos/cloudflare/cloudflared/releases/tags/$v" \
+              --jq ".assets[] | select(.name == \"cloudflared-linux-$1\") | .digest | sub(\"^sha256:\"; \"\")"
+          }
+          amd64=$(digest amd64)
+          arm64=$(digest arm64)
+          [[ $amd64 =~ ^[0-9a-f]{64}$ && $arm64 =~ ^[0-9a-f]{64}$ ]] \
+            || { echo "::error::No sha256 asset digests for cloudflared $v"; exit 1; }
+
+          sed -i -E "/^cloudflared_sha256:/,/^  arm64:/{s/^(  amd64: ).*/\1$amd64/;s/^(  arm64: ).*/\1$arm64/}" "$f"
+          if git diff --quiet -- "$f"; then
+            echo "ok  cloudflared $v: amd64 $amd64, arm64 $arm64"
+            exit 0
+          fi
+
+          if [[ $EVENT != pull_request || $BRANCH != renovate/* || $SAME_REPO != true ]]; then
+            echo "::error::cloudflared_sha256 doesn't match cloudflared $v. Set amd64: $amd64, arm64: $arm64"
+            exit 1
+          fi
+
+          jq -n \
+            --arg repo "$GITHUB_REPOSITORY" --arg branch "$BRANCH" --arg head "$HEAD" \
+            --arg msg "build(deps): cloudflared checksums for $v" \
+            --arg path "$f" --arg contents "$(base64 -w0 "$f")" \
+            '{query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+                expectedHeadOid: $head,
+                message: {headline: $msg},
+                fileChanges: {additions: [{path: $path, contents: $contents}]}}}}' \
+            | gh api graphql --input -
+
+          gh workflow run cloudflared-sums.yml --ref "$BRANCH"
+          gh workflow run commit-style.yml --ref "$BRANCH"
+          echo "::error::Committed the cloudflared $v checksums to $BRANCH; the checks re-run on that commit."
+          exit 1

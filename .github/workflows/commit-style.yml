@@ -3,14 +3,20 @@ name: Commit style
 # Conventional Commits on every PR to main: the PR title (GitHub uses it for
 # squash merges) and each non-merge commit in the PR. See CONTRIBUTING.md.
 # Required status check on the main ruleset: commit-style.
+#
+# workflow_dispatch: cloudflared-sums.yml re-runs it on a branch after
+# committing with the workflow token, which starts no workflows itself. It
+# checks that branch's open PR.
 
 on:
   pull_request:
     branches: [main]
     types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   commit-style:
@@ -28,7 +34,14 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            pr=$(gh pr view "$GITHUB_REF_NAME" --json title,baseRefName,headRefOid)
+            PR_TITLE=$(jq -r .title <<<"$pr")
+            HEAD=$(jq -r .headRefOid <<<"$pr")
+            BASE=$(git merge-base "origin/$(jq -r .baseRefName <<<"$pr")" "$HEAD")
+          fi
           pattern='^(feat|fix|docs|chore|refactor|test|ci|build|perf|revert)(\([a-z0-9._/-]+\))?!?: [^ ].*[^. ]$'
           exempt='^(Merge (pull request|branch|remote-tracking branch) |Revert ")'
           fail=0
