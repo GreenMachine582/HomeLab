@@ -247,6 +247,11 @@ touched. Run it after Kubernetes or etcd upgrades too.
 Off-site: the site copies aren't off-site, so run `etcd_fetch.yml` from home (weekly, and before risky changes). M4
 adds the backup Pi as a second target.
 
+Postgres works the same way. homelab-cluster's `pg-dump` CronJob writes a daily dump to
+`/mnt/nvme/k8s/postgres-dumps` on rpi-03, next to the database, and keeps 7.
+`ansible-playbook playbooks/pg_dump_fetch.yml` copies the newest to `~/homelab-backups/postgres` (mode 0600, keeps 7).
+Run it with `etcd_fetch.yml`. Restore steps are in homelab-cluster `docs/M5_WORKLOADS.md` › Postgres runbook.
+
 ### 🚨 Real restore (disaster only)
 
 <details>

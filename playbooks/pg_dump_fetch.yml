@@ -1,0 +1,102 @@
+---
+# playbooks/pg_dump_fetch.yml
+#
+# Copies the newest Postgres dump from the data node to the controller
+# (~/homelab-backups/postgres), keeping the newest 7 there. Until the NFS
+# backup target exists (M4 PR 9), this is the only off-node copy: the dumps
+# sit on rpi-03 next to the database.
+#
+#   ansible-playbook playbooks/pg_dump_fetch.yml
+#
+# Dumps are taken daily by homelab-cluster's pg-dump CronJob (M5). See
+# docs/K8S_CLUSTER.md.
+
+- name: "Probe | Discover the data node's SSH endpoint"
+  hosts: k8s_data
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        apply:
+          tags: [always]
+      tags: [always]
+      vars:
+        probe_allow_fresh: false
+
+- name: "Postgres | Fetch the newest dump"
+  hosts: k8s_data
+  become: true
+  gather_facts: false
+
+  vars:
+    pg_dump_dir: "{{ nvme_mount_point }}/k8s/postgres-dumps"
+    pg_dump_controller_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}/homelab-backups/postgres"
+    pg_dump_keep: 7
+
+  tasks:
+    - name: "Postgres | Find dumps"
+      ansible.builtin.find:
+        paths: "{{ pg_dump_dir }}"
+        patterns: "pg_dumpall-*.sql.gz"
+      register: _pg_dumps
+
+    - name: "Postgres | Fail if there are none"
+      ansible.builtin.fail:
+        msg: >-
+          No dumps in {{ pg_dump_dir }}. Has the pg-dump CronJob run? Test it with
+          kubectl -n postgres create job --from=cronjob/pg-dump dump-test
+      when: _pg_dumps.matched == 0
+
+    - name: "Postgres | Pick the newest"
+      ansible.builtin.set_fact:
+        _pg_dump: "{{ (_pg_dumps.files | sort(attribute='mtime') | last).path | basename }}"
+
+    - name: "Postgres | Controller backup directory"
+      ansible.builtin.file:
+        path: "{{ pg_dump_controller_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+
+    - name: "Postgres | Fetch {{ _pg_dump }}"
+      ansible.builtin.fetch:
+        src: "{{ pg_dump_dir }}/{{ _pg_dump }}"
+        dest: "{{ pg_dump_controller_dir }}/{{ _pg_dump }}"
+        flat: true
+
+    - name: "Postgres | Find the controller's copies"
+      ansible.builtin.find:
+        paths: "{{ pg_dump_controller_dir }}"
+        patterns: "pg_dumpall-*.sql.gz"
+      register: _pg_local
+      delegate_to: localhost
+      become: false
+
+    # Every password hash is in there.
+    - name: "Postgres | Restrict the controller's copies"
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        mode: "0600"
+      loop: "{{ _pg_local.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      delegate_to: localhost
+      become: false
+
+    # Names sort by timestamp, so the oldest come first.
+    - name: "Postgres | Keep the newest {{ pg_dump_keep }} on the controller"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ (_pg_local.files | map(attribute='path') | sort)[:-(pg_dump_keep | int)] }}"
+      delegate_to: localhost
+      become: false
+
+    - name: "Postgres | Fetched"
+      ansible.builtin.debug:
+        msg: "{{ _pg_dump }} → {{ pg_dump_controller_dir }}"
