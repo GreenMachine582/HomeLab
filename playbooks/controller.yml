@@ -11,7 +11,8 @@
 # Installs: sshpass (first password-based bootstrap), the Ansible
 # collections, kubectl, cilium-cli and flux at the cluster's versions, sops
 # and age (homelab-cluster secrets), cloudflared (the tunnel), the k8s-api
-# hosts entry, and KUBECONFIG=~/.kube/homelab.conf in ~/.bashrc.
+# hosts entry, KUBECONFIG=~/.kube/homelab.conf in ~/.bashrc, and an SSH
+# config so `ssh rpi-03` logs in as admin (--tags ssh_config).
 # See docs/K8S_CLUSTER.md.
 #
 # Opt-in: --tags ssh_ca (break-glass SSH CA, docs/K8S_SITE.md) and
@@ -140,6 +141,47 @@
             dest: "{{ _run_notify_dir }}/run-notify.webhook"
             mode: "0600"
           no_log: true
+
+    # `ssh rpi-03` as admin, without -p/-i. One Host per k8s node, by its
+    # MagicDNS name, so Tailscale picks the path. Ansible sets its own user
+    # and key in the inventory, so this doesn't affect playbooks.
+    - name: "Controller | SSH config for the nodes"
+      become: false
+      vars:
+        _ssh_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}/.ssh"
+      tags: [controller, ssh_config]
+      block:
+        - name: "Controller | SSH config directory"
+          ansible.builtin.file:
+            path: "{{ _ssh_dir }}/config.d"
+            state: directory
+            mode: "0700"
+
+        - name: "Controller | SSH config for the nodes"
+          ansible.builtin.copy:
+            dest: "{{ _ssh_dir }}/config.d/homelab"
+            mode: "0600"
+            content: |
+              # Managed by HomeLab playbooks/controller.yml (--tags ssh_config). Edits are overwritten.
+              {% for host in groups['k8s'] %}
+
+              Host {{ host }}
+                HostName {{ host }}.{{ tailscale_tailnet }}.ts.net
+                Port {{ ssh_port }}
+                User admin
+                IdentityFile ~/homelab/.ssh/homelab-edge
+                IdentitiesOnly yes
+                ForwardAgent no
+              {% endfor %}
+
+        # Include only applies before the first Host block, so it goes first.
+        - name: "Controller | Include it from ~/.ssh/config"
+          ansible.builtin.lineinfile:
+            path: "{{ _ssh_dir }}/config"
+            line: Include ~/.ssh/config.d/homelab
+            insertbefore: BOF
+            create: true
+            mode: "0600"
 
     # Break-glass SSH user CA (docs/K8S_SITE.md). Only with --tags ssh_ca.
     # The private key stays here; bootstrap.yml installs the public half on

@@ -48,6 +48,9 @@ Why these versions: 1.37 is out, but Cilium 1.20 is only tested on Kubernetes 1.
    `k8s-api` to `/etc/hosts`: the fetched kubeconfig points at `https://k8s-api:6443`, and on WSL it also sets
    `generateHosts = false` in `/etc/wsl.conf` so the entry survives restarts. It also exports
    `KUBECONFIG=~/.kube/homelab.conf` in `~/.bashrc`. kubectl and cilium are on laptop-01 as well (`homelab` user).
+   Last, it writes `~/.ssh/config.d/homelab` (included from `~/.ssh/config`), so `ssh rpi-03` logs in as `admin` with
+   the `homelab-edge` key on `ssh_port`, by MagicDNS name. Only that file is managed; the rest of `~/.ssh/config` is
+   yours. Re-run just this part with `--tags ssh_config`.
 
 ---
 
