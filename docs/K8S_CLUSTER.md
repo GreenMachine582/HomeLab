@@ -163,7 +163,13 @@ at start (`TCMalloc assumes a 48-bit virtual address space`). The Pi 5 kernel is
 - **Anything that needs L7/FQDN/TLS policy, or serves through the Gateway, must have
   `nodeSelector: {homelab/l7-proxy: supported}`.** On a Pi 4 such a pod's policy can't be enforced by a proxy:
   endpoint updates stall and FQDN rules can let traffic through.
-- The Pi 4 agents log `Envoy: Version check failed` periodically; `cluster_status.yml` expects that.
+- **The Pi 4 agents run with the L7 proxy off** (homelab-cluster's `no-l7-proxy` CiliumNodeConfig, which selects
+  `homelab/l7-proxy=unsupported`). With it on, each endpoint update waits for an Envoy that isn't there, and new pods
+  on those nodes stay in `ContainerCreating`. An agent reads the config only when it starts, so restart a Pi 4's
+  cilium pod after changing it. `cluster_status.yml` reports each agent's proxy state, endpoints not ready, and pods
+  stuck Pending, and warns about each.
+- With the proxy on, the Pi 4 agents logged `Envoy: Version check failed`. The connectivity test still ignores
+  those lines.
 - `cluster_status.yml` prints each node's `virtual address bits` among its kernel features.
 
 ---

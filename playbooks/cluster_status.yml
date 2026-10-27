@@ -11,7 +11,8 @@
 # Per node: addresses, routes to the other nodes, UFW status; warns when a
 # node has more than one address on the LAN (it may send cluster traffic
 # from one the others don't trust). From the control plane: nodes, Cilium
-# nodes, pods, cilium status, Gateway API. From the controller: that
+# nodes, pods, cilium status, each agent's L7 proxy state, pods stuck
+# Pending, Gateway API. From the controller: that
 # whoami.home.green-tech-hub.com resolves to the Gateway and answers over
 # HTTPS with a trusted cert. connectivity_test=true also runs
 # `cilium connectivity test` (it deploys test pods, then removes them);
@@ -285,6 +286,77 @@
     - name: "Status | Restarting Cilium pods report"
       ansible.builtin.debug:
         msg: "{{ _cilium_restarts.stdout_lines if _cilium_restarts.stdout_lines else ['none restarting'] }}"
+
+    # Each agent: its node label, proxy state, and endpoints not ready. The
+    # Pi 4s (l7-proxy=unsupported) run no Envoy, so their agents must have the
+    # L7 proxy off (homelab-cluster: the no-l7-proxy CiliumNodeConfig), or
+    # every endpoint update waits on an Envoy ACK and new pods stay Pending.
+    - name: "Status | Cilium agent per node"
+      ansible.builtin.shell: |
+        kubectl -n kube-system get pods -l k8s-app=cilium \
+          -o jsonpath='{range .items[*]}{.metadata.name} {.spec.nodeName}{"\n"}{end}' \
+          | while read -r pod node; do
+              label=$(kubectl get node "$node" -L homelab/l7-proxy --no-headers | awk '{print $NF}')
+              proxy=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- cilium-dbg status 2>&1 \
+                | grep -m1 "Proxy Status" | sed "s/^Proxy Status: *//")
+              notready=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- cilium-dbg endpoint list 2>/dev/null \
+                | awk '$1 ~ /^[0-9]+$/ && $NF != "ready" {n++} END {print n+0}')
+              echo "$node l7-proxy=${label:-none} endpoints-not-ready=$notready proxy: ${proxy:-unknown}"
+            done
+      register: _cilium_agents
+      changed_when: false
+      failed_when: false
+
+    - name: "Status | Cilium agent per node report"
+      ansible.builtin.debug:
+        msg: "{{ _cilium_agents.stdout_lines + _cilium_agents.stderr_lines }}"
+
+    # Pending for over 5 minutes: on a Pi 4 with the L7 proxy still on this
+    # is ContainerCreating forever (helm-controller there stops Flux).
+    - name: "Status | Pods stuck Pending"
+      ansible.builtin.shell: |
+        kubectl get pods -A -o json | python3 -c 'import datetime, json, sys
+        now = datetime.datetime.now(datetime.timezone.utc)
+        for p in json.load(sys.stdin)["items"]:
+            if p["status"].get("phase") != "Pending":
+                continue
+            created = datetime.datetime.fromisoformat(p["metadata"]["creationTimestamp"].replace("Z", "+00:00"))
+            mins = int((now - created).total_seconds() // 60)
+            if mins < 5:
+                continue
+            reasons = sorted({c["state"]["waiting"].get("reason", "?")
+                              for c in p["status"].get("containerStatuses", []) if "waiting" in c.get("state", {})})
+            print(p["metadata"]["namespace"] + "/" + p["metadata"]["name"], "on", p["spec"].get("nodeName", "-"),
+                  "for", str(mins) + "m:", ", ".join(reasons) or "unscheduled")'
+      register: _stuck_pods
+      changed_when: false
+      failed_when: false
+
+    - name: "Status | Pods stuck Pending report"
+      ansible.builtin.debug:
+        msg: "{{ _stuck_pods.stdout_lines + _stuck_pods.stderr_lines if (_stuck_pods.stdout_lines + _stuck_pods.stderr_lines) else ['none'] }}"
+
+    - name: "Status | Warn about the Pi 4 L7 proxy"
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: L7 proxy still on where Envoy can not run
+          ({{ _cilium_agents.stdout_lines | select('search', 'l7-proxy=unsupported .*Envoy: external') | join('; ') }}).
+          Restart the cilium pod on that node so it reads the no-l7-proxy
+          CiliumNodeConfig (homelab-cluster).
+      when: >-
+        _cilium_agents.stdout_lines | select('search', 'l7-proxy=unsupported .*Envoy: external') | list | length > 0
+
+    - name: "Status | Warn about stalled endpoints or pods"
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: endpoints not ready or pods stuck Pending
+          ({{ (_cilium_agents.stdout_lines | select('search', 'endpoints-not-ready=[1-9]') | list
+               + _stuck_pods.stdout_lines) | join('; ') }}). On a Pi 4 see
+          docs/K8S_CLUSTER.md, Envoy and the Pi 4s; moving the pod off with
+          cordon and delete unblocks it.
+      when: >-
+        _cilium_agents.stdout_lines | select('search', 'endpoints-not-ready=[1-9]') | list | length > 0
+        or _stuck_pods.stdout_lines | length > 0
 
     - name: "Status | Cilium Helm release values"
       ansible.builtin.shell: |
