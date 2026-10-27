@@ -107,6 +107,15 @@ ansible-playbook playbooks/controller.yml --tags dev_wsl -K
   silent; no agent forwarding or tunnels) and swaps the password prompt in `/etc/pam.d/sshd` for the TOTP prompt.
 - Starts **login alerts**: every accepted SSH login posts to Discord as `dev-wsl` (the nodes' `on-ssh-success`
   watcher).
+
+> [!NOTE]
+> **Ansible logins to the nodes aren't posted.** Each playbook run posts one `🤖 [Ansible]` summary instead
+> (`callback_plugins/run_notify.py`, webhook in `~/.config/homelab/run-notify.webhook` from `controller.yml`).
+> A node skips a login only when all three match: user `homelab`, the Ansible key (by SHA256 fingerprint), and a
+> source that `tailscale whois` names `dev-wsl`. A Tailscale identity can't be faked with an IP address. Every other
+> login still alerts, with the machine name and key: `admin`, break-glass certificates, other keys, other machines,
+> LAN addresses, or a failed lookup. Skipped logins are logged on the node (`journalctl -t on-ssh-success`). The case
+> left is someone already on dev-wsl, and dev-wsl's own login alert covers that.
 - Ends with a list of whatever manual steps are still missing (steps 3–6), and warns if MagicDNS names stop
   resolving in WSL.
 

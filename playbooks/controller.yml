@@ -120,6 +120,27 @@
              'WARNING: k8s-api (' ~ k8s_control_plane_ip ~ ') does not answer. Is the cluster up, and is that address reachable from here?' }}
       tags: [controller, client]
 
+    # callback_plugins/run_notify.py posts one Discord message per playbook
+    # run from this file; the nodes skip login alerts for those runs.
+    - name: "Controller | Webhook for the playbook run summary"
+      become: false
+      vars:
+        _run_notify_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/homelab"
+      tags: [controller, client]
+      block:
+        - name: "Controller | Run summary config directory"
+          ansible.builtin.file:
+            path: "{{ _run_notify_dir }}"
+            state: directory
+            mode: "0700"
+
+        - name: "Controller | Run summary webhook"
+          ansible.builtin.copy:
+            content: "{{ notify_discord_webhook }}\n"
+            dest: "{{ _run_notify_dir }}/run-notify.webhook"
+            mode: "0600"
+          no_log: true
+
     # Break-glass SSH user CA (docs/K8S_SITE.md). Only with --tags ssh_ca.
     # The private key stays here; bootstrap.yml installs the public half on
     # the nodes; scripts/sign-breakglass.sh signs one-hour certificates.

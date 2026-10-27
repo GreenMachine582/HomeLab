@@ -31,6 +31,12 @@ ssh_user_ca_pubkey: "{{ lookup('ansible.builtin.file', inventory_dir ~ '/../.ssh
 # ── Notifications ─────────────────────────────────────────────────────────────
 # ntfy lived on homelab-observe, which is gone. Discord only for now.
 notify_ntfy_url: ""
+# Ansible from the controller posts one run summary (callback_plugins/
+# run_notify.py) instead of a login alert per node and connection. Only the
+# homelab key from the machine Tailscale names dev-wsl is skipped; every
+# other login still alerts, and dev-wsl alerts on logins to itself.
+notify_quiet_ansible_pubkey: "{{ vault_homelab_ssh_pubkey }}"
+notify_quiet_ansible_from: dev-wsl
 
 # ── Tailscale ─────────────────────────────────────────────────────────────────
 # Nodes keep their own DNS (roles/node_network lan_dns); MagicDNS is only

@@ -40,3 +40,9 @@ ssh_allow_tcp_forwarding: "no"
 notify_script_dir: /usr/local/lib/homelab/notify
 # notify_ntfy_url, notify_discord_webhook have no safe defaults
 # (they require vault vars and ip_observe) — must be set in group_vars/all/main.yml.
+
+# Logins not posted by on-ssh-success: this user, with this public key, from
+# the tailnet machine of this name (tailscale whois). Empty posts every login.
+notify_quiet_ansible_user: homelab
+notify_quiet_ansible_pubkey: ""
+notify_quiet_ansible_from: ""
