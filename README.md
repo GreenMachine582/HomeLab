@@ -86,6 +86,7 @@ ansible-playbook playbooks/cluster_status.yml         # 🩺 read-only health re
 | `cluster_reset.yml` | Tears the cluster down (asks you to type `reset`) |
 | `flux_bootstrap.yml` | Installs or repairs Flux from homelab-cluster's committed manifests, with the `sops-age` secret |
 | `etcd_fetch.yml` | Newest etcd snapshot + PKI → `~/homelab-backups/etcd` |
+| `pg_dump_fetch.yml` | Newest Postgres dump from rpi-03 → `~/homelab-backups/postgres` |
 | `etcd_restore_test.yml` | Restore rehearsal into a throwaway etcd |
 | `identify_nodes.yml` | Finds and identifies freshly imaged nodes on the site LAN |
 | `tailscale_admin.yml` | Tailscale policy (dry run by default; `-e confirm=true` applies) |
@@ -164,6 +165,8 @@ HomeLab/
 |---|---|---|
 | etcd + PKI | `homelab-etcd-snapshot.timer`, daily, keeps 7 | laptop-01 `/var/backups/etcd` ✅ |
 | Off-site copy | `etcd_fetch.yml` (weekly, and before risky changes) | `~/homelab-backups/etcd` at home ✅ |
+| Postgres | homelab-cluster `pg-dump` CronJob, daily, keeps 7 | rpi-03 `/mnt/nvme/k8s/postgres-dumps` (M5) |
+| Postgres off-site | `pg_dump_fetch.yml` (weekly, and before risky changes) | `~/homelab-backups/postgres` at home |
 | Backup target | External drive on a Pi, NFS | ⏳ M4 |
 | age key, break-glass CA | Offline copies | Two places, one off-site |
 
