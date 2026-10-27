@@ -200,6 +200,8 @@ Re-running it is also the recovery step when Flux is broken or was deleted.
 - SOPS was proven by a smoke test: homelab-cluster PR #1 applied a namespace, ConfigMap and SOPS Secret, which
   decrypted, and PR #2 removed them, which pruned.
 - Flux posts every pulled commit and applied change to Discord `#homelab-deploys` (homelab-cluster #20).
+- Every playbook run from the controller posts one `🤖 [Ansible]` summary (hosts, totals, duration), and the nodes
+  don't post login alerts for it ([REMOTE_ACCESS.md](./REMOTE_ACCESS.md)).
 
 **Upgrading Flux:** bump `flux_version` in `group_vars/k8s.yml` (HomeLab PR). In a homelab-cluster PR, replace
 `gotk-components.yaml` with that release's `install.yaml`. Flux applies its own upgrade once that PR is merged. Then
