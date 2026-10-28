@@ -340,12 +340,17 @@ up to date too.
 **Verify** (this is the M4 exit: an etcd snapshot lands on the backup target):
 
 ```bash
-ssh rpi-02 'findmnt /mnt/backup; sudo exportfs -v; systemctl is-active nfs-server'
-ssh laptop-01 'sudo systemctl start homelab-etcd-snapshot && sudo journalctl -u homelab-etcd-snapshot -n 5'
-ssh rpi-02 'sudo ls -l /mnt/backup/etcd'     # the new etcd-<stamp>.db and pki-<stamp>.tar.gz
+ansible-playbook playbooks/backup_drive.yml --tags verify
 ```
 
-The snapshot log ends with `Copied to /mnt/backup; keeping 30 there.`
+It checks that rpi-02 has the drive mounted (ext4, `homelab-backup`), `nfs-server` active and exactly one export per
+writer, with `all_squash`. It then runs `homelab-etcd-snapshot` on laptop-01, checks the log says `Copied to`, and
+checks that a new `etcd-<stamp>.db` and `pki-<stamp>.tar.gz` are on the drive. Apart from that one snapshot it
+changes nothing.
+
+> [!TIP]
+> `ssh rpi-02` logs in as admin, whose sudo asks for a password, so by hand use `ssh -t rpi-02 'sudo exportfs -v'`.
+> Without `-t`, sudo has no terminal to ask on.
 
 <details>
 <summary>When the drive or rpi-02 is down</summary>
@@ -357,7 +362,8 @@ The snapshot log ends with `Copied to /mnt/backup; keeping 30 there.`
   alerts on it.
 - **rpi-02 booted without the drive:** `nfs-server` has `RequiresMountsFor=/mnt/backup`, so it stays down and never
   exports the empty directories on the SD card. Plug the drive in, then `sudo mount /mnt/backup && sudo systemctl start nfs-server`.
-- **Restoring from the drive:** copy a file off with `ssh rpi-02 'sudo cat /mnt/backup/etcd/etcd-<stamp>.db' > …`,
+- **Restoring from the drive:** copy a file off with `ssh -t rpi-02 'sudo install -o admin -m 0600 /mnt/backup/etcd/etcd-<stamp>.db /tmp/'`
+  and `scp rpi-02:/tmp/etcd-<stamp>.db .` (then delete `/tmp`'s copy),
   then follow [Real restore](#-real-restore-disaster-only) (etcd) or the Postgres runbook.
 
 </details>

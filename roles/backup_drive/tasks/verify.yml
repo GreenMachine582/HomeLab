@@ -1,0 +1,43 @@
+---
+# roles/backup_drive/tasks/verify.yml (k8s_backup)
+# Read-only checks for playbooks/backup_drive.yml --tags verify: the drive is
+# mounted, nfs-server is up, and the exports are exactly backup_drive_exports.
+
+- name: "Verify | The drive is mounted"
+  ansible.builtin.command: "findmnt -no FSTYPE,LABEL --mountpoint {{ backup_drive_mount }}"
+  register: _bv_mount
+  changed_when: false
+  failed_when: _bv_mount.stdout.split() != ['ext4', backup_drive_label]
+  check_mode: false
+
+- name: "Verify | nfs-server is active"
+  ansible.builtin.command: systemctl is-active nfs-server
+  changed_when: false
+  check_mode: false
+
+# -s prints one export per line, in /etc/exports form.
+- name: "Verify | Read the exports"
+  ansible.builtin.command: exportfs -s
+  register: _bv_exports
+  changed_when: false
+  check_mode: false
+
+- name: "Verify | Exports"
+  ansible.builtin.debug:
+    var: _bv_exports.stdout_lines
+
+- name: "Verify | One export per writer, to its IP only, all_squash"
+  ansible.builtin.assert:
+    that:
+      - _bv_exports.stdout_lines | select | list | length == backup_drive_exports | length
+      - _bv_exports.stdout_lines | select('search', _bv_pattern) | list | length == 1
+    fail_msg: >-
+      Expected {{ backup_drive_mount }}/{{ item.dir }} exported to {{ item.client }}
+      with all_squash, and no other exports.
+    quiet: true
+  loop: "{{ backup_drive_exports }}"
+  loop_control:
+    label: "{{ item.dir }} → {{ item.client }}"
+  vars:
+    _bv_pattern: >-
+      ^{{ (backup_drive_mount ~ '/' ~ item.dir) | regex_escape }}\s+{{ item.client | regex_escape }}\(.*\ball_squash\b
