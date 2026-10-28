@@ -14,6 +14,17 @@
     cache_valid_time: 3600
   tags: [k8s, etcd_backup]
 
+# findmnt reads the mount table, so it doesn't trigger the automount. Once
+# the export is mounted, the path is rpi-02's directory (all_squash), and
+# chowning it to root fails; the mount point underneath stays as created.
+- name: "etcd | Check whether the backup target is mounted"
+  ansible.builtin.command: "findmnt -n --mountpoint {{ etcd_backup_target_dir }}"
+  register: _etcd_target_mounted
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [k8s, etcd_backup]
+
 - name: "etcd | Backup target mount point"
   ansible.builtin.file:
     path: "{{ etcd_backup_target_dir }}"
@@ -21,6 +32,7 @@
     owner: root
     group: root
     mode: "0700"
+  when: _etcd_target_mounted.rc != 0
   tags: [k8s, etcd_backup]
 
 - name: "etcd | Backup target in fstab"
