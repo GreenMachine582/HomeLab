@@ -785,7 +785,7 @@
           changed_when: false
 
 # What the PC sees: the *.home.green-tech-hub.com Cloudflare record (DNS
-# only, homelab-cluster docs/M4_PLATFORM.md "Cloudflare setup") and the
+# only, homelab-cluster docs/CLOUDFLARE.md "Cloudflare setup") and the
 # Gateway behind it. Resolves with WSL's resolver, which may differ from
 # Windows'; compare with `nslookup` on Windows if a browser disagrees.
 - name: "Status | Gateway from the controller"

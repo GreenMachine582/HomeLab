@@ -111,7 +111,7 @@ It reports:
 - from the controller (WSL): that `whoami.home.green-tech-hub.com` resolves to the Gateway (`192.168.50.240`)
   through the Cloudflare `*.home` record, that HTTPS returns 200 with a verified certificate, and that HTTP returns
   the 301 redirect. It warns if any of these fail. The record is set by hand; see homelab-cluster
-  `docs/M4_PLATFORM.md` "Cloudflare setup". It probes the API on laptop-01's LAN IP first. If that's unreachable,
+  `docs/CLOUDFLARE.md` "Cloudflare setup". It probes the API on laptop-01's LAN IP first. If that's unreachable,
   laptop-01's subnet route isn't approved (the usual state from home), and the warning says so instead of
   blaming the Gateway.
 
@@ -215,7 +215,7 @@ Re-running it is also the recovery step when Flux is broken or was deleted.
 `gotk-components.yaml` with that release's `install.yaml`. Flux applies its own upgrade once that PR is merged. Then
 re-run `controller.yml --tags flux` for the CLI.
 
-**cloudflared CLI:** used only for the locally managed tunnel (homelab-cluster `docs/M4_PLATFORM.md`, "Cloudflare
+**cloudflared CLI:** used only for the locally managed tunnel (homelab-cluster `docs/CLOUDFLARE.md`, "Cloudflare
 setup"). Its version and the per-architecture SHA-256 from the release notes are pinned in `group_vars/k8s.yml`.
 Keep the version the same as the cloudflared image in homelab-cluster. Install or upgrade with
 `controller.yml -K --tags cloudflared`.
