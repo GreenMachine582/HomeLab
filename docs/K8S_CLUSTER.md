@@ -328,7 +328,7 @@ TOSHIBA 1 TB HDD) into the backup target from decision 18:
 
 ```bash
 ansible-playbook playbooks/backup_drive.yml --tags identify        # which Pi, and the drive's /dev/disk/by-id link
-# Put the link in host_vars/rpi-02.yml as backup_drive_device, then format it (erases the drive):
+# Put the link in overrides.yml as disk_rpi_02_backup, then format it (erases the drive):
 ansible-playbook playbooks/backup_drive.yml -e backup_drive_format=true
 ```
 
