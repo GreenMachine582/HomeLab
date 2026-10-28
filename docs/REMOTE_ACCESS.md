@@ -106,7 +106,10 @@ ansible-playbook playbooks/controller.yml --tags dev_wsl -K
   then TOTP, only `dev_wsl_user`, no root, no passwords; sessions dropped about 3 minutes after the laptop goes
   silent; no agent forwarding or tunnels) and swaps the password prompt in `/etc/pam.d/sshd` for the TOTP prompt.
 - Starts **login alerts**: every accepted SSH login posts to Discord as `dev-wsl` (the nodes' `on-ssh-success`
-  watcher).
+  watcher), once per login. A post that fails is logged instead (`journalctl -t on-ssh-success`).
+  - No alert after a login? Check `systemctl status on-ssh-success`.
+  - Before HomeLab #51 the watcher died on the TOTP module's own `Accepted` line and restarted every 10 s; re-run
+    `controller.yml -K --tags dev_wsl` to get the fixed one.
 
 > [!NOTE]
 > **Ansible logins to the nodes aren't posted.** Each playbook run posts one `🤖 [Ansible]` summary instead
