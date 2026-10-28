@@ -214,7 +214,7 @@ Gateway, the tunnel and the apps.
    - homelab-cluster: the LB-IPAM pool (`infrastructure/configs/cilium/lb-ipam-pool.yaml`), the Gateway's
      `spec.addresses`, and Cilium's `k8sServiceHost` (laptop-01's new LAN IP) in the HelmRelease.
    - HomeLab: `gateway_lan_ip` in `cluster_status.yml`.
-   - Cloudflare: the `*.home` A record → the new Gateway IP (homelab-cluster `docs/M4_PLATFORM.md`, "Cloudflare
+   - Cloudflare: the `*.home` A record → the new Gateway IP (homelab-cluster `docs/CLOUDFLARE.md`, "Cloudflare
      setup").
    - The [Site LAN](#-site-lan) table above.
 6. **Rebuild:**

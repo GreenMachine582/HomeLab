@@ -21,7 +21,7 @@ controller toolchain. Everything inside the cluster lives in
 >   and the [backup drive](./docs/K8S_CLUSTER.md#️-backup-drive-m4) on rpi-02 (NFS), which gets daily etcd and Postgres copies.
 > - **M5 done (28 Oct 2026):** the gth-ui playground, Postgres, Authentik, and Grafana with Discord alerts.
 >
-> See [homelab-cluster › M4](https://github.com/GreenMachine582/homelab-cluster/blob/main/docs/M4_PLATFORM.md) and
+> See [homelab-cluster › Roadmap](https://github.com/GreenMachine582/homelab-cluster#️-roadmap) and
 > [› M5](https://github.com/GreenMachine582/homelab-cluster/blob/main/docs/M5_WORKLOADS.md).
 
 **Quick links:** [🏗️ Architecture](#️-architecture) · [🚀 Getting started](#-getting-started) ·
