@@ -1,0 +1,29 @@
+---
+# roles/backup_drive/defaults/main.yml
+# The USB backup drive on the k8s_backup node (decision 18), exported over
+# NFSv4 to the nodes that write backups.
+
+# The whole disk by its stable /dev/disk/by-id/usb-... link, never /dev/sdX
+# (USB names move between boots). Find it with
+# `ansible-playbook playbooks/backup_drive.yml --tags identify`; set in host_vars.
+backup_drive_device: ""
+backup_drive_label: homelab-backup
+backup_drive_mount: /mnt/backup
+
+# Formatting erases the drive, so it never happens from vars: pass
+# -e backup_drive_format=true on the one run that should do it. Once the
+# drive has our ext4 label, the role never formats it again.
+backup_drive_format: false
+
+# Owns the backup directories. Every NFS client is squashed to it
+# (all_squash), so a root client gets no root on the drive.
+backup_drive_user: homelab-backup
+
+# One directory per writer, each exported to that writer's node_ip only.
+# The other nodes are firewall-trusted (group_vars/k8s.yml), so this list,
+# not UFW, keeps them out; everything off the cluster is denied by UFW.
+backup_drive_exports:
+  - dir: etcd
+    client: "{{ hostvars[groups['k8s_control_plane'][0]].node_ip }}"
+  - dir: postgres
+    client: "{{ hostvars[groups['k8s_data'][0]].node_ip }}"

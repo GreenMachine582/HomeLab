@@ -1,0 +1,49 @@
+---
+# roles/etcd_backup/tasks/target.yml (control plane)
+# Mounts the backup drive's etcd export, homelab-backup:/mnt/backup/etcd
+# (roles/backup_drive), at etcd_backup_target_dir. The automount mounts it
+# when the snapshot script first touches it, so this play doesn't need
+# rpi-02 up. soft: a dead NFS server makes the copy fail (and alert)
+# instead of hanging processes on the control plane.
+
+- name: "etcd | NFS client"
+  ansible.builtin.apt:
+    name: nfs-common
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  tags: [k8s, etcd_backup]
+
+- name: "etcd | Backup target mount point"
+  ansible.builtin.file:
+    path: "{{ etcd_backup_target_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [k8s, etcd_backup]
+
+- name: "etcd | Backup target in fstab"
+  ansible.posix.mount:
+    path: "{{ etcd_backup_target_dir }}"
+    src: "{{ backup_nfs_name }}:/mnt/backup/etcd"
+    fstype: nfs4
+    opts: >-
+      _netdev,nofail,noatime,soft,timeo=150,retrans=2,x-systemd.automount,x-systemd.idle-timeout=10min,x-systemd.mount-timeout=30s
+    state: present
+  register: _etcd_fstab
+  tags: [k8s, etcd_backup]
+
+- name: "etcd | Automount unit name"
+  ansible.builtin.command: "systemd-escape --path --suffix=automount {{ etcd_backup_target_dir }}"
+  register: _etcd_automount
+  changed_when: false
+  check_mode: false
+  tags: [k8s, etcd_backup]
+
+- name: "etcd | Start the automount"
+  ansible.builtin.systemd_service:
+    name: "{{ _etcd_automount.stdout }}"
+    state: started
+    daemon_reload: "{{ _etcd_fstab is changed }}"
+  tags: [k8s, etcd_backup]

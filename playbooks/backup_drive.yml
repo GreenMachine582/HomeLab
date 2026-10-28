@@ -1,0 +1,127 @@
+---
+# playbooks/backup_drive.yml
+#
+# The backup target (M4 PR 9, decision 18): the USB drive on the k8s_backup
+# node, exported over NFSv4 to the nodes that write backups, and laptop-01's
+# etcd snapshots copied to it. Postgres dumps reach it through
+# homelab-cluster's NFS PV.
+#
+#   # 1. Which Pi has the drive, and its /dev/disk/by-id link (read-only):
+#   ansible-playbook playbooks/backup_drive.yml --tags identify
+#   # 2. Put the link in host_vars/<node>.yml (backup_drive_device), then
+#   #    format it, once. This erases the drive:
+#   ansible-playbook playbooks/backup_drive.yml -e backup_drive_format=true
+#   # 3. Any later run (never formats a drive that has our label):
+#   ansible-playbook playbooks/backup_drive.yml
+#
+# See docs/K8S_CLUSTER.md, "Backup drive".
+
+- name: "Probe | Discover each node's SSH endpoint"
+  hosts: k8s
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: "Probe | Endpoint and identity (bootstrapped nodes only)"
+      ansible.builtin.include_tasks:
+        file: tasks/probe_ssh.yml
+        apply:
+          tags: [always]
+      tags: [always]
+      vars:
+        probe_allow_fresh: false
+
+# ── Identify (only with --tags identify) ──────────────────────────────────────
+- name: "Backup drive | Find USB disks on the workers"
+  hosts: k8s_workers
+  become: true
+  gather_facts: false
+  tags: [never, identify]
+
+  tasks:
+    - name: "Identify | USB disks"
+      ansible.builtin.command: lsblk --nodeps --paths -o NAME,SIZE,MODEL,SERIAL,FSTYPE,TRAN
+      register: _id_lsblk
+      changed_when: false
+      check_mode: false
+
+    - name: "Identify | Their /dev/disk/by-id links"
+      ansible.builtin.find:
+        paths: /dev/disk/by-id
+        patterns: "usb-*"
+        excludes: "*-part*"
+        file_type: link
+      register: _id_links
+
+    - name: "Identify | Result"
+      ansible.builtin.debug:
+        msg:
+          - "{{ _id_lsblk.stdout_lines | select('search', '(^NAME|usb$)') | list }}"
+          - "backup_drive_device candidates: {{ _id_links.files | map(attribute='path') | list }}"
+
+    - name: "Identify | Fail if no worker has a USB disk"
+      ansible.builtin.assert:
+        that: >-
+          ansible_play_hosts | map('extract', hostvars, ['_id_links', 'matched']) | sum > 0
+        fail_msg: No USB disk on any worker. Is the drive plugged in (and powered)?
+        quiet: true
+      run_once: true
+
+# ── Every node: resolve the backup target by name ─────────────────────────────
+- name: "Backup drive | Backup target name in /etc/hosts"
+  hosts: k8s
+  become: true
+  gather_facts: false
+  tags: [backup_drive, hosts]
+
+  tasks:
+    - name: "Hosts | Backup target name"
+      ansible.builtin.include_role:
+        name: k8s_prereqs
+        tasks_from: hosts
+        apply:
+          tags: [backup_drive, hosts]
+
+# ── The drive and the NFS server ──────────────────────────────────────────────
+- name: "Backup drive | Format, mount, export"
+  hosts: k8s_backup
+  become: true
+  gather_facts: true
+  tags: [backup_drive]
+
+  tasks:
+    - name: "Roles | Backup drive"
+      ansible.builtin.include_role:
+        name: backup_drive
+        apply:
+          tags: [backup_drive]
+
+# ── Writers ───────────────────────────────────────────────────────────────────
+# The kubelet mounts homelab-cluster's NFS PV on the data node itself.
+- name: "Backup drive | NFS client on the data node"
+  hosts: k8s_data
+  become: true
+  gather_facts: false
+  tags: [backup_drive, nfs]
+
+  tasks:
+    - name: "NFS | Install nfs-common"
+      ansible.builtin.apt:
+        name: nfs-common
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+- name: "Backup drive | etcd snapshots to the drive"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: true   # etcd tools pick their architecture
+  tags: [backup_drive, etcd_backup]
+
+  tasks:
+    - name: "Roles | etcd backup"
+      ansible.builtin.include_role:
+        name: etcd_backup
+        apply:
+          tags: [backup_drive, etcd_backup]

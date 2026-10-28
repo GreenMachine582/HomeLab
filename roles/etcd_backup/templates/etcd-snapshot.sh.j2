@@ -5,6 +5,10 @@
 # Snapshots the kubeadm etcd, checks the file, archives /etc/kubernetes/pki
 # alongside it, and keeps the newest {{ etcd_backup_keep }} of each. Silent on success;
 # posts to Discord on any failure. Run by homelab-etcd-snapshot.timer.
+{% if etcd_backup_target_enabled | bool %}
+# Then copies both to the backup drive ({{ etcd_backup_target_dir }}, NFS from
+# {{ backup_nfs_name }}) and keeps {{ etcd_backup_target_keep }} there.
+{% endif %}
 set -Eeuo pipefail
 
 HOST="{{ inventory_hostname }}"
@@ -36,11 +40,41 @@ etcdutl snapshot status "$snap" --write-out=table
 
 tar -czf "$DIR/pki-$stamp.tar.gz" -C /etc/kubernetes pki
 
+# prune <dir> <glob> <keep>
 prune() {
-    ls -1t "$DIR"/$1 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f --
+    ls -1t "$1"/$2 2>/dev/null | tail -n +$(($3 + 1)) | xargs -r rm -f --
 }
-prune 'etcd-*.db'
-prune 'pki-*.tar.gz'
+prune "$DIR" 'etcd-*.db' "$KEEP"
+prune "$DIR" 'pki-*.tar.gz' "$KEEP"
 rm -f "$DIR"/*.part
+{% if etcd_backup_target_enabled | bool %}
+
+TARGET="{{ etcd_backup_target_dir }}"
+TARGET_KEEP={{ etcd_backup_target_keep }}
+
+# Runs under `if !`, where set -e and the ERR trap are off, so every step
+# returns on failure itself. The mountpoint check keeps a missing mount from
+# filling laptop-01's own disk; an unreachable server fails the cp (soft).
+ship() {
+    timeout 60 mountpoint -q "$TARGET" || { echo "$TARGET isn't mounted"; return 1; }
+    for f in "etcd-$stamp.db" "pki-$stamp.tar.gz"; do
+        timeout 600 cp "$DIR/$f" "$TARGET/$f.part" && mv "$TARGET/$f.part" "$TARGET/$f" || return 1
+    done
+    timeout 120 etcdutl snapshot status "$TARGET/etcd-$stamp.db" > /dev/null || return 1
+    prune "$TARGET" 'etcd-*.db' "$TARGET_KEEP"
+    prune "$TARGET" 'pki-*.tar.gz' "$TARGET_KEEP"
+    rm -f "$TARGET"/*.part
+    echo "Copied to $TARGET; keeping $TARGET_KEEP there."
+}
+
+if ! out="$(ship 2>&1)"; then
+    # First line only, without quotes or backslashes: it goes into raw JSON.
+    reason="$(printf '%s' "$out" | head -n 1 | tr -d '"\\')"
+    notify "⚠️ [etcd] Snapshot on $HOST saved locally, but the copy to the backup drive failed ($(date "+%Y-%m-%d %H:%M:%S")): $reason"
+    echo "Copy to $TARGET failed: $out" >&2
+else
+    echo "$out"
+fi
+{% endif %}
 
 echo "Saved $snap ($(du -h "$snap" | cut -f1)); keeping $KEEP."

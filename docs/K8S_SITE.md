@@ -237,5 +237,6 @@ Gateway, the tunnel and the apps.
 
 - **Outside monitoring:** nothing alerts if the whole site goes silent. An external Uptime Kuma at home is in the
   backlog, as a priority.
-- **Backups:** the backup drive at the site (M4, waiting for hardware) isn't off-site. etcd snapshots are also
-  fetched home with `etcd_fetch.yml` (see [K8S_CLUSTER.md](./K8S_CLUSTER.md#-etcd-backups)).
+- **Backups:** the backup drive on rpi-02 ([K8S_CLUSTER.md](./K8S_CLUSTER.md#️-backup-drive-m4)) is at the site,
+  so it isn't off-site. etcd snapshots and Postgres dumps are also fetched home with `etcd_fetch.yml` and
+  `pg_dump_fetch.yml` (see [K8S_CLUSTER.md](./K8S_CLUSTER.md#-etcd-backups)).

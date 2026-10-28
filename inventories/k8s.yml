@@ -44,3 +44,9 @@ all:
         k8s_data:
           hosts:
             rpi-03:
+
+        # Backup target: the USB drive, exported over NFS to the nodes that
+        # write backups (roles/backup_drive, playbooks/backup_drive.yml).
+        k8s_backup:
+          hosts:
+            rpi-02:

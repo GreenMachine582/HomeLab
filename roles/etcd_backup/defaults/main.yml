@@ -18,3 +18,11 @@ etcd_tools_dir: /opt/etcd
 # Where etcd_fetch.yml copies snapshots on the controller (WSL), outside
 # the repo clone.
 etcd_backup_controller_dir: "{{ lookup('env', 'HOME') }}/homelab-backups/etcd"
+
+# Each snapshot and PKI archive is also copied to the backup drive on the
+# k8s_backup node (roles/backup_drive), NFS-mounted here on first use. On by
+# default when the inventory has a backup node. A failed copy posts to
+# Discord; the local snapshot stays and the run still counts as a success.
+etcd_backup_target_enabled: "{{ groups['k8s_backup'] | default([]) | length > 0 }}"
+etcd_backup_target_dir: /mnt/backup
+etcd_backup_target_keep: 30

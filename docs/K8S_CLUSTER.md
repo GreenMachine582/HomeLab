@@ -8,7 +8,8 @@ Runs from **WSL on the main PC**, in `~/homelab`, like the bootstrap.
 
 **Quick links:** [📦 What you get](#-what-you-get) · [📋 Before the first run](#-before-the-first-run) · [▶️ Run](#️-run) ·
 [✅ Verify](#-verify) · [🐝 Cilium and Flux](#-cilium-and-flux) · [🔌 Envoy and the Pi 4s](#-envoy-and-the-pi-4s) ·
-[🔄 Flux](#-flux-m3) · [💾 etcd backups](#-etcd-backups) · [🩺 Troubleshooting](#-troubleshooting)
+[🔄 Flux](#-flux-m3) · [💾 etcd backups](#-etcd-backups) · [🗄️ Backup drive](#️-backup-drive-m4) ·
+[🩺 Troubleshooting](#-troubleshooting)
 
 ---
 
@@ -244,8 +245,9 @@ it into `/var/tmp/etcd-restore-test`, and starts a throwaway etcd on `127.0.0.1:
 `kube-system` and the same nodes as the live cluster are in the restored data, and cleans up. The live etcd isn't
 touched. Run it after Kubernetes or etcd upgrades too.
 
-Off-site: the site copies aren't off-site, so run `etcd_fetch.yml` from home (weekly, and before risky changes). M4
-adds the backup Pi as a second target.
+Each snapshot and PKI archive is also copied to the [backup drive](#️-backup-drive-m4) on rpi-02, which keeps 30.
+That copy is at the site too, so it isn't off-site: still run `etcd_fetch.yml` from home (weekly, and before risky
+changes).
 
 Postgres works the same way. homelab-cluster's `pg-dump` CronJob writes a daily dump to
 `/mnt/nvme/k8s/postgres-dumps` on rpi-03, next to the database, and keeps 7.
@@ -299,6 +301,64 @@ lost. On laptop-01, as root:
 This covers a broken etcd on a working laptop-01. A rebuilt laptop-01 also needs the kubelet config, kubeconfigs and
 static pod manifests regenerated from the restored PKI (`kubeadm init phase …`). That path isn't tested yet; it's
 part of the M8 DR test.
+
+</details>
+
+---
+
+## 🗄️ Backup drive (M4)
+
+`playbooks/backup_drive.yml` (role `roles/backup_drive`) turns the USB drive on the `k8s_backup` node (rpi-02, a
+TOSHIBA 1 TB HDD) into the backup target from decision 18:
+
+| What | How |
+|------|-----|
+| Drive | ext4 labelled `homelab-backup`, mounted by UUID at `/mnt/backup` with `nofail`: rpi-02 boots and stays a worker without it |
+| NFS | NFSv4 only (2049/tcp). One directory per writer, each exported to that node's IP only, `all_squash` to the `homelab-backup` user |
+| Name | `homelab-backup` in every node's `/etc/hosts` (like `k8s-api`), so moving the drive is an Ansible re-run |
+| etcd | laptop-01 automounts `homelab-backup:/mnt/backup/etcd` at `/mnt/backup`. The snapshot script copies each snapshot and PKI archive there, checks the copy and keeps 30 |
+| Postgres | homelab-cluster's `pg-dump-offnode` CronJob copies the newest dump to `/mnt/backup/postgres` through an NFS PV, and keeps 30 |
+
+> [!IMPORTANT]
+> The drive holds every Secret, the cluster CA keys and every password hash. That's why the exports name single IPs.
+> The other nodes are firewall-trusted, so it's the exports that keep rpi-01 out, and UFW keeps out everything that
+> isn't a node.
+
+**First run:**
+
+```bash
+ansible-playbook playbooks/backup_drive.yml --tags identify        # which Pi, and the drive's /dev/disk/by-id link
+# Put the link in host_vars/rpi-02.yml as backup_drive_device, then format it (erases the drive):
+ansible-playbook playbooks/backup_drive.yml -e backup_drive_format=true
+```
+
+The role formats only a drive that is empty or NTFS, isn't mounted, and only when `-e backup_drive_format=true` is
+given. When the drive already carries the `homelab-backup` label it is never formatted again, so a plain
+`ansible-playbook playbooks/backup_drive.yml` is safe to re-run. `cluster.yml --tags etcd_backup` keeps the etcd side
+up to date too.
+
+**Verify** (this is the M4 exit: an etcd snapshot lands on the backup target):
+
+```bash
+ssh rpi-02 'findmnt /mnt/backup; sudo exportfs -v; systemctl is-active nfs-server'
+ssh laptop-01 'sudo systemctl start homelab-etcd-snapshot && sudo journalctl -u homelab-etcd-snapshot -n 5'
+ssh rpi-02 'sudo ls -l /mnt/backup/etcd'     # the new etcd-<stamp>.db and pki-<stamp>.tar.gz
+```
+
+The snapshot log ends with `Copied to /mnt/backup; keeping 30 there.`
+
+<details>
+<summary>When the drive or rpi-02 is down</summary>
+
+- **etcd:** the local snapshot is still taken and kept. The copy fails, and a `⚠️ [etcd] … copy to the backup drive
+  failed` message goes to Discord. The mount is `soft`, so laptop-01 doesn't hang. Copies resume on the next run once
+  the drive is back. Missed days aren't backfilled, but the 7 local snapshots are there to copy by hand.
+- **Postgres:** the `pg-dump` CronJob doesn't depend on the drive. Only `pg-dump-offnode` fails, and `KubeJobFailed`
+  alerts on it.
+- **rpi-02 booted without the drive:** `nfs-server` has `RequiresMountsFor=/mnt/backup`, so it stays down and never
+  exports the empty directories on the SD card. Plug the drive in, then `sudo mount /mnt/backup && sudo systemctl start nfs-server`.
+- **Restoring from the drive:** copy a file off with `ssh rpi-02 'sudo cat /mnt/backup/etcd/etcd-<stamp>.db' > …`,
+  then follow [Real restore](#-real-restore-disaster-only) (etcd) or the Postgres runbook.
 
 </details>
 

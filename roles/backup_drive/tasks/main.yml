@@ -1,0 +1,216 @@
+---
+# roles/backup_drive/tasks/main.yml (k8s_backup)
+#
+# Formats the USB backup drive as ext4 (once, only when asked), mounts it by
+# UUID and exports one directory per writer over NFSv4. Safe to re-run: a
+# drive that already has our label is never formatted again.
+
+# ── Find the drive ────────────────────────────────────────────────────────────
+- name: "Backup drive | Check the device is set"
+  ansible.builtin.assert:
+    that: backup_drive_device is match('^/dev/disk/by-id/')
+    fail_msg: >-
+      Set backup_drive_device in host_vars/{{ inventory_hostname }}.yml to the
+      drive's /dev/disk/by-id/usb-... link. Find it with
+      ansible-playbook playbooks/backup_drive.yml --tags identify
+    quiet: true
+  tags: [backup_drive]
+
+- name: "Backup drive | Inspect the drive"
+  ansible.builtin.command: "lsblk --json --paths -o NAME,TYPE,FSTYPE,LABEL,MOUNTPOINT {{ backup_drive_device }}"
+  register: _bd_lsblk
+  changed_when: false
+  check_mode: false
+  failed_when: _bd_lsblk.rc != 0
+  tags: [backup_drive]
+
+- name: "Backup drive | Read the layout"
+  ansible.builtin.set_fact:
+    _bd_nodes: "{{ [_bd_tree] + _bd_tree.children | default([]) }}"
+    _bd_ours: "{{ _bd_tree.children | default([]) | selectattr('fstype', 'equalto', 'ext4')
+                  | selectattr('label', 'equalto', backup_drive_label) | list }}"
+  vars:
+    _bd_tree: "{{ (_bd_lsblk.stdout | from_json).blockdevices[0] }}"
+  tags: [backup_drive]
+
+# Never touch a drive in use, such as one Pi OS booted from.
+- name: "Backup drive | Refuse a drive mounted anywhere else"
+  ansible.builtin.assert:
+    that: _bd_nodes | map(attribute='mountpoint') | select | difference([backup_drive_mount]) | length == 0
+    fail_msg: "{{ backup_drive_device }} is mounted elsewhere. Not touching it. lsblk: {{ _bd_nodes }}"
+    quiet: true
+  tags: [backup_drive]
+
+# ── Format (first run only) ───────────────────────────────────────────────────
+- name: "Backup drive | Format"
+  when: _bd_ours | length == 0
+  tags: [backup_drive]
+  block:
+    # The drive arrived as NTFS (old data, copied off). Anything else may be
+    # a drive we don't mean, so it's refused even with backup_drive_format.
+    - name: "Backup drive | Refuse a drive that isn't empty or NTFS"
+      ansible.builtin.assert:
+        that: _bd_nodes | map(attribute='fstype') | select | difference(['ntfs']) | length == 0
+        fail_msg: >-
+          {{ backup_drive_device }} holds filesystems other than NTFS:
+          {{ _bd_nodes | map(attribute='fstype') | select | list }}. Not formatting it.
+        quiet: true
+
+    - name: "Backup drive | Stop unless formatting was asked for"
+      ansible.builtin.assert:
+        that: backup_drive_format | bool
+        fail_msg: >-
+          {{ backup_drive_device }} has no {{ backup_drive_label }} filesystem yet.
+          Formatting erases it: re-run with -e backup_drive_format=true.
+          lsblk: {{ _bd_nodes }}
+        quiet: true
+
+    - name: "Backup drive | Stop here in check mode"
+      ansible.builtin.meta: end_host
+      when: ansible_check_mode
+
+    # Partitions first, then the table, so no old signature survives.
+    - name: "Backup drive | Wipe old signatures"
+      ansible.builtin.command: "wipefs --all {{ item.name }}"
+      loop: "{{ _bd_nodes | reverse | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: true
+
+    - name: "Backup drive | One GPT partition"
+      community.general.parted:
+        device: "{{ backup_drive_device }}"
+        label: gpt
+        number: 1
+        part_start: "0%"
+        part_end: "100%"
+        state: present
+
+    - name: "Backup drive | Wait for the partition link"
+      ansible.builtin.command: udevadm settle
+      changed_when: false
+
+    # -m 0: no root-reserved blocks; nothing on this drive is a system disk.
+    - name: "Backup drive | Make the ext4 filesystem"
+      ansible.builtin.command: >-
+        mkfs.ext4 -q -F -m 0 -L {{ backup_drive_label }} {{ backup_drive_device }}-part1
+      changed_when: true
+
+- name: "Backup drive | Find our partition"
+  ansible.builtin.command: "blkid -t LABEL={{ backup_drive_label }} -s UUID -o value"
+  register: _bd_uuid
+  changed_when: false
+  check_mode: false
+  failed_when: _bd_uuid.stdout_lines | length != 1
+  tags: [backup_drive]
+
+# ── Mount ─────────────────────────────────────────────────────────────────────
+# nofail: the Pi still boots (and stays a worker) without the drive.
+# nfs-server then stays down (RequiresMountsFor below) instead of exporting
+# the empty directories on the SD card.
+- name: "Backup drive | Mount by UUID"
+  ansible.posix.mount:
+    path: "{{ backup_drive_mount }}"
+    src: "UUID={{ _bd_uuid.stdout }}"
+    fstype: ext4
+    opts: nofail,noatime,x-systemd.device-timeout=10s
+    state: mounted
+  tags: [backup_drive]
+
+- name: "Backup drive | Check it's mounted"
+  ansible.builtin.command: "findmnt --mountpoint {{ backup_drive_mount }} --source UUID={{ _bd_uuid.stdout }}"
+  changed_when: false
+  check_mode: false
+  tags: [backup_drive]
+
+# ── Directories ───────────────────────────────────────────────────────────────
+- name: "Backup drive | Owner of the backups"
+  ansible.builtin.user:
+    name: "{{ backup_drive_user }}"
+    system: true
+    create_home: false
+    home: /nonexistent
+    shell: /usr/sbin/nologin
+  tags: [backup_drive]
+
+- name: "Backup drive | Read the owner's IDs"
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ backup_drive_user }}"
+  tags: [backup_drive]
+
+- name: "Backup drive | One directory per writer"
+  ansible.builtin.file:
+    path: "{{ backup_drive_mount }}/{{ item.dir }}"
+    state: directory
+    owner: "{{ backup_drive_user }}"
+    group: "{{ backup_drive_user }}"
+    mode: "0700"
+  loop: "{{ backup_drive_exports }}"
+  loop_control:
+    label: "{{ item.dir }} → {{ item.client }}"
+  tags: [backup_drive]
+
+# ── NFS server ────────────────────────────────────────────────────────────────
+- name: "Backup drive | Install the NFS server"
+  ansible.builtin.apt:
+    name: nfs-kernel-server
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  tags: [backup_drive, nfs]
+
+# v4 only: one TCP port (2049), no rpcbind or mountd on the wire.
+- name: "Backup drive | NFSv4 only"
+  community.general.ini_file:
+    path: /etc/nfs.conf
+    section: nfsd
+    option: vers3
+    value: "n"
+    mode: "0644"
+  notify: Restart nfs-server
+  tags: [backup_drive, nfs]
+
+- name: "Backup drive | nfs-server drop-in directory"
+  ansible.builtin.file:
+    path: /etc/systemd/system/nfs-server.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [backup_drive, nfs]
+
+- name: "Backup drive | nfs-server waits for the drive"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nfs-server.service.d/homelab-backup.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/backup_drive)
+      # No drive, no exports: never serve the empty directories underneath.
+      [Unit]
+      RequiresMountsFor={{ backup_drive_mount }}
+  notify: Restart nfs-server
+  tags: [backup_drive, nfs]
+
+- name: "Backup drive | Exports"
+  ansible.builtin.template:
+    src: exports.j2
+    dest: /etc/exports
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    _bd_uid: "{{ ansible_facts.getent_passwd[backup_drive_user][1] }}"
+    _bd_gid: "{{ ansible_facts.getent_passwd[backup_drive_user][2] }}"
+  notify: Reload exports
+  tags: [backup_drive, nfs]
+
+- name: "Backup drive | Start the NFS server"
+  ansible.builtin.systemd_service:
+    name: nfs-server
+    enabled: true
+    state: started
+    daemon_reload: true
+  tags: [backup_drive, nfs]

@@ -85,6 +85,7 @@ ansible-playbook playbooks/cluster_status.yml         # 🩺 read-only health re
 | `cluster_status.yml` | Read-only report: nodes, kubelet, Cilium, Gateway API, Gateway reachability from the controller. `-e connectivity_test=true` |
 | `cluster_reset.yml` | Tears the cluster down (asks you to type `reset`) |
 | `flux_bootstrap.yml` | Installs or repairs Flux from homelab-cluster's committed manifests, with the `sops-age` secret |
+| `backup_drive.yml` | Backup drive on rpi-02: ext4 by UUID, NFSv4 export per writer, etcd copies. `--tags identify` finds the drive; `-e backup_drive_format=true` formats it once |
 | `etcd_fetch.yml` | Newest etcd snapshot + PKI → `~/homelab-backups/etcd` |
 | `pg_dump_fetch.yml` | Newest Postgres dump from rpi-03 → `~/homelab-backups/postgres` |
 | `etcd_restore_test.yml` | Restore rehearsal into a throwaway etcd |
@@ -169,10 +170,11 @@ HomeLab/
 | Off-site copy | `etcd_fetch.yml` (weekly, and before risky changes) | `~/homelab-backups/etcd` at home ✅ |
 | Postgres | homelab-cluster `pg-dump` CronJob, daily, keeps 7 | rpi-03 `/mnt/nvme/k8s/postgres-dumps` (M5) |
 | Postgres off-site | `pg_dump_fetch.yml` (weekly, and before risky changes) | `~/homelab-backups/postgres` at home |
-| Backup target | External drive on a Pi, NFS | ⏳ M4 |
+| Backup target | `backup_drive.yml`: etcd + PKI copied by the snapshot script, Postgres by the `pg-dump-offnode` CronJob, keeps 30 of each | rpi-02 `/mnt/backup` (USB HDD, NFS) |
 | age key, break-glass CA | Offline copies | Two places, one off-site |
 
-Restore steps: [K8S_CLUSTER.md › etcd backups](./docs/K8S_CLUSTER.md#-etcd-backups).
+Restore steps: [K8S_CLUSTER.md › etcd backups](./docs/K8S_CLUSTER.md#-etcd-backups). The drive:
+[K8S_CLUSTER.md › Backup drive](./docs/K8S_CLUSTER.md#️-backup-drive-m4).
 
 ---
 
