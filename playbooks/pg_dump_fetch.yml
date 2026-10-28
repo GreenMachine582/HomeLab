@@ -8,6 +8,8 @@
 #
 #   ansible-playbook playbooks/pg_dump_fetch.yml
 #
+# pg_restore_test.yml then rehearses restoring the fetched copy.
+#
 # Dumps are taken daily by homelab-cluster's pg-dump CronJob (M5). See
 # docs/K8S_CLUSTER.md.
 

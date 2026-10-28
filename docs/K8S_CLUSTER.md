@@ -250,7 +250,30 @@ adds the backup Pi as a second target.
 Postgres works the same way. homelab-cluster's `pg-dump` CronJob writes a daily dump to
 `/mnt/nvme/k8s/postgres-dumps` on rpi-03, next to the database, and keeps 7.
 `ansible-playbook playbooks/pg_dump_fetch.yml` copies the newest to `~/homelab-backups/postgres` (mode 0600, keeps 7).
-Run it with `etcd_fetch.yml`. Restore steps are in homelab-cluster `docs/M5_WORKLOADS.md` › Postgres runbook.
+Run it with `etcd_fetch.yml`.
+
+```bash
+ansible-playbook playbooks/pg_dump_fetch.yml      # newest dump → ~/homelab-backups/postgres
+ansible-playbook playbooks/pg_restore_test.yml    # restore rehearsal (M5 exit)
+ansible-playbook playbooks/alert_test.yml         # alerting rehearsal (M5 exit), about 20 minutes
+```
+
+**Restore rehearsal** (`pg_restore_test.yml`): it loads the newest fetched dump, the off-node copy, into a throwaway
+pod in a `restore-test` namespace, using the live StatefulSet's image. It checks that the restored database list
+matches the live one and that Authentik has users, then deletes the namespace. The live database isn't touched. Run
+it after Postgres upgrades too.
+
+**Alerting rehearsal** (`alert_test.yml`): it starts a crash-looping pod in an `alert-test` namespace and a `pg_dump`
+Job from the real CronJob pointed at a host that doesn't exist. It waits up to 25 minutes for `KubePodCrashLooping`
+and `KubeJobFailed` to fire in Alertmanager (both rules wait 15), then asks you to confirm they posted to
+`#homelab-alerts` before cleaning up. The *resolved* posts follow about 5 minutes later. Run it after
+kube-prometheus-stack or Alertmanager changes. `-e alert_test_keep=true` skips the cleanup.
+
+> [!NOTE]
+> A failed `pg_dump` Job keeps `KubeJobFailed` firing, reposted every 12 h, until the Job is deleted:
+> `kubectl -n postgres delete job <name>`.
+
+The real restore steps are in homelab-cluster `docs/M5_WORKLOADS.md` › Postgres runbook.
 
 ### 🚨 Real restore (disaster only)
 
