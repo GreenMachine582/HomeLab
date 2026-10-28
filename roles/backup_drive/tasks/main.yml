@@ -10,8 +10,9 @@
   ansible.builtin.assert:
     that: backup_drive_device is match('^/dev/disk/by-id/')
     fail_msg: >-
-      Set backup_drive_device in host_vars/{{ inventory_hostname }}.yml to the
-      drive's /dev/disk/by-id/usb-... link. Find it with
+      Set disk_{{ inventory_hostname | replace('-', '_') }}_backup in
+      inventories/group_vars/all/overrides.yml to the drive's
+      /dev/disk/by-id/usb-... link (host_vars passes it as backup_drive_device). Find it with
       ansible-playbook playbooks/backup_drive.yml --tags identify
     quiet: true
   tags: [backup_drive]
