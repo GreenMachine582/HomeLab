@@ -39,11 +39,17 @@ notify() {
     || {% endif %}curl -sf \
       -H "Content-Type: application/json" \
       --data-raw "{\"content\": \"🔑 [SSH Login] $msg\"}" \
-      "{{ notify_discord_webhook }}" > /dev/null || true
+      "{{ notify_discord_webhook }}" > /dev/null \
+    || logger -t on-ssh-success "login alert not posted: $msg" || true
 }
 
-journalctl -fu ssh --output=cat | while read -r line; do
-    if echo "$line" | grep -q "Accepted"; then
+# -n 0: only logins from now on. Without it, every (re)start replays the last
+# 10 lines and posts those logins again.
+# Only sshd's own "Accepted <method> for <user> from <ip>" line, once per
+# login: PAM modules log their own "Accepted" too (pam_google_authenticator on
+# dev-wsl: "Accepted google_authenticator for <user>", with no address).
+journalctl -fu ssh -n 0 --output=cat | while read -r line; do
+    if echo "$line" | grep -qE '^Accepted [^ ]+ for [^ ]+ from '; then
         USER=$(echo "$line" | grep -oP 'for \K\S+' || true)
         IP=$(echo "$line"   | grep -oP 'from \K\S+' || true)
         FP=$(echo "$line"   | grep -oP 'SHA256:\S+' | head -1 || true)
