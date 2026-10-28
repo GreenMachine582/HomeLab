@@ -5,7 +5,8 @@
 
 # The whole disk by its stable /dev/disk/by-id/usb-... link, never /dev/sdX
 # (USB names move between boots). Find it with
-# `ansible-playbook playbooks/backup_drive.yml --tags identify`; set in host_vars.
+# `ansible-playbook playbooks/backup_drive.yml --tags identify`; host_vars
+# reads it from overrides.yml (disk_<node>_backup).
 backup_drive_device: ""
 backup_drive_label: homelab-backup
 backup_drive_mount: /mnt/backup

@@ -8,8 +8,8 @@
 #
 #   # 1. Which Pi has the drive, and its /dev/disk/by-id link (read-only):
 #   ansible-playbook playbooks/backup_drive.yml --tags identify
-#   # 2. Put the link in host_vars/<node>.yml (backup_drive_device), then
-#   #    format it, once. This erases the drive:
+#   # 2. Put the link in overrides.yml (disk_rpi_02_backup), then format
+#   #    it, once. This erases the drive:
 #   ansible-playbook playbooks/backup_drive.yml -e backup_drive_format=true
 #   # 3. Any later run (never formats a drive that has our label):
 #   ansible-playbook playbooks/backup_drive.yml

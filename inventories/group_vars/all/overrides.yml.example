@@ -39,6 +39,8 @@ mac_laptop_01: "EDIT_BEFORE_USE"  # wired NIC, for Wake-on-LAN (ip -br link)
 ip_rpi_01:    "EDIT_BEFORE_USE"   # node (Pi 4)
 ip_rpi_02:    "EDIT_BEFORE_USE"   # node (Pi 4)
 ip_rpi_03:    "EDIT_BEFORE_USE"   # data node (Pi 5 + NVMe)
+# The backup drive's /dev/disk/by-id/usb-... link (backup_drive.yml --tags identify).
+disk_rpi_02_backup: "EDIT_BEFORE_USE"
 # First boot of a fresh node only: the DHCP address it has now (from
 # playbooks/identify_nodes.yml). The bootstrap reaches it there, then
 # node_network moves it to its static ip_*. Delete once bootstrapped.

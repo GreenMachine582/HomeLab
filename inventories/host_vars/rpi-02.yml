@@ -15,9 +15,10 @@
 nvme_enabled: false
 
 # ── Backup drive (roles/backup_drive, k8s_backup) ─────────────────────────────
-# TOSHIBA 1 TB USB 3.0 HDD, bus-powered, in a blue (USB 3) port. Its by-id
-# link from `ansible-playbook playbooks/backup_drive.yml --tags identify`.
-backup_drive_device: ""
+# TOSHIBA 1 TB USB 3.0 HDD (MQ01UBD100), bus-powered, in a blue (USB 3) port.
+# Its by-id link (from `ansible-playbook playbooks/backup_drive.yml --tags
+# identify`) is disk_rpi_02_backup in the gitignored overrides.yml.
+backup_drive_device: "{{ disk_rpi_02_backup | default('') }}"
 
 # ── Case (roles/argon_case) ──────────────────────────────────────────────────
 argon_case: v2
