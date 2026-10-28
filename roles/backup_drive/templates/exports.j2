@@ -1,0 +1,8 @@
+# Rendered by Ansible — do not edit directly on the host.
+# Source: roles/backup_drive/templates/exports.j2
+#
+# One directory per writer, to that node's IP only. all_squash maps every
+# client user, root included, to {{ backup_drive_user }} ({{ _bd_uid }}:{{ _bd_gid }}).
+{% for e in backup_drive_exports %}
+{{ backup_drive_mount }}/{{ e.dir }} {{ e.client }}(rw,sync,no_subtree_check,all_squash,anonuid={{ _bd_uid }},anongid={{ _bd_gid }})
+{% endfor %}

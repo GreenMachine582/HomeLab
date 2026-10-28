@@ -2,9 +2,9 @@
 # playbooks/pg_dump_fetch.yml
 #
 # Copies the newest Postgres dump from the data node to the controller
-# (~/homelab-backups/postgres), keeping the newest 7 there. Until the NFS
-# backup target exists (M4 PR 9), this is the only off-node copy: the dumps
-# sit on rpi-03 next to the database.
+# (~/homelab-backups/postgres), keeping the newest 7 there. The site's other
+# copy is on the backup drive (homelab-cluster's pg-dump-offnode CronJob);
+# this one is off-site.
 #
 #   ansible-playbook playbooks/pg_dump_fetch.yml
 #

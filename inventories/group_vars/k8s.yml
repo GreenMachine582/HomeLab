@@ -65,6 +65,10 @@ k8s_api_port: 6443
 k8s_pod_cidr: 10.244.0.0/16
 k8s_service_cidr: 10.96.0.0/12
 k8s_control_plane_ip: "{{ hostvars[groups['k8s_control_plane'][0]].node_ip }}"
+# The backup target (k8s_backup) by name, like k8s-api: NFS mounts and
+# homelab-cluster's NFS PV use it, so moving the drive is an Ansible re-run.
+backup_nfs_name: homelab-backup
+backup_nfs_ip: "{{ hostvars[groups['k8s_backup'][0]].node_ip }}"
 
 # Held at 1.20.1: 1.20.2 (and 1.19.8) load socket-LB programs that need
 # kernel BTF, which Raspberry Pi OS kernels don't ship, so the Pis' agents

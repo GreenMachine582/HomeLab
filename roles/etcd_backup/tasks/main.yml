@@ -18,6 +18,11 @@
     mode: "0700"
   tags: [k8s, etcd_backup]
 
+- name: "etcd | Backup target"
+  ansible.builtin.include_tasks: target.yml
+  when: etcd_backup_target_enabled | bool
+  tags: [k8s, etcd_backup]
+
 # notify_script_dir comes from base_hardening (bootstrap.yml).
 - name: "etcd | Snapshot script"
   ansible.builtin.template:
