@@ -14,13 +14,15 @@ controller toolchain. Everything inside the cluster lives in
 [homelab-cluster](https://github.com/GreenMachine582/homelab-cluster) and is applied by Flux.
 
 > [!NOTE]
-> **Status: M4, Platform.**
+> **Status: M5.5 next** (the public playground behind Authentik).
 > - **M0–M3 done:** four nodes at the remote site, Cilium, daily etcd snapshots with a tested restore, and Flux
 >   owning everything in the cluster, Cilium included.
-> - **M4:** the Gateway, TLS, LB IPs, storage, the Cloudflare tunnel and Discord deploy notifications are live. The
->   backup target (a drive on a Pi, NFS) is left.
+> - **M4 done (28 Oct 2026):** the Gateway, TLS, LB IPs, storage, the Cloudflare tunnel, Discord deploy notifications,
+>   and the [backup drive](./docs/K8S_CLUSTER.md#️-backup-drive-m4) on rpi-02 (NFS), which gets daily etcd and Postgres copies.
+> - **M5 done (28 Oct 2026):** the gth-ui playground, Postgres, Authentik, and Grafana with Discord alerts.
 >
-> See [homelab-cluster › M4](https://github.com/GreenMachine582/homelab-cluster/blob/main/docs/M4_PLATFORM.md).
+> See [homelab-cluster › M4](https://github.com/GreenMachine582/homelab-cluster/blob/main/docs/M4_PLATFORM.md) and
+> [› M5](https://github.com/GreenMachine582/homelab-cluster/blob/main/docs/M5_WORKLOADS.md).
 
 **Quick links:** [🏗️ Architecture](#️-architecture) · [🚀 Getting started](#-getting-started) ·
 [📚 Docs](#-docs) · [🗂️ Repo structure](#️-repo-structure) · [🔒 Security](#-security) ·
@@ -186,8 +188,9 @@ Restore steps: [K8S_CLUSTER.md › etcd backups](./docs/K8S_CLUSTER.md#-etcd-bac
 | M1 | Nodes bootstrapped by Ansible, on the tailnet | ✅ |
 | M2 | kubeadm + Cilium, etcd snapshot restore tested | ✅ |
 | M3 | Flux, SOPS, branch protection, Cilium adopted | ✅ |
-| M4 | Gateway, LB-IPAM, cert-manager, storage, cloudflared, backup NFS | 🚧 Backup target left |
-| M5 | gth-ui playground, Postgres, Authentik, Grafana + minimal alerting | 🚧 Playground live |
+| M4 | Gateway, LB-IPAM, cert-manager, storage, cloudflared, backup NFS | ✅ |
+| M5 | gth-ui playground, Postgres, Authentik, Grafana + minimal alerting | ✅ |
+| M5.5 | Public playground behind Authentik: network policies, public listener, invite-only sign-up, hardening | ⏳ Next |
 | M6 | BottleBot, GreenTechHub (multi-arch GHCR builds) | ⏳ |
 | M7 | Jellyfin and the rest | ⏳ |
 | M8 | Cutover from Compose (legacy deleted here), full DR rebuild test | ⏳ |
