@@ -88,6 +88,8 @@ ansible-playbook playbooks/cluster_status.yml         # 🩺 read-only health re
 | `etcd_fetch.yml` | Newest etcd snapshot + PKI → `~/homelab-backups/etcd` |
 | `pg_dump_fetch.yml` | Newest Postgres dump from rpi-03 → `~/homelab-backups/postgres` |
 | `etcd_restore_test.yml` | Restore rehearsal into a throwaway etcd |
+| `pg_restore_test.yml` | Restore rehearsal: the newest fetched Postgres dump into a throwaway pod |
+| `alert_test.yml` | Alerting rehearsal: a crash loop and a failed `pg_dump` Job must alert in Discord `#homelab-alerts` |
 | `identify_nodes.yml` | Finds and identifies freshly imaged nodes on the site LAN |
 | `tailscale_admin.yml` | Tailscale policy (dry run by default; `-e confirm=true` applies) |
 | `wake.yml` | Wake-on-LAN for laptop-01, then waits for SSH |

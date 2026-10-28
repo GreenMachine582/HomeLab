@@ -1,0 +1,149 @@
+---
+# playbooks/alert_test.yml
+#
+# Alerting rehearsal (M5 exit): breaks two things on purpose and checks that
+# Alertmanager fires for both, then asks you to confirm they reached Discord
+# #homelab-alerts. Runs on the controller (WSL):
+#
+#   ansible-playbook playbooks/alert_test.yml
+#   ansible-playbook playbooks/alert_test.yml -e alert_test_keep=true   # no cleanup
+#
+# - A crash-looping pod in a throwaway alert-test namespace → KubePodCrashLooping.
+#   (KubePodNotReady may post too; that's expected.)
+# - A pg_dump Job built from the real pg-dump CronJob, pointed at a host that
+#   doesn't exist → KubeJobFailed.
+#
+# Both rules wait 15 minutes before firing, so this takes about 20. Cleanup
+# deletes the namespace and the Job, and Discord gets the *resolved* posts
+# about 5 minutes later. The failed dump can leave a *.partial file on the
+# dumps PV; the next real run removes it. Run it again after kube-prometheus-
+# stack or Alertmanager changes. See docs/K8S_CLUSTER.md.
+
+- name: "Alerts | Rehearse the alert path"
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  vars:
+    alert_test_keep: false
+    _ns: alert-test
+    _job: alert-test-pg-dump
+    _crashloop:
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: crashloop
+        namespace: "{{ _ns }}"
+      spec:
+        automountServiceAccountToken: false
+        restartPolicy: Always
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65534
+          runAsGroup: 65534
+          seccompProfile:
+            type: RuntimeDefault
+        containers:
+          - name: crashloop
+            image: busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+            command: [sh, -c, "echo 'alert_test.yml: crashing on purpose'; exit 1"]
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+            resources:
+              requests: { cpu: 5m, memory: 8Mi }
+              limits: { memory: 16Mi }
+    _amtool: >-
+      kubectl -n monitoring exec alertmanager-kps-alertmanager-0 -c alertmanager --
+      amtool alert query --alertmanager.url=http://localhost:9093 -o json
+
+  environment:
+    KUBECONFIG: "{{ lookup('env', 'HOME') }}/.kube/homelab.conf"
+
+  tasks:
+    - name: "Alerts | Clear any earlier attempt"
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - kubectl delete namespace {{ _ns }} --ignore-not-found --wait=true
+        - kubectl -n postgres delete job {{ _job }} --ignore-not-found --wait=true
+      changed_when: false
+
+    - name: "Alerts | Break things, then wait for the alerts"
+      block:
+        - name: "Alerts | Namespace {{ _ns }}"
+          ansible.builtin.shell: |
+            set -euo pipefail
+            kubectl create namespace {{ _ns }} --dry-run=client -o yaml \
+              | kubectl label --local -f - -o yaml \
+                  pod-security.kubernetes.io/enforce=restricted \
+              | kubectl apply -f -
+          args:
+            executable: /bin/bash
+
+        - name: "Alerts | Crash-looping pod"
+          ansible.builtin.command:
+            argv: [kubectl, apply, -f, -]
+            stdin: "{{ _crashloop | to_json }}"
+
+        # The real CronJob's spec, so it's pg_dumpall itself that fails.
+        - name: "Alerts | pg_dump Job that can't reach Postgres"
+          ansible.builtin.shell: |
+            set -euo pipefail
+            kubectl -n postgres create job {{ _job }} --from=cronjob/pg-dump --dry-run=client -o yaml \
+              | kubectl set env --local -f - PGHOST=alert-test.invalid -o yaml \
+              | kubectl apply -f -
+          args:
+            executable: /bin/bash
+
+        - name: "Alerts | Wait for the Job to fail"
+          ansible.builtin.command: >-
+            kubectl -n postgres wait job/{{ _job }} --for=condition=Failed --timeout=5m
+          changed_when: false
+
+        # Both rules have for: 15m. Polls every 30 s for up to 25 minutes.
+        - name: "Alerts | Wait for KubePodCrashLooping and KubeJobFailed"
+          ansible.builtin.command: "{{ _amtool }}"
+          register: _alerts
+          until: >-
+            _alerts.rc == 0
+            and (_alerts.stdout | from_json | selectattr('labels.alertname', 'eq', 'KubePodCrashLooping')
+                 | selectattr('labels.namespace', 'defined')
+                 | selectattr('labels.namespace', 'eq', _ns) | list | length > 0)
+            and (_alerts.stdout | from_json | selectattr('labels.alertname', 'eq', 'KubeJobFailed')
+                 | selectattr('labels.job_name', 'defined')
+                 | selectattr('labels.job_name', 'eq', _job) | list | length > 0)
+          retries: 50
+          delay: 30
+          changed_when: false
+
+        - name: "Alerts | Firing"
+          ansible.builtin.debug:
+            msg: "Both alerts are firing in Alertmanager. Discord #homelab-alerts should show them within a minute."
+
+        - name: "Alerts | Confirm Discord"
+          ansible.builtin.pause:
+            prompt: "Did both alerts post to #homelab-alerts? Enter to clean up, Ctrl+C then A to abort"
+
+      always:
+        - name: "Alerts | Clean up"
+          ansible.builtin.command: "{{ item }}"
+          loop:
+            - kubectl delete namespace {{ _ns }} --ignore-not-found --wait=false
+            - kubectl -n postgres delete job {{ _job }} --ignore-not-found --wait=false
+          changed_when: true
+          when: not (alert_test_keep | bool)
+
+        - name: "Alerts | Kept"
+          ansible.builtin.debug:
+            msg: >-
+              Left in place (alert_test_keep). Delete them to resolve the alerts:
+              kubectl delete namespace {{ _ns }}; kubectl -n postgres delete job {{ _job }}
+          when: alert_test_keep | bool
+
+    - name: "Alerts | Done"
+      ansible.builtin.debug:
+        msg: "Cleaned up. Both alerts should post as resolved in about 5 minutes."
+      when: not (alert_test_keep | bool)

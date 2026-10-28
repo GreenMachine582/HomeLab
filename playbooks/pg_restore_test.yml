@@ -1,0 +1,173 @@
+---
+# playbooks/pg_restore_test.yml
+#
+# Restore rehearsal (M5 exit): loads the newest dump fetched home
+# (~/homelab-backups/postgres, from pg_dump_fetch.yml) into a throwaway
+# Postgres pod, and checks it has the live cluster's databases and
+# Authentik's users. The live database isn't touched. Runs on the
+# controller (WSL):
+#
+#   ansible-playbook playbooks/pg_dump_fetch.yml      # first, for a fresh dump
+#   ansible-playbook playbooks/pg_restore_test.yml
+#
+# The pod uses the live StatefulSet's image, trust auth and emptyDirs, has no
+# Service, and is deleted at the end. pg_dumpall --clean prints a couple of
+# harmless errors on a fresh instance ("current user cannot be dropped",
+# "role postgres already exists"); the checks, not psql's exit code, decide.
+# Run it after Postgres upgrades too. See docs/K8S_CLUSTER.md.
+
+- name: "Postgres | Restore rehearsal"
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  vars:
+    _ns: restore-test
+    _dump_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}/homelab-backups/postgres"
+    _expected_errors:
+      - current user cannot be dropped
+      - role "postgres" already exists
+    _psql: kubectl -n {{ _ns }} exec postgres -- psql -U postgres -X -At
+
+  environment:
+    KUBECONFIG: "{{ lookup('env', 'HOME') }}/.kube/homelab.conf"
+
+  tasks:
+    - name: "Postgres | Find fetched dumps"
+      ansible.builtin.find:
+        paths: "{{ _dump_dir }}"
+        patterns: "pg_dumpall-*.sql.gz"
+      register: _dumps
+
+    - name: "Postgres | Fail if there are none"
+      ansible.builtin.fail:
+        msg: "No dumps in {{ _dump_dir }}. Run ansible-playbook playbooks/pg_dump_fetch.yml first."
+      when: _dumps.matched == 0
+
+    - name: "Postgres | Pick the newest"
+      ansible.builtin.set_fact:
+        _dump: "{{ (_dumps.files | sort(attribute='mtime') | last).path }}"
+
+    - name: "Postgres | Read the live image and databases"
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - kubectl -n postgres get statefulset postgres -o jsonpath={.spec.template.spec.containers[0].image}
+        - >-
+          kubectl -n postgres exec postgres-0 -- psql -U postgres -X -At
+          -c "select datname from pg_database where not datistemplate order by 1"
+      register: _live
+      changed_when: false
+
+    - name: "Postgres | Clear any earlier attempt"
+      ansible.builtin.command: kubectl delete namespace {{ _ns }} --ignore-not-found --wait=true
+      changed_when: false
+
+    - name: "Postgres | Rehearse a restore of {{ _dump | basename }}"
+      block:
+        - name: "Postgres | Throwaway namespace and pod"
+          ansible.builtin.command:
+            argv: [kubectl, apply, -f, -]
+            stdin: "{{ _manifests | to_json }}"
+          vars:
+            _manifests:
+              apiVersion: v1
+              kind: List
+              items:
+                - apiVersion: v1
+                  kind: Namespace
+                  metadata:
+                    name: "{{ _ns }}"
+                    labels:
+                      pod-security.kubernetes.io/enforce: restricted
+                - apiVersion: v1
+                  kind: Pod
+                  metadata:
+                    name: postgres
+                    namespace: "{{ _ns }}"
+                  spec:
+                    automountServiceAccountToken: false
+                    securityContext:
+                      runAsNonRoot: true
+                      runAsUser: 999
+                      runAsGroup: 999
+                      seccompProfile:
+                        type: RuntimeDefault
+                    containers:
+                      - name: postgres
+                        image: "{{ _live.results[0].stdout }}"
+                        env:
+                          # Throwaway, no Service: nothing else can reach it.
+                          - name: POSTGRES_HOST_AUTH_METHOD
+                            value: trust
+                        readinessProbe:
+                          exec:
+                            command: [pg_isready, -U, postgres, -h, 127.0.0.1]
+                          periodSeconds: 5
+                        securityContext:
+                          allowPrivilegeEscalation: false
+                          readOnlyRootFilesystem: true
+                          capabilities:
+                            drop: [ALL]
+                        resources:
+                          requests: { cpu: 100m, memory: 256Mi }
+                          limits: { memory: 1Gi }
+                        volumeMounts:
+                          - { name: data, mountPath: /var/lib/postgresql }
+                          - { name: run, mountPath: /var/run/postgresql }
+                          - { name: tmp, mountPath: /tmp }
+                          - { name: shm, mountPath: /dev/shm }
+                    volumes:
+                      - { name: data, emptyDir: { sizeLimit: 4Gi } }
+                      - { name: run, emptyDir: { sizeLimit: 16Mi } }
+                      - { name: tmp, emptyDir: { sizeLimit: 256Mi } }
+                      - { name: shm, emptyDir: { medium: Memory, sizeLimit: 256Mi } }
+
+        - name: "Postgres | Wait until it's ready"
+          ansible.builtin.command: kubectl -n {{ _ns }} wait pod/postgres --for=condition=Ready --timeout=5m
+          changed_when: false
+
+        - name: "Postgres | Load the dump"
+          ansible.builtin.shell: |
+            set -euo pipefail
+            zcat "{{ _dump }}" | kubectl -n {{ _ns }} exec -i postgres -- psql -U postgres -X -q 2>&1 >/dev/null \
+              | grep '^ERROR' || true
+          args:
+            executable: /bin/bash
+          register: _load
+
+        - name: "Postgres | Errors other than the expected ones"
+          ansible.builtin.debug:
+            msg: "{{ _unexpected }}"
+          when: _unexpected | length > 0
+          vars:
+            _unexpected: >-
+              {{ _load.stdout_lines | reject('search', _expected_errors | map('regex_escape') | join('|')) | list }}
+
+        - name: "Postgres | Read the restored databases and Authentik's users"
+          ansible.builtin.command: "{{ item }}"
+          loop:
+            - >-
+              {{ _psql }} -c "select datname from pg_database where not datistemplate order by 1"
+            - >-
+              {{ _psql }} -d authentik -c "select count(*) from authentik_core_user"
+          register: _restored
+          changed_when: false
+
+        - name: "Postgres | Check the restored data"
+          ansible.builtin.assert:
+            that:
+              - _restored.results[0].stdout_lines == _live.results[1].stdout_lines
+              - _restored.results[1].stdout | int > 0
+            fail_msg: >-
+              Restored data doesn't match: databases {{ _restored.results[0].stdout_lines }} vs live
+              {{ _live.results[1].stdout_lines }}, Authentik users {{ _restored.results[1].stdout }}.
+            success_msg: >-
+              Restore OK: {{ _dump | basename }} has databases
+              {{ _restored.results[0].stdout_lines | join(', ') }} and
+              {{ _restored.results[1].stdout }} Authentik users.
+
+      always:
+        - name: "Postgres | Delete the throwaway namespace"
+          ansible.builtin.command: kubectl delete namespace {{ _ns }} --ignore-not-found --wait=false
+          changed_when: true
