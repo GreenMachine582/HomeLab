@@ -85,7 +85,7 @@ ansible-playbook playbooks/cluster_status.yml         # 🩺 read-only health re
 | `cluster_status.yml` | Read-only report: nodes, kubelet, Cilium, Gateway API, Gateway reachability from the controller. `-e connectivity_test=true` |
 | `cluster_reset.yml` | Tears the cluster down (asks you to type `reset`) |
 | `flux_bootstrap.yml` | Installs or repairs Flux from homelab-cluster's committed manifests, with the `sops-age` secret |
-| `backup_drive.yml` | Backup drive on rpi-02: ext4 by UUID, NFSv4 export per writer, etcd copies. `--tags identify` finds the drive; `-e backup_drive_format=true` formats it once |
+| `backup_drive.yml` | Backup drive on rpi-02: ext4 by UUID, NFSv4 export per writer, etcd copies. `--tags identify` finds the drive; `-e backup_drive_format=true` formats it once; `--tags verify` checks it and runs the M4 exit |
 | `etcd_fetch.yml` | Newest etcd snapshot + PKI → `~/homelab-backups/etcd` |
 | `pg_dump_fetch.yml` | Newest Postgres dump from rpi-03 → `~/homelab-backups/postgres` |
 | `etcd_restore_test.yml` | Restore rehearsal into a throwaway etcd |

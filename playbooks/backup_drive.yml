@@ -13,6 +13,9 @@
 #   ansible-playbook playbooks/backup_drive.yml -e backup_drive_format=true
 #   # 3. Any later run (never formats a drive that has our label):
 #   ansible-playbook playbooks/backup_drive.yml
+#   # 4. Check it, and run the M4 exit test (an etcd snapshot lands on the
+#   #    drive). Takes a fresh snapshot; read-only otherwise:
+#   ansible-playbook playbooks/backup_drive.yml --tags verify
 #
 # See docs/K8S_CLUSTER.md, "Backup drive".
 
@@ -125,3 +128,80 @@
         name: etcd_backup
         apply:
           tags: [backup_drive, etcd_backup]
+
+# ── Verify (only with --tags verify) ──────────────────────────────────────────
+- name: "Verify | Drive, NFS server and exports"
+  hosts: k8s_backup
+  become: true
+  gather_facts: false
+  tags: [never, verify]
+
+  tasks:
+    - name: "Verify | Backup drive"
+      ansible.builtin.include_role:
+        name: backup_drive
+        tasks_from: verify
+        apply:
+          tags: [verify]
+
+- name: "Verify | Take an etcd snapshot and copy it"
+  hosts: k8s_control_plane
+  become: true
+  gather_facts: false
+  tags: [never, verify]
+
+  tasks:
+    - name: "Verify | Note the time"
+      ansible.builtin.command: date '+%Y-%m-%d %H:%M:%S'
+      register: _bv_since
+      changed_when: false
+
+    # Type=oneshot: returns once the script has finished.
+    - name: "Verify | Run the snapshot service"
+      ansible.builtin.systemd_service:
+        name: homelab-etcd-snapshot.service
+        state: started
+
+    - name: "Verify | Read its log"
+      ansible.builtin.command: >-
+        journalctl -u homelab-etcd-snapshot --since "{{ _bv_since.stdout }}" --no-pager -o cat
+      register: _bv_journal
+      changed_when: false
+
+    - name: "Verify | Snapshot log"
+      ansible.builtin.debug:
+        var: _bv_journal.stdout_lines[-5:]
+
+    - name: "Verify | The copy to the drive succeeded"
+      ansible.builtin.assert:
+        that: _bv_journal.stdout is search('Copied to ')
+        fail_msg: >-
+          The snapshot ran, but the log has no "Copied to" line, so the copy to the
+          backup drive failed or is off (etcd_backup_target_enabled). See the log above.
+        quiet: true
+
+- name: "Verify | The snapshot is on the drive (M4 exit)"
+  hosts: k8s_backup
+  become: true
+  gather_facts: false
+  tags: [never, verify]
+
+  tasks:
+    - name: "Verify | Files from the last 15 minutes"
+      ansible.builtin.find:
+        paths: /mnt/backup/etcd
+        patterns: ["etcd-*.db", "pki-*.tar.gz"]
+        age: -15m
+      register: _bv_files
+
+    - name: "Verify | On the drive"
+      ansible.builtin.debug:
+        msg: "{{ _bv_files.files | map(attribute='path') | map('basename') | sort | list }}"
+
+    - name: "Verify | A new snapshot and PKI archive landed"
+      ansible.builtin.assert:
+        that:
+          - _bv_files.files | map(attribute='path') | select('search', '/etcd-[^/]*[.]db$') | list | length > 0
+          - _bv_files.files | map(attribute='path') | select('search', '/pki-[^/]*[.]tar[.]gz$') | list | length > 0
+        fail_msg: No etcd-*.db and pki-*.tar.gz newer than 15 minutes in /mnt/backup/etcd.
+        quiet: true
