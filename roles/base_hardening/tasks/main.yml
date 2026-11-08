@@ -30,6 +30,36 @@
     state: started
   tags: [time]
 
+# The Pis have no battery-backed RTC. Installing chrony removes
+# systemd-timesyncd, which kept /var/lib/systemd/timesync/clock fresh, so
+# every boot started at the date chrony went in. chrony then stepped the clock
+# weeks forward under running pods: leader leases looked expired, and kubelet
+# lost track of containers containerd had just started (Nov 2026,
+# docs/K8S_PATCHING.md). fake-hwclock saves the time hourly and at
+# shutdown, and restores it early at boot.
+- name: "Base | Install fake-hwclock (no battery-backed RTC)"
+  ansible.builtin.apt:
+    name: fake-hwclock
+    state: present
+  register: _fake_hwclock
+  when: ansible_architecture == 'aarch64'
+  tags: [time]
+
+- name: "Base | Save the current time for the next boot"
+  ansible.builtin.command: fake-hwclock save
+  when: _fake_hwclock is changed
+  tags: [time]
+
+# time-sync.target only means "synced" once chrony-wait gates it. containerd
+# and kubelet wait for it (roles/containerd, roles/kubeadm), so they never
+# start on a stale clock. It gives up after 3 minutes, so an offline boot
+# still comes up.
+- name: "Base | Hold time-sync.target until chrony has synced"
+  ansible.builtin.systemd:
+    name: chrony-wait
+    enabled: true
+  tags: [time]
+
 - name: "Base | Configure unattended upgrades"
   ansible.builtin.copy:
     dest: /etc/apt/apt.conf.d/20auto-upgrades

@@ -67,7 +67,8 @@ The plays, in order:
 2. **All nodes**:
    - kernel modules and sysctls, `k8s-api` in `/etc/hosts`;
    - on the Pi, `cgroup_enable=memory` plus a reboot if the memory cgroup is off;
-   - containerd; kubelet/kubeadm/kubectl pinned and held, kubelet pinned to `node_ip`;
+   - containerd; kubelet/kubeadm/kubectl pinned and held, kubelet pinned to `node_ip`; both start only after
+     `time-sync.target`, so a Pi never starts pods on a stale clock; crictl (`cri-tools`) configured for containerd;
    - UFW: trusts the other nodes and the pod network, allows 6443 from the LAN and the tailnet, routed policy `allow`.
 3. **laptop-01**: `kubeadm init` without kube-proxy, then the admin kubeconfig copied to
    `/home/homelab/.kube/config` and fetched to WSL as `~/.kube/homelab.conf`. Then Cilium, waiting until it's healthy.

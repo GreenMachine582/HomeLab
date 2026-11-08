@@ -100,6 +100,14 @@ A full run with every node rebooting takes about 20–30 minutes.
 
 - **Pre-flight fails**: fix what it names first (`cluster_status.yml`). In a security rush where the unhealthy pod is
   unrelated, re-run with `-e patch_allow_unhealthy=true`.
+- **Pods stuck in `CreateContainerError: failed to reserve container name … is reserved for <id>` after a Pi
+  boots**: kubelet lost track of a container containerd had already started. The cause was the clock: the Pis have
+  no RTC and booted weeks in the past, then chrony stepped the clock forward under the new pods (Nov 2026, after a
+  power cut). `fake-hwclock` and the time-sync ordering for containerd and kubelet (`bootstrap.yml`, `cluster.yml`)
+  prevent it. A reboot brings it back while the clock is still wrong, so don't reboot. Kill the orphan on the node
+  instead: `sudo ctr -n k8s.io tasks kill -s SIGKILL <id>`, then `sudo ctr -n k8s.io containers rm <id>` if it's
+  still listed, then `sudo systemctl restart containerd`. To see whether the clock is wrong:
+  `kubectl get node <node> -o jsonpath='{.status.conditions[-1].lastHeartbeatTime}'` is far from now.
 - **Drain times out**: usually a PodDisruptionBudget or a pod with no controller. `kubectl get pods -A -o wide
   --field-selector spec.nodeName=<node>` shows what's left. The node was uncordoned again. Fix it, then re-run with
   `-e patch_nodes=<node>`.

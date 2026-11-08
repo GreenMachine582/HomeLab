@@ -5,3 +5,8 @@
   ansible.builtin.systemd:
     name: containerd
     state: restarted
+
+# Ordering only: the running containerd isn't restarted.
+- name: Reload systemd (containerd)
+  ansible.builtin.systemd:
+    daemon_reload: true
