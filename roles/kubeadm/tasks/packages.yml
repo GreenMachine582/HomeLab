@@ -28,6 +28,27 @@
     - kubectl
   tags: [k8s, kubeadm]
 
+# crictl, for looking at containers the way kubelet sees them. kubeadm doesn't
+# depend on it, and it wasn't on the nodes. Not held: the repo is per-minor,
+# so it can't get ahead of the cluster.
+- name: "kubeadm | Install crictl (cri-tools)"
+  ansible.builtin.apt:
+    name: cri-tools
+    state: present
+  tags: [k8s, kubeadm]
+
+- name: "kubeadm | Point crictl at containerd"
+  ansible.builtin.copy:
+    dest: /etc/crictl.yaml
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/kubeadm)
+      runtime-endpoint: unix:///run/containerd/containerd.sock
+      image-endpoint: unix:///run/containerd/containerd.sock
+  tags: [k8s, kubeadm]
+
 # Nodes also have tailscale0 (and Wi-Fi on the laptop); pin kubelet to the
 # LAN address. Read by the Debian kubelet unit for both init and join.
 - name: "kubeadm | Pin kubelet to the node's LAN IP"
@@ -40,6 +61,32 @@
       # Managed by Ansible (roles/kubeadm)
       KUBELET_EXTRA_ARGS=--node-ip={{ node_ip }}
   notify: Restart kubelet
+  tags: [k8s, kubeadm]
+
+# Start only once chrony has synced (chrony-wait, roles/base_hardening). A Pi
+# boots on a saved clock, and a big step forward under freshly started
+# containers leaves kubelet unaware of ones containerd started.
+- name: "kubeadm | Directory for the kubelet drop-in"
+  ansible.builtin.file:
+    path: /etc/systemd/system/kubelet.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [k8s, kubeadm]
+
+- name: "kubeadm | Start kubelet after time-sync.target"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/kubelet.service.d/05-time-sync.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/kubeadm)
+      [Unit]
+      Wants=time-sync.target
+      After=time-sync.target
+  notify: Reload systemd (kubelet)
   tags: [k8s, kubeadm]
 
 - name: "kubeadm | Enable kubelet"

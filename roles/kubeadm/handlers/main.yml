@@ -5,3 +5,8 @@
   ansible.builtin.systemd:
     name: kubelet
     state: restarted
+
+# Ordering only: the running kubelet isn't restarted.
+- name: Reload systemd (kubelet)
+  ansible.builtin.systemd:
+    daemon_reload: true
