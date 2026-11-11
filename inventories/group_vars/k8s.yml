@@ -82,7 +82,7 @@ backup_nfs_ip: "{{ hostvars[groups['k8s_backup'][0]].node_ip }}"
 # renovate: datasource=github-releases depName=cilium/cilium extractVersion=^v(?<version>.+)$
 cilium_version: "1.20.1"
 # renovate: datasource=github-releases depName=cilium/cilium-cli
-cilium_cli_version: "v0.20.1"
+cilium_cli_version: "v0.20.2"
 
 # GitOps (homelab-cluster, M3). flux_version must match the release whose
 # install.yaml is committed as clusters/prod/flux-system/gotk-components.yaml;
